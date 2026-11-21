@@ -32,7 +32,8 @@ Reference data is read from the repo dataset (`get_settings().dataset_dir / "dat
 from app.controls import run_controls, can_approve, can_release
 result = run_controls(bill, batch)          # batch = the other DraftBills that arrived with it (may include bill)
 result.flags, result.duplicates, result.route, result.can_auto_proceed
-decision = can_release("U003", amount_cad, approver_ids, result.flags, approval_complete=True, ref=ref)
+decision = can_release("U003", amount_cad, approver_ids, result.flags, True, ref, bill=bill)
+decision = can_approve("U007", result.route[0], bill, ref, route=result.route)
 decision.allowed, decision.reason
 ```
 
@@ -58,7 +59,7 @@ Money is `Decimal`, not float.
 - **Tax is recomputed, not trusted.** Expected tax comes from `ship_to_province` + vendor country/category + line type, then compared to what was charged (5 cent tolerance for rounding).
 - **Duplicates are layered**, strongest first: exact number, normalized number (`FA-001655` = `1655-A`), near match (amount within 1%, within 14 days), same bank account under another vendor record, already paid by employee card. History and the current batch are both checked. A credit note is never matched against an invoice.
 - **Recurring bills are not duplicates.** Fixed-monthly contract vendors (rent, SaaS) need similar invoice numbers too, otherwise every rent bill matches last month's.
-- **Split detection** looks for 2+ bills from one vendor within 7 days, each between 40% and 100% of the $10k limit, adding up to more than it. Fixed-monthly vendors are skipped (V037's 11 bills around $8k are just rent).
+- **Split detection** looks for 2+ bills from one vendor and department within 3 days, each under the $10k limit, adding up to more than it. Duplicate pairs, bills on separate POs and fixed-monthly vendors (V037's rent) are skipped.
 - **Approval chain**: role holder first, then walk up the org chart if they are the requester (P07, recorded in `escalated_from`), on leave (P08, recorded in `delegated_from`), terminated, already on another step, or (final step only) below the amount limit. If nobody is left, the step is `UNASSIGNED` for a manual decision.
 - **Release**: needs full approval, no open `block` flags, not an approver of this bill (P11), and the right role for the amount (P09/P10).
 
@@ -74,6 +75,8 @@ Money is `Decimal`, not float.
 ## Known gaps / next
 
 - `can_release` checks the approver list; the backend must pass who **actually** acted, including delegates.
+- A missing FX rate is reported on `FOREIGN_CURRENCY` (info) and routing uses the face amount: there is no
+  block code for it yet. Full list of fixes and open items: `docs/CONTROLS_HANDOFF.md`.
 - Card duplicate check skips AP virtual card payments (they belong to other invoices). Employee card charges only.
 - Signatures differ from the original stubs: functions take a `RefData` (from `load_refdata()`), not a `ReferenceRepository`.
 - Not yet run on the incoming batch: needs Person A's `DraftBill` output.

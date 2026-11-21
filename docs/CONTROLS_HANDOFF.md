@@ -72,8 +72,8 @@ result.recommendation     # "Hold: This bill is on V052 Harlow and Stern LLP, ..
 
 | Function | Use |
 | --- | --- |
-| `can_approve(user_id, step, bill, ref)` | Call on the server before recording an approval. Returns `PermissionDecision(allowed, reason)`. |
-| `can_release(user_id, amount_cad, approver_ids, flags, approval_complete, ref)` | Call before releasing a payment. Pass `result.flags` so duplicates hold the payment. |
+| `can_approve(user_id, step, bill, ref, *, route, amount_cad=None)` | Call on the server before recording an approval. Pass the full `route` (the final signer's limit is checked) and, for a split, the combined amount. Returns `PermissionDecision(allowed, reason)`. |
+| `can_release(user_id, amount_cad, approver_ids, flags, approval_complete, ref, *, bill)` | Call before releasing a payment. Pass `result.flags` so duplicates hold the payment, and the `bill` (requester and credit-note checks). |
 | `validate`, `find_duplicates`, `duplicate_flags`, `find_split`, `route` | The pieces `run_controls` calls, if you need one alone. |
 | `load_refdata()` / `bill_from_history(...)` | Load reference data; turn a historical invoice row into a `DraftBill` (tests, replay). |
 
@@ -86,10 +86,11 @@ result.recommendation     # "Hold: This bill is on V052 Harlow and Stern LLP, ..
 | Catches | Flag | Why |
 | --- | --- | --- |
 | Vendor not in the master | `VENDOR_NOT_FOUND` (block) | Never pay someone who hasn't been onboarded. Routing also adds a finance step (P05). |
+| Vendor not in the master, but `name_on_invoice` is ≥ 85% similar to a master vendor's name | `VENDOR_LOOKALIKE` (block) | An unknown sender using a real vendor's name is the impersonation case. Names are compared after removing Ltd/Inc/&/punctuation. |
 | Vendor on hold / inactive | `VENDOR_NOT_ACTIVE` (block) | The master says don't pay them. `pending_review` vendors aren't flagged (no code); routing adds the P05 finance step. |
 | Bill sits on a lookalike vendor record (same name after removing Ltd/Inc/&, or same bank account as another vendor) | `VENDOR_LOOKALIKE` (block) | Classic impersonation fraud (V051/V053/V052). Only flags the *suspicious* copy (fewer past invoices, or not active), never the real vendor. |
 | GST/HST number differs from master | `GST_NUMBER_MISMATCH` (warn) | Could be OCR or a fake invoice. OCR confusions (1/I/!, 0/O) are folded first, so OCR noise doesn't fire it. |
-| Bank details on the invoice differ from master | `BANK_DETAILS_MISMATCH` (block) | Changed bank details on an invoice is the main payment-fraud pattern. Verify by phone on a known number. |
+| Bank details on the invoice differ from master | `BANK_DETAILS_MISMATCH` (block) | Changed bank details on an invoice is the main payment-fraud pattern. Verify by phone on a known number. Only fields present on both the invoice and the master are compared (leading zeros ignored), so a missing institution number isn't a mismatch. |
 | Vendor's latest bank change was never verified by callback | `BANK_CHANGE_UNVERIFIED` (block) | Cascadia (V004) changed its account by email on Oct 27 with no callback. Hold every payment to it. |
 
 ### Tax (`validate.check_tax`)
@@ -104,7 +105,8 @@ result.recommendation     # "Hold: This bill is on V052 Harlow and Stern LLP, ..
 the reference. Expected tax comes from the place of supply (`ship_to_province`), the vendor's country and category,
 and each line's type: ON = HST 13%; QC = GST 5% + QST 9.975%; BC = GST 5% + PST 7% on goods only;
 AB/SK/MB/territories = GST 5%; insurance = exempt; foreign vendors = no Canadian tax. Tolerance is 5 cents
-because some vendors round tax per line.
+because some vendors round tax per line. **Unknown vendors are checked too:** with no master record, a CAD bill is
+treated as a taxable Canadian supplier and a foreign-currency bill as a foreign vendor.
 
 ### Arithmetic (`validate.check_arithmetic`)
 
@@ -121,8 +123,9 @@ Tolerance is 2 cents. Extraction never "fixes" printed numbers, so these catch b
 | Catches | Flag | Why |
 | --- | --- | --- |
 | Invoice dated after the contract ended | `CONTRACT_EXPIRED` (warn) | Work may not be authorized (Torque Industrial V044). |
-| Fixed-monthly bill above the contract fee | `OVER_CONTRACT_RATE` (warn) | Billing *under* the fee isn't flagged (no code). Known false positive: Redstone (V021) bills base fee + usage overage (see Bugs). |
-| Hourly line above the contract's hourly cap | `OVER_CONTRACT_RATE` (warn) | |
+| Fixed-monthly bill whose **fee line(s)** exceed the contract fee | `OVER_CONTRACT_RATE` (warn, `kind: fee`) | Only the fee line is compared, not the whole subtotal. Billing *under* the fee isn't flagged (no code). |
+| Usage / overage lines on a fixed-monthly bill | `OVER_CONTRACT_RATE` (warn, `kind: overage`) | Billed on top of the fee by design (Redstone V021: $4,800 committed base + data-transfer overage), so it's a "confirm the usage" warning, not an overcharge. |
+| Hourly line above the contract's hourly cap | `OVER_CONTRACT_RATE` (warn) | A line is hourly only if its description says hour / hr / hrs / heure. Quantity alone (5 pallets) isn't hours. |
 | Fuel surcharge above the contract's cap | `OVER_FUEL_SURCHARGE_CAP` (warn) | Checks both the % printed on the line and the actual % of freight, and uses the worse one (Invoice 000964: 22% vs a 12% cap). |
 | This month's billing would pass the contract's monthly not-to-exceed | `OVER_CONTRACT_NTE` (warn) | Sums this vendor's other bills in the same month from history (Orion C023). |
 
@@ -138,7 +141,8 @@ Tolerance is 2 cents. Extraction never "fixes" printed numbers, so these catch b
 
 | Catches | Flag | Why |
 | --- | --- | --- |
-| Non-CAD bill | `FOREIGN_CURRENCY` (info) | Shows the rate used and the CAD amount. Weekend dates fall back to the last earlier rate. |
+| Non-CAD bill | `FOREIGN_CURRENCY` (info) | Shows the rate used, where it came from and the CAD amount. Currency codes are case-insensitive. Rate order: the rate given on the bill (`fx_rate_to_cad`), then the USD/CAD table (USD only; weekends fall back up to 6 days). A non-USD currency is **never** converted at the USD rate. |
+| No reliable FX rate | `FOREIGN_CURRENCY` (info), message starts "FX rate missing" | The CAD amount is left unknown (never 1, never guessed); routing uses the face amount and says so on every step. Should be a block: needs `CURRENCY_UNSUPPORTED` (see Open questions). |
 | Invoice dated in the future, due before invoice date, or over 180 days old | `DATE_ANOMALY` (warn) | "Today" is the fixed as-of date (2026-11-02) from settings, never the machine clock, so results don't change with the demo date. |
 | Credit note | `CREDIT_NOTE` (info) | Apply it to an open invoice instead of paying it. |
 
@@ -154,6 +158,8 @@ Layered, strongest first. Checked against history (minus rejected invoices) *and
 | `cross_vendor` | Different vendor record with the same bank account, amount within 1%, within 30 days | `DUPLICATE_LIKELY` (warn) |
 | `card_paid` | Employee card charge with a similar merchant name, same amount, within 45 days | `ALREADY_PAID_BY_CARD` (block) |
 
+- **Unknown vendors:** two bills from vendors not in the master count as the same vendor when the name on the
+  invoice is the same (after normalizing), so the same unknown invoice sent twice in one batch is caught.
 - **Why rent isn't a duplicate:** fixed-monthly contract vendors (rent, SaaS) bill the same amount every month.
   For them a "near" match also needs the invoice numbers to look alike (≥ 60% similar); otherwise every rent
   bill would match last month's.
@@ -166,7 +172,14 @@ Layered, strongest first. Checked against history (minus rejected invoices) *and
 
 | Catches | Flag | Why |
 | --- | --- | --- |
-| 2+ bills from one vendor within 7 days, each between 40% and 100% of the $10k limit, together over it | `POSSIBLE_SPLIT` (warn) | Splitting a bill to stay under an approval limit. The group is then **routed at the combined amount**. Fixed-monthly vendors are skipped (V037's 11 rent bills around $8k are just rent). Torque Industrial (V044): 3 bills in a week, ~$14k. |
+| 2+ bills from one vendor and department within 3 days, each under the $10k limit, together over it | `POSSIBLE_SPLIT` (warn) | Splitting a bill to stay under an approval limit. The group is then **routed at the combined amount**. Torque Industrial (V044): 3 bills in 2 days, ~$14k. |
+
+There's no minimum per bill, so small pieces count too (four $2,500 bills are caught). Not counted as splits:
+- **Duplicate pairs** (same invoice number, exact or normalized, e.g. Redline FA-001655 / 1655-A): that's a
+  duplicate, reported by the duplicate check.
+- **Bills that each have their own PO** (e.g. Deskhive's three furniture orders): each purchase was authorized.
+- **Different departments**, and bills more than 3 days apart (Redline's monthly fuel bills).
+- **Fixed-monthly vendors** (V037's 11 rent bills around $8k are just rent).
 
 ### Approval routing (`approvals.route`)
 
@@ -196,9 +209,12 @@ routing follows.
 ### Permissions (`approvals.can_approve`, `approvals.can_release`)
 
 - **Approve:** user must be active, not the requester (P07), and the step's assignee (a delegate is the assignee
-  of a delegated step).
-- **Release:** fully approved; no open `block` flag; the user didn't approve this bill (P11, separation of duties);
-  finance manager up to $100k (P09), controller above (P10). Other roles can't release.
+  of a delegated step). The user's **current** record is re-checked, not just the route: their role must be able
+  to sign that kind of step (any approver for a department step; finance manager or controller for a finance step;
+  controller for controller/CFO steps), and on the **final** step their approval limit must cover the amount.
+- **Release:** fully approved; not a credit note (apply it, don't pay it); no open `block` flag; the user didn't
+  request this bill and didn't approve it (P11, separation of duties); finance manager up to $100k (P09),
+  controller above (P10). Other roles can't release.
 
 ## Known gaps
 
@@ -213,35 +229,8 @@ routing follows.
 
 ## Bugs not fixed yet
 
-From the code review plus two found while writing this file. None are fixed on `main` yet.
-Items marked *Fix in progress* are being fixed on branch `b/controls-fixes`.
-
-### Payments and permissions
-- **Credit notes can be released.** `can_release` doesn't check for a credit note, so one can be "paid" instead of applied. *Fix in progress (b/controls-fixes).*
-- **The requester can release their own bill.** `can_release` only excludes approvers (P11), not the requester. *Fix in progress (b/controls-fixes).*
-- **`can_approve` doesn't re-check role and limit.** It trusts the route, so a stale route or a changed user record isn't caught. *Fix in progress (b/controls-fixes).*
-- **A missing bank field counts as a mismatch and blocks.** e.g. no institution number on the invoice → `BANK_DETAILS_MISMATCH` (block). *Fix in progress (b/controls-fixes).*
-
-### Currency and FX
-- **Non-USD currencies are converted at the USD rate.** `to_cad` uses the USD→CAD table for any currency, so EUR 1,000
-  becomes CAD 1,350.20, the same as USD 1,000, and routing and split detection use that amount. *Fix in progress (b/controls-fixes).*
-- **Lowercase `"cad"` isn't recognized as CAD.** *Fix in progress (b/controls-fixes).*
-- **A missing FX rate silently falls back to 1.** *Fix in progress (b/controls-fixes).*
-- **The bill's own `fx_rate_to_cad` is ignored.** *Fix in progress (b/controls-fixes).*
-
-### Unknown vendors
-- **Duplicates go uncaught.** When `vendor_id` is None, batch bills are compared with vendor `""`, so the same
-  unknown-vendor invoice sent twice in one batch gets no match (`VENDOR_NOT_FOUND` still blocks both). *Fix in progress (b/controls-fixes).*
-- **The tax check is skipped.** *Fix in progress (b/controls-fixes).*
-- **`name_on_invoice` isn't checked for lookalikes** against the vendor master. *Fix in progress (b/controls-fixes).*
-
-### Contract and split false positives
-- **Redstone (V021) is flagged over contract on every bill.** Its bills are base fee + usage overage, not overcharging.
-  `OVER_CONTRACT_RATE` compares the whole subtotal to the fixed fee. *Fix in progress (b/controls-fixes).*
-- **Any line with quantity ≠ 1 is treated as hourly**, and "hr" / "hrs" aren't recognized as hourly. *Fix in progress (b/controls-fixes).*
-- **Split detection has false positives:** Deskhive (separate bills on their own POs), the Redline duplicate pair,
-  and Redline's monthly fuel bills. *Fix in progress (b/controls-fixes).*
-- **Split detection misses small splits** where each bill is under 40% of the limit. *Fix in progress (b/controls-fixes).*
+From the code review. The review's other items (permissions, currency, unknown vendors, contract and split false
+positives, bank fields) were fixed on `b/controls-fixes`.
 
 ### History replay ([`backend/scripts/replay_history.py`](../backend/scripts/replay_history.py))
 - **Applies today's state to past bills** (current bank-change status, terminated requesters), so old bills get flags
@@ -265,7 +254,9 @@ Items marked *Fix in progress* are being fixed on branch `b/controls-fixes`.
    Needs schema agreement.
 2. **Missing flag codes.** These checks are dropped until codes exist in `FLAG_CODES`: `PO_NOT_FOUND` (block),
    `CURRENCY_UNSUPPORTED` (block), `REQUESTER_TERMINATED` (warn), `VENDOR_PENDING_REVIEW` (warn),
-   `SENDER_DOMAIN_MISMATCH` (warn).
+   `SENDER_DOMAIN_MISMATCH` (warn). `CURRENCY_UNSUPPORTED` would also cover a missing FX rate (or add a separate
+   `FX_RATE_MISSING`): today that case is only reported on the `FOREIGN_CURRENCY` info flag, so it doesn't hold
+   the bill.
 3. **`RefData` vs `ReferenceRepository`:** API/DB team, let's agree on one.
 
 ## Likely judge questions
@@ -276,8 +267,8 @@ the document (extraction); the rules are plain code.
 
 **How do you avoid false positives on duplicates?**
 Layers with scores, and known exceptions: recurring fixed-fee vendors need similar invoice numbers too, credit
-notes never match invoices, and AP card payments are skipped. Split detection still has known false positives
-(Deskhive, Redline); see Bugs. Replaying all 426 historical invoices
+notes never match invoices, and AP card payments are skipped. Splits ignore duplicate pairs, bills on their own
+POs and other departments, which removed the Deskhive and Redline false positives. Replaying all 426 historical invoices
 (`cd backend && python scripts/replay_history.py`) shows what fires.
 
 **What did it find in the history?**
@@ -296,10 +287,11 @@ On leave: their named delegate, recorded as `delegated_from`. Own bill: escalate
 
 **Can the person who approved a bill also pay it?**
 No. P11 is enforced in `can_release`, on the server, together with the $100k finance manager / controller split.
-Be honest if asked about the requester: `can_release` doesn't exclude the requester yet (see Bugs).
+The requester can't release their own bill either, and a credit note can never be released.
 
 **What stops someone splitting a $14k bill into three to dodge the $10k limit?**
-`POSSIBLE_SPLIT`, and the group is routed at the combined amount.
+`POSSIBLE_SPLIT`, and the group is routed at the combined amount. There's no minimum per piece, so four $2,500
+bills in a few days are caught too.
 
 **What if the rules change?**
 Thresholds and role chains come from `approval_policies.csv`. Change the CSV (or the DB table later), not the code.

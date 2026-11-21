@@ -1,6 +1,6 @@
 """route(bill, ref, flags) -> list[ApprovalStep]
-can_approve(user_id, step, bill, ref) -> PermissionDecision
-can_release(user_id, amount_cad, approver_ids, flags, approval_complete, ref) -> PermissionDecision
+can_approve(user_id, step, bill, ref, route=...) -> PermissionDecision
+can_release(user_id, amount_cad, approver_ids, flags, approval_complete, ref, bill=...) -> PermissionDecision
 
 All thresholds and role chains come from approval_policies (ref.policies), so an
 admin can edit the rules without touching code.
@@ -11,8 +11,17 @@ from decimal import Decimal
 
 from app.shared.schemas import ApprovalStep, DraftBill, Flag, PermissionDecision, Severity
 
-from .refdata import RefData, vendor_id
-from .validate import has_blocking, to_cad
+from .refdata import RefData, currency, is_credit, vendor_id
+from .validate import amount_for_limits, has_blocking
+
+APPROVER_ROLES = {"approver", "finance_manager", "controller_admin"}
+# Which user roles may sign a step of each kind. Escalation only goes up, so higher roles may sign lower steps.
+STEP_ROLES = {
+    "dept_manager": APPROVER_ROLES,
+    "finance_manager": {"finance_manager", "controller_admin"},
+    "controller_admin": {"controller_admin"},
+    "cfo": {"controller_admin"},
+}
 
 EXTRA_REASON = {
     "P05": "Vendor is new or pending review",
@@ -81,8 +90,12 @@ def route(bill: DraftBill, ref: RefData, flags: list[Flag] | None = None,
     group is routed as one bill (run_controls does this).
     """
     flags = flags or []
+    fx_note = None
     if amount_cad is None:
-        amount_cad, _ = to_cad(bill, ref)
+        amount_cad, converted = amount_for_limits(bill, ref)
+        if not converted:
+            fx_note = (f"CAD amount unknown (no {currency(bill)}/CAD rate); routed on the face amount. "
+                       f"Re-route once converted.")
     amount = abs(amount_cad)
     requester = bill.requester_user_id
     dept = bill.department_id or (ref.users[requester]["department_id"] if requester in ref.users else None)
@@ -111,7 +124,7 @@ def route(bill: DraftBill, ref: RefData, flags: list[Flag] | None = None,
             r.notes.append("No eligible approver found. AP needs to assign one manually.")
         steps.append(ApprovalStep(step_no=n, role=role, user_id=r.uid or "UNASSIGNED",
                                   policy_ids=policies + [p for p in r.policies if p not in policies],
-                                  reason="; ".join(reasons + r.notes),
+                                  reason="; ".join(reasons + r.notes + ([fx_note] if fx_note else [])),
                                   delegated_from=r.delegated_from, escalated_from=r.escalated_from))
     return steps
 
@@ -178,16 +191,34 @@ def _resolve(uid: str | None, amount: Decimal, is_last: bool, requester: str | N
 # ---------------------------------------------------------------------------
 # Permission checks (call these on the server for every action)
 # ---------------------------------------------------------------------------
-def can_approve(user_id: str, step: ApprovalStep, bill: DraftBill, ref: RefData) -> PermissionDecision:
+def can_approve(user_id: str, step: ApprovalStep, bill: DraftBill, ref: RefData, *,
+                route: list[ApprovalStep], amount_cad: Decimal | None = None) -> PermissionDecision:
+    """May `user_id` sign `step` of `route` now? Re-checks the user's current record, not just the route.
+
+    amount_cad: the amount the route was built for (the combined amount for a split); defaults to the bill's.
+    Only the final signer's limit has to cover the amount, the same rule route() uses.
+    """
     u = ref.users.get(user_id)
     if not u or u["status"] != "active":
         return PermissionDecision(allowed=False, reason=f"{user_id} is not an active user.")
     if user_id == bill.requester_user_id:
-        return PermissionDecision(allowed=False, reason=f"{user_id} requested this bill, so they can't approve it (P07).")
+        return PermissionDecision(allowed=False,
+                                  reason=f"{user_id} requested this bill, so they can't approve it (P07).")
     if user_id != step.user_id:
         return PermissionDecision(allowed=False, reason=f"This step is assigned to {step.user_id}.")
+    allowed_roles = STEP_ROLES.get(step.role, APPROVER_ROLES)
+    if u["role"] not in allowed_roles:
+        return PermissionDecision(allowed=False,
+                                  reason=f"{user_id}'s role '{u['role']}' can't sign a {step.role} step.")
+    if route and step.step_no == max(s.step_no for s in route):
+        amount = abs(amount_cad if amount_cad is not None else amount_for_limits(bill, ref)[0])
+        limit = Decimal(u["approval_limit_cad"] or 0)
+        if limit < amount:
+            return PermissionDecision(allowed=False,
+                                      reason=f"{user_id}'s approval limit (${limit:,.0f}) is below ${amount:,.2f}.")
     if step.delegated_from:
-        return PermissionDecision(allowed=True, reason=f"{user_id} approves as delegate for {step.delegated_from} (P08).")
+        return PermissionDecision(allowed=True,
+                                  reason=f"{user_id} approves as delegate for {step.delegated_from} (P08).")
     return PermissionDecision(allowed=True, reason=f"{user_id} is the assigned approver for step {step.step_no}.")
 
 
@@ -197,11 +228,20 @@ def _release_threshold(ref: RefData) -> Decimal:
 
 
 def can_release(user_id: str, amount_cad: Decimal, approver_ids: set[str], flags: list[Flag],
-                approval_complete: bool, ref: RefData) -> PermissionDecision:
-    """flags must include the duplicate/split flags (run_controls(...).flags does), or duplicates won't hold payment."""
+                approval_complete: bool, ref: RefData, *, bill: DraftBill) -> PermissionDecision:
+    """flags must include the duplicate/split flags (run_controls(...).flags does), or duplicates won't hold payment.
+
+    bill is required: the requester check and the credit-note check need it.
+    """
     u = ref.users.get(user_id)
     if not u or u["status"] != "active":
         return PermissionDecision(allowed=False, reason=f"{user_id} is not an active user.")
+    if is_credit(bill) or amount_cad < 0 or any(f.code == "CREDIT_NOTE" for f in flags):
+        return PermissionDecision(allowed=False,
+                                  reason="This is a credit note: apply it against an open invoice, don't pay it.")
+    if user_id == bill.requester_user_id:
+        return PermissionDecision(allowed=False,
+                                  reason=f"{user_id} requested this bill, so they can't release its payment.")
     if not approval_complete:
         return PermissionDecision(allowed=False, reason="The bill isn't fully approved yet.")
     if has_blocking(flags):
