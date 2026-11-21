@@ -242,3 +242,23 @@ the right type; the inbox fallback works. Matrix rows in their own commit.
 ```
 The smoke test showed the step-6 reason still started with the original "· D08 Executive" label, which read as a
 contradiction. The suffix now says "(replaces D08)".
+
+## Step 7: Quality gate 📝
+
+- Merged `origin/main` again (frontend scaffold, controls tax fixes #23, DB override carry-over #26); clean merge.
+- `pytest` offline: **1272 passed, 1 xfailed** (ISSUES_FOR_B #2), 9 live deselected, ~60 s (105 s with coverage).
+- `RUN_LIVE_LLM=1 pytest -m live`: **9 passed** in 61 s (HA26-2766, Laurentian, 2 vision fallbacks, 5 layouts).
+- Coverage (`pytest-cov`, now a dev dependency) on `intake/ extraction/ coding/ reference/` +
+  `api/routes_intake.py`: **95%**. Below 90%: `extraction/pipeline.py` 89% (defensive branches) and
+  `reference/csv_repository.py` 87% (getters controls reads through its own `RefData`); details in the handoff.
+  Raised from 91% by offline tests for OCR (fake tesseract), `pdftotext`, the triage LLM tie-break and replay edge
+  cases.
+- `ruff check .`: clean repo-wide.
+- Dead code: `intake.upload.process_upload` (its only caller was the retired `/intake/upload`) removed. No TODOs
+  in A's folders. READMEs (intake, extraction, coding, api) and DECISIONS 59–66 updated;
+  `docs/PERSON_A_HANDOFF.md` written.
+- Attribution: `git log origin/main..HEAD --format=%B` finds nothing. `git grep -inE "co-authored|generated with|claude
+  code"` (excluding CLAUDE.md, .claude/) finds only files this branch doesn't touch: the DB lane's alembic migration
+  docstrings ("Generated with `alembic revision --autogenerate`", a tool, not attribution) and the team's
+  `docs/HACKATHON_PLAN.md`. The branch's own diff adds none.
+- Not tracked: `.env`, `.cache/`, `output/`, `files/`, `*.db`, `CLAUDE_CODE_PROMPT_*.md` (left untracked).

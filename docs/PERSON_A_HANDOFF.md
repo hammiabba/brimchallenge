@@ -181,7 +181,7 @@ in about 4 minutes. Reruns are free (cache).
 
 ## Tests
 
-`cd backend && pytest`: **1257 passed, 1 xfailed** (controls item, `ISSUES_FOR_B.md` #2), offline, about 60 s.
+`cd backend && pytest`: **1272 passed, 1 xfailed** (controls item, `ISSUES_FOR_B.md` #2), offline, about 60 s.
 `RUN_LIVE_LLM=1 pytest -m live`: 9 live tests (2 dataset invoices, 2 vision fallback, 5 layouts).
 Coverage on `intake/ extraction/ coding/ reference/` and `api/routes_intake.py`: **95%**. Below 90%:
 
