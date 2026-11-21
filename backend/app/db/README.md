@@ -108,6 +108,50 @@ They print on stdout after the per-table counts (rows / inserted / skipped) and 
 
 Exit codes: 0 seeded, 1 pre-flight failed (nothing written), 2 `--reset` refused.
 
+## Audit log
+
+`audit.py`. Every state change writes one event with `log_event()`, in the same transaction as the change:
+
+```python
+from app.db.audit import AuditAction, log_event
+
+bill.status = "approved"
+log_event(session, actor_user_id=user.user_id, actor_role=user.role, action=AuditAction.BILL_APPROVED,
+          entity_type="bill", entity_id=bill.bill_id, before={"status": "pending_approval"},
+          after={"status": "approved"}, on_behalf_of=step.delegated_from, request_id=request_id)
+session.commit()  # the caller commits: the change and its event land together, or neither does
+```
+
+- **Never commits or closes the session.** The insert runs in a SAVEPOINT inside the caller's transaction; if the
+  caller rolls back, the event is gone too. On SQLite, when no transaction is open yet, it first sends
+  `BEGIN IMMEDIATE` (pysqlite would otherwise let the SAVEPOINT's RELEASE commit the event on its own) and so takes
+  the write lock before reading the latest hash.
+- **Never rejects an event for its content.** Any `action` string is accepted; `AuditAction` lists the standard
+  dotted names (`bill.approved`, `payment.released`, ...). Only an empty actor, role, action, entity type or entity
+  id is refused (ValueError). Use `SYSTEM_ACTOR` (`"system"`, role `"system"`) for the seed and background jobs.
+- **Payloads.** `before` / `after` go through `to_audit_json` (Decimal as an exact string, datetimes as ISO 8601 UTC
+  with `Z`, enums as values, pydantic models dumped, sets sorted; anything unknown is a TypeError) and then `redact`:
+  values under `account`, `new_account`, `bank_account` or `account_number` become `{"last4", "fingerprint"}`
+  (first 12 hex characters of sha256). The fingerprint lets two events about one account be matched; it is not a
+  secret (an unsalted hash of a short number can be brute-forced). `comment` is not redacted: never put account
+  numbers in it.
+- **Hash chain.** Each event stores `prev_hash` (`"GENESIS"` for the first) and
+  `hash = sha256(prev_hash + "\n" + canonical JSON of the event's fields except seq and hash)`. A UNIQUE index on
+  `prev_hash` (migration 0002) stops the chain from forking; if another writer extended the same event first,
+  `log_event` re-reads and retries, up to 5 attempts, then raises `AuditChainConflict`.
+- **`verify_chain(session) -> ChainReport(ok, count, first_bad_seq, reason)`** recomputes every hash in `seq` order
+  and finds the first edited, inserted or deleted event. It can't see the newest events being removed (truncation);
+  record the latest hash somewhere else (e.g. with each export) to catch that.
+- **Reading, for the audit API** (no authorization here; the route checks the role):
+  `list_events(session, entity_type=, entity_id=, actor_user_id=, action=, since=, until=, after_seq=, limit=100)`
+  returns `AuditRecord`s (a `schemas.AuditEvent` plus `seq`, `request_id`, `prev_hash`, `hash`), oldest first.
+  Page with `after_seq=<last seq>`; `limit` is capped at 500; `since` is inclusive and `until` exclusive.
+  `iter_events_csv(session, **same filters)` streams a header and one CSV record per event, 500 rows per query,
+  with cells starting `= + - @`, tab or CR prefixed by `'` (spreadsheet formula injection). Keep the session open
+  until the stream is consumed.
+- **Append-only.** Triggers from 0001 abort any UPDATE or DELETE on `audit_events`. Tests that simulate tampering
+  drop the triggers in their own temp database only.
+
 ## Rules
 
 - **A migration is never edited after it is pushed.** Once a revision is on a shared branch, someone may have
@@ -127,5 +171,6 @@ Exit codes: 0 seeded, 1 pre-flight failed (nothing written), 2 `--reset` refused
   `app/reference/README.md`), and a `RefData` built from the database for `app.controls`.
 - Storage for `DraftBill` + `EmailTriage` to replace the TEMP dict in `api/routes_intake.py` (Person A's file).
 - Storage for `ControlsResult` per bill, and the approval history `can_release` needs.
-- One `log_event(...)` helper that writes `audit_events` (with the hash chain), and the bill and payment
-  state machines.
+- The bill and payment state machines.
+- The general pysqlite transaction fix in `database.make_engine` (SQLAlchemy's documented recipe: let SQLAlchemy
+  emit BEGIN itself), so every SAVEPOINT and DDL statement is transactional, not only `log_event`'s.
