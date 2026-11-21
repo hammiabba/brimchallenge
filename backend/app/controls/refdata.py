@@ -1,7 +1,7 @@
 """Loads the reference data the checks need, plus small helpers for reading a DraftBill.
 
-Reads the CSVs for now. When the backend has a database, swap load_refdata()
-for one that reads the same tables. The checks only see the RefData object,
+Reads the CSVs for now. A database loader passes the same rows to build_refdata()
+(keyed by the names in REFDATA_FILES). The checks only see the RefData object,
 so they don't care where it came from.
 
 All bill types come from schemas.py (the team contract). Nothing here defines its own.
@@ -135,33 +135,51 @@ def parse_threshold(condition: str) -> Decimal | None:
     return Decimal(m.group(1).replace(",", "")) if m else None
 
 
-def load_refdata(data_dir: Path | str | None = None) -> RefData:
-    """Reads the dataset CSVs. Defaults to the repo's copy (settings.dataset_dir / "data")."""
-    p = Path(data_dir) if data_dir is not None else get_settings().dataset_dir / "data"
+# The CSV stems load_refdata reads. A DB-backed loader supplies the same rows under the same names.
+REFDATA_FILES: tuple[str, ...] = (
+    "vendors", "users", "departments", "contracts", "purchase_orders", "tax_codes", "fx_rates",
+    "bank_change_history", "invoices", "invoice_lines", "card_transactions", "approval_policies",
+)
+
+
+def build_refdata(rows_by_file: dict[str, list[dict[str, str]]], as_of: date | None = None) -> RefData:
+    """Builds RefData from rows keyed by CSV stem (see REFDATA_FILES), each row a dict of strings as csv gives.
+
+    The CSV loader and a database loader both go through here, so the checks see identical data either way.
+    as_of defaults to the fixed as-of date from settings.
+    """
+    rows = rows_by_file
     lines: dict[str, list[dict]] = {}
-    for row in _read(p / "invoice_lines.csv"):
+    for row in rows["invoice_lines"]:
         lines.setdefault(row["invoice_id"], []).append(row)
 
     policies = {
         r["rule_id"]: Policy(r["rule_id"], r["rule_type"], r["condition"], r["required"],
                              parse_threshold(r["condition"]))
-        for r in _read(p / "approval_policies.csv")
+        for r in rows["approval_policies"]
     }
 
     return RefData(
-        vendors={r["vendor_id"]: r for r in _read(p / "vendors.csv")},
-        users={r["user_id"]: r for r in _read(p / "users.csv")},
-        departments={r["department_id"]: r for r in _read(p / "departments.csv")},
-        contracts={r["contract_id"]: r for r in _read(p / "contracts.csv")},
-        purchase_orders={r["po_id"]: r for r in _read(p / "purchase_orders.csv")},
-        tax_codes={r["code"]: r for r in _read(p / "tax_codes.csv")},
-        fx={d(r["date"]): Decimal(r["usd_to_cad"]) for r in _read(p / "fx_rates.csv")},
-        bank_changes=_read(p / "bank_change_history.csv"),
-        invoices={r["invoice_id"]: r for r in _read(p / "invoices.csv")},
+        vendors={r["vendor_id"]: r for r in rows["vendors"]},
+        users={r["user_id"]: r for r in rows["users"]},
+        departments={r["department_id"]: r for r in rows["departments"]},
+        contracts={r["contract_id"]: r for r in rows["contracts"]},
+        purchase_orders={r["po_id"]: r for r in rows["purchase_orders"]},
+        tax_codes={r["code"]: r for r in rows["tax_codes"]},
+        fx={d(r["date"]): Decimal(r["usd_to_cad"]) for r in rows["fx_rates"]},
+        bank_changes=list(rows["bank_change_history"]),
+        invoices={r["invoice_id"]: r for r in rows["invoices"]},
         invoice_lines=lines,
-        card_txns=_read(p / "card_transactions.csv"),
+        card_txns=list(rows["card_transactions"]),
         policies=policies,
+        as_of=as_of if as_of is not None else get_settings().as_of_date,
     )
+
+
+def load_refdata(data_dir: Path | str | None = None) -> RefData:
+    """Reads the dataset CSVs. Defaults to the repo's copy (settings.dataset_dir / "data")."""
+    p = Path(data_dir) if data_dir is not None else get_settings().dataset_dir / "data"
+    return build_refdata({stem: _read(p / f"{stem}.csv") for stem in REFDATA_FILES})
 
 
 @cache

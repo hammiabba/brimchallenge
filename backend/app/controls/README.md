@@ -21,7 +21,7 @@ Reference data is read from the repo dataset (`get_settings().dataset_dir / "dat
 | File | What it does |
 | --- | --- |
 | `engine.py` | `run_controls(bill, batch) -> ControlsResult`: the one call the backend needs |
-| `refdata.py` | Loads the CSVs into one `RefData` object, plus `bill_from_history` and `history_taxes` (also used by the DB seed). Swap this for DB reads later; nothing else changes. |
+| `refdata.py` | Loads the CSVs into one `RefData` object, plus `bill_from_history` and `history_taxes` (also used by the DB seed). `build_refdata(rows_by_file)` builds the same object from DB rows keyed by `REFDATA_FILES`; nothing else changes. |
 | `validate.py` | `validate(bill, ref) -> [Flag]`: vendor, tax, arithmetic, contract, PO, FX, dates, credit notes |
 | `duplicates.py` | `find_duplicates(bill, ref, batch) -> [DuplicateMatch]`, `duplicate_flags(...)`, `find_split(bill, ref, batch)` |
 | `approvals.py` | `route(...) -> [ApprovalStep]`, `can_approve(...)` / `can_release(...) -> PermissionDecision` |
