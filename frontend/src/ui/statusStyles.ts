@@ -2,7 +2,14 @@
  * Which tone and label each status gets, for the status enums in the API (src/api/schema.d.ts). The colours of each
  * tone are in src/theme.ts (STATUS_TONES, SEVERITY_STYLES); StatusBadge and SeverityBadge render them.
  */
-import type { BankChangeStatus, BillStatus, PaymentStatus, UserStatus, VendorStatus } from '../api/types'
+import type {
+  BankChangeStatus,
+  BillStatus,
+  FlagResolution,
+  PaymentStatus,
+  UserStatus,
+  VendorStatus,
+} from '../api/types'
 import type { StatusTone } from '../theme'
 
 interface StatusStyle {
@@ -50,6 +57,13 @@ export const USER_STATUS: Record<UserStatus, StatusStyle> = {
   terminated: { label: 'Terminated', tone: 'neutral' },
 }
 
+/** Whether a flag still needs a person: open, or overridden / resolved (with who, when and why). */
+export const FLAG_RESOLUTION: Record<FlagResolution, StatusStyle> = {
+  open: { label: 'Open', tone: 'attention' },
+  overridden: { label: 'Overridden', tone: 'neutral' },
+  resolved: { label: 'Resolved', tone: 'success' },
+}
+
 /** The status tables by kind, for <StatusBadge kind=... status=...>. */
 export const STATUS_STYLES = {
   bill: BILL_STATUS,
@@ -57,6 +71,7 @@ export const STATUS_STYLES = {
   vendor: VENDOR_STATUS,
   bankChange: BANK_CHANGE_STATUS,
   user: USER_STATUS,
+  flag: FLAG_RESOLUTION,
 } as const
 
 export type StatusKind = keyof typeof STATUS_STYLES

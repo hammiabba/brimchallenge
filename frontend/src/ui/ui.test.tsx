@@ -107,7 +107,7 @@ describe('Icon', () => {
 })
 
 describe('theme', () => {
-  it('sets page titles (h1, h2) in the serif and smaller headings in the sans', () => {
+  it('sets page titles (h1) in the serif and section headings (h2 and below) in the sans', () => {
     renderUi(
       <>
         <Title order={1}>Bills</Title>
@@ -117,7 +117,7 @@ describe('theme', () => {
     )
     // jsdom drops the quotes around family names, so compare on the family itself.
     expect(screen.getByRole('heading', { level: 1 }).style.fontFamily).toContain('IBM Plex Serif')
-    expect(screen.getByRole('heading', { level: 2 }).style.fontFamily).toContain('IBM Plex Serif')
+    expect(screen.getByRole('heading', { level: 2 }).style.fontFamily).not.toContain('IBM Plex Serif')
     expect(screen.getByRole('heading', { level: 3 }).style.fontFamily).not.toContain('IBM Plex Serif')
     expect(FONT.serif).toContain('IBM Plex Serif')
   })
