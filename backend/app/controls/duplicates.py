@@ -1,23 +1,216 @@
-"""
-Duplicate detection.  STUB (owner: Person B).
+"""find_duplicates(bill, ref, batch) -> list[DuplicateMatch]
+duplicate_flags(matches) -> list[Flag]
+find_split(bill, ref, batch) -> Flag | None
 
-Pure function: DraftBill + history in, list[DuplicateMatch] out, each with a score and reasons.
-
-Kinds and known cases (docs/HACKATHON_PLAN.md §4):
-- exact: same vendor + invoice number (Invoice 000961.pdf, cloudbarnsoftwar_INV01561.pdf, harlowsternllp_001468.pdf)
-- normalized: strip prefixes/leading zeros/punctuation ("583" == "FA-000583", brightlinesafety-inv-032.pdf)
-- near: same vendor, amount within ~1%, date within ~14 days ("000903-A" vs "000903", voyageurcorporat-inv-017.pdf)
-- cross_vendor: same amount + bank account under a lookalike vendor record
-- card_paid: card_transactions merchant (fuzzy) + amount_cad + date window (Cloudbarn INV-01561)
-Avoid false positives: fixed monthly contracts (Invoice 002935.pdf, Queen St rent $18,758) bill the same amount
-every month. Require invoice-number similarity or the same service period too.
+Compares a new bill against history and against the other bills in the same batch.
+Every match carries a score and the reasons, so the UI can show *why*.
+Matches are also turned into flags so a duplicate holds the payment like any other BLOCK.
 """
 from __future__ import annotations
 
-from app.reference.repository import ReferenceRepository
-from app.shared.schemas import DraftBill, DuplicateMatch
+import re
+from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
+from difflib import SequenceMatcher
+
+from app.shared.schemas import DraftBill, DuplicateMatch, Flag
+
+from .refdata import RefData, bill_id, d, is_credit, money, vendor_id
+from .validate import _norm_name, flag, to_cad
+
+NEAR_AMOUNT_PCT = Decimal("0.01")  # amounts within 1%
+NEAR_DAYS = 14
+CARD_DAYS = 45
+SPLIT_WINDOW_DAYS = 7
+SPLIT_MIN_SHARE = Decimal("0.4")   # only invoices >= 40% of the limit count as "just under"
+
+# DuplicateMatch.kind -> flag code
+DUP_FLAG = {
+    "exact": "DUPLICATE_EXACT",
+    "normalized": "DUPLICATE_EXACT",     # 604 vs 000604 from the same vendor is the same invoice
+    "near": "DUPLICATE_LIKELY",
+    "cross_vendor": "DUPLICATE_LIKELY",
+    "card_paid": "ALREADY_PAID_BY_CARD",
+}
 
 
-def find_duplicates(draft: DraftBill, repo: ReferenceRepository) -> list[DuplicateMatch]:
-    """Return candidate duplicates of `draft` in history and card transactions, highest score first."""
-    raise NotImplementedError("controls.duplicates is owned by Person B")
+def norm_invoice_no(s: str) -> str:
+    """FA-000583 -> 583, 000903-A -> 903, INV-02990 -> 2990. Keeps digits only, drops leading zeros."""
+    digits = re.sub(r"[^0-9]", "", s or "")
+    return digits.lstrip("0")
+
+
+def _similar(a: str, b: str) -> float:
+    return SequenceMatcher(None, a.upper(), b.upper()).ratio()
+
+
+def _close_amount(a: Decimal, b: Decimal) -> bool:
+    if a == b:
+        return True
+    big = max(abs(a), abs(b))
+    return big > 0 and abs(a - b) / big <= NEAR_AMOUNT_PCT
+
+
+@dataclass
+class _Cand:
+    """One existing invoice, flattened so history rows and batch bills look the same."""
+    id: str
+    vendor_id: str
+    number: str
+    invoice_date: date | None
+    total: Decimal
+    total_cad: Decimal
+    status: str
+    credit: bool
+
+
+def _candidates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill]) -> list[_Cand]:
+    """History (minus rejected) plus the other bills in the batch.
+
+    The bill itself may be in `batch`; it is skipped by identity, not by file_hash, so the same
+    PDF submitted twice (two bills, one hash) still matches as a duplicate.
+    """
+    me = bill_id(bill)
+    out = [
+        _Cand(i["invoice_id"], i["vendor_id"], i["vendor_invoice_number"], d(i["invoice_date"]),
+              money(i["total"]), money(i["total_cad"]), i["status"], money(i["total"]) < 0)
+        for i in ref.invoices.values()
+        if i["invoice_id"] != me and i["status"] != "rejected"
+    ]
+    for b in batch:
+        if b is not bill:
+            out.append(_Cand(bill_id(b), vendor_id(b) or "", b.invoice_number, b.invoice_date,
+                             b.total, to_cad(b, ref)[0], "in_batch", is_credit(b)))
+    return out
+
+
+def _is_recurring_vendor(ref: RefData, vid: str) -> bool:
+    """Rent, SaaS, insurance etc. bill the same amount every month. Same amount alone is NOT a duplicate for them."""
+    c = next((c for c in ref.contracts.values() if c["vendor_id"] == vid), None)
+    return bool(c and c["billing_type"] == "fixed_monthly")
+
+
+def find_duplicates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill] = ()) -> list[DuplicateMatch]:
+    matches: list[DuplicateMatch] = []
+    vid = vendor_id(bill)
+    my_no = norm_invoice_no(bill.invoice_number)
+    vendor = ref.vendors.get(vid or "")
+    bank = bill.vendor.bank
+    my_bank = (bank.transit, bank.account) if bank.account else \
+        ((vendor["bank_transit"], vendor["bank_account"]) if vendor and vendor["bank_account"] else None)
+    recurring = _is_recurring_vendor(ref, vid or "")
+    credit = is_credit(bill)
+
+    for c in _candidates(bill, ref, batch):
+        if c.credit != credit:
+            continue  # a credit note shares its invoice's number and amount by design; that's not a duplicate
+        same_vendor = c.vendor_id == vid
+        days = abs((c.invoice_date - bill.invoice_date).days) if c.invoice_date else 999
+        status = f"{c.id} status: {c.status}"
+
+        if same_vendor and c.number == bill.invoice_number:
+            matches.append(DuplicateMatch(kind="exact", score=1.0, matched_invoice_id=c.id,
+                                          reasons=["same vendor", f"same invoice number {c.number}",
+                                                   f"total {c.total} vs {bill.total}", status]))
+            continue
+        if same_vendor and my_no and norm_invoice_no(c.number) == my_no:
+            matches.append(DuplicateMatch(kind="normalized", score=0.95, matched_invoice_id=c.id,
+                                          reasons=["same vendor",
+                                                   f"invoice no {bill.invoice_number} == {c.number} after removing "
+                                                   f"prefixes and leading zeros", status]))
+            continue
+        if same_vendor and _close_amount(c.total, bill.total) and days <= NEAR_DAYS:
+            sim = _similar(norm_invoice_no(c.number), my_no)
+            # For fixed-monthly vendors, need the number to look alike too, otherwise every rent bill matches.
+            if recurring and sim < 0.6:
+                continue
+            matches.append(DuplicateMatch(kind="near", score=round(0.6 + 0.3 * sim, 2), matched_invoice_id=c.id,
+                                          reasons=["same vendor", f"amount {c.total} vs {bill.total}",
+                                                   f"{days} days apart", f"invoice numbers {sim:.0%} similar", status]))
+            continue
+        if not same_vendor and my_bank and _close_amount(c.total, bill.total) and days <= 30:
+            other = ref.vendors.get(c.vendor_id)
+            if other and (other["bank_transit"], other["bank_account"]) == my_bank:
+                matches.append(DuplicateMatch(kind="cross_vendor", score=0.85, matched_invoice_id=c.id,
+                                              reasons=[f"same bank account as {c.vendor_id} {other['legal_name']}",
+                                                       f"amount {c.total} vs {bill.total}", f"{days} days apart",
+                                                       status]))
+
+    if not credit:
+        matches.extend(_card_matches(bill, ref))
+    return sorted(matches, key=lambda m: -m.score)
+
+
+def _card_matches(bill: DraftBill, ref: RefData) -> list[DuplicateMatch]:
+    vendor = ref.vendors.get(vendor_id(bill) or "")
+    if not vendor:
+        return []
+    total_cad, _ = to_cad(bill, ref)
+    name = _norm_name(vendor["legal_name"])
+    out = []
+    for t in ref.card_txns:
+        if (t["memo"] or "").startswith("AP payment"):
+            # An AP virtual card paying some invoice. If that invoice is a duplicate of this one,
+            # the invoice-to-invoice checks above already catch it. Skipping avoids flagging next
+            # month's identical SaaS bill as "paid by card".
+            continue
+        days = (d(t["posted_date"]) - bill.invoice_date).days
+        if not (-CARD_DAYS <= days <= CARD_DAYS):
+            continue
+        if not (_close_amount(money(t["amount_cad"]), total_cad) or
+                (t["currency"] == bill.currency and _close_amount(money(t["amount"]), bill.total))):
+            continue
+        sim = _similar(_norm_name(t["merchant_descriptor"]), name)
+        if sim >= 0.6:
+            out.append(DuplicateMatch(kind="card_paid", score=round(0.5 + 0.4 * sim, 2), matched_card_txn_id=t["txn_id"],
+                                      reasons=[f"{t['source']} charge {t['merchant_descriptor']} {t['currency']} {t['amount']} "
+                                               f"on {t['posted_date']}", f"merchant name {sim:.0%} similar",
+                                               f"cardholder {t['cardholder_user_id']}"]))
+    return out
+
+
+def duplicate_flags(matches: list[DuplicateMatch]) -> list[Flag]:
+    """One flag per code, carrying every match behind it. Severity comes from FLAG_CODES."""
+    by_code: dict[str, list[DuplicateMatch]] = {}
+    for m in matches:
+        by_code.setdefault(DUP_FLAG[m.kind], []).append(m)
+    flags = []
+    for code, ms in by_code.items():
+        best = max(ms, key=lambda m: m.score)
+        ids = [m.matched_invoice_id or m.matched_card_txn_id for m in ms]
+        best_id = best.matched_invoice_id or best.matched_card_txn_id
+        more = f" (+{len(ms) - 1} more)" if len(ms) > 1 else ""
+        what = "Already paid by card" if code == "ALREADY_PAID_BY_CARD" else "Possible duplicate of"
+        flags.append(flag(code, f"{what} {best_id}: {', '.join(best.reasons)}{more}.",
+                          evidence={"matches": ids, "kinds": [m.kind for m in ms], "best_score": best.score},
+                          field="total" if code == "ALREADY_PAID_BY_CARD" else "invoice_number"))
+    return flags
+
+
+def find_split(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill] = (),
+               limit: Decimal | None = None) -> Flag | None:
+    """Several invoices from one vendor, each under the approval limit, close together, adding up to more than it."""
+    if limit is None:
+        limit = ref.policies["P01"].threshold  # $10,000 from the policy table
+    total_cad, _ = to_cad(bill, ref)
+    if total_cad > limit or total_cad <= 0:
+        return None
+    if _is_recurring_vendor(ref, vendor_id(bill) or ""):
+        return None  # e.g. V037 rent: 11 bills of $8,137.50 are monthly rent, not a split
+    floor = limit * SPLIT_MIN_SHARE
+    if total_cad < floor:
+        return None
+    group = [c for c in _candidates(bill, ref, batch)
+             if c.vendor_id == vendor_id(bill) and c.invoice_date
+             and abs((c.invoice_date - bill.invoice_date).days) <= SPLIT_WINDOW_DAYS
+             and floor <= c.total_cad <= limit]
+    combined = total_cad + sum((c.total_cad for c in group), Decimal("0"))
+    if group and combined > limit:
+        return flag("POSSIBLE_SPLIT",
+                    f"{len(group) + 1} invoices from this vendor within {SPLIT_WINDOW_DAYS} days, each under "
+                    f"${limit:,.0f} but ${combined:,.2f} together. Route as if it were one ${combined:,.2f} bill.",
+                    policy="P01", evidence={"related": [c.id for c in group], "combined_cad": str(combined)},
+                    field="total")
+    return None
