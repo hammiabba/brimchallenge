@@ -76,6 +76,7 @@ result.recommendation     # "Hold: This bill is on V052 Harlow and Stern LLP, ..
 | `can_release(user_id, amount_cad, approver_ids, flags, approval_complete, ref, *, bill)` | Call before releasing a payment. Pass `result.flags` so duplicates hold the payment, and the `bill` (requester and credit-note checks). |
 | `validate`, `find_duplicates`, `duplicate_flags`, `find_split`, `route` | The pieces `run_controls` calls, if you need one alone. |
 | `load_refdata()` / `bill_from_history(...)` | Load reference data; turn a historical invoice row into a `DraftBill` (tests, replay). |
+| `incoming.run_batch(items)` / `incoming.render_report(...)` | Runs the controls on the extracted incoming batch as one batch (so in-batch duplicates and splits are caught), sorts problem bills first and renders the report. Printed by `backend/scripts/run_incoming.py`. |
 | `history.replay(ref)` | Replays all historical invoices, each judged as of its own date, plus checks on `approvals.csv` and `payments.csv`. Printed by `backend/scripts/replay_history.py`. |
 
 `controls.permissions` re-exports `can_approve` / `can_release` (the API guide refers to that module).
@@ -223,10 +224,91 @@ routing follows.
 - **`RefData` is loaded once per process** (`default_refdata()` is cached). Data changes need a restart, or pass
   a fresh `ref`. When the DB lands, replace `refdata.load_refdata()`; nothing else needs to change.
 - **Signatures differ from the old stubs:** functions take a `RefData`, not a `ReferenceRepository`.
-- **Not yet run on the incoming batch:** needs Person A's `DraftBill` output end to end.
+- **Not yet run on the real incoming batch.** `backend/scripts/run_incoming.py` is ready and tested on hand-built
+  bills, but extraction currently fails on every file: the API rejects `RawInvoice` in
+  `backend/app/extraction/llm_parser.py` ("19 parameters with union types", limit 16). Person A is fixing it.
+  Email triage works: 55 emails with 56 attachments, plus a statement, a payment inquiry, a missing attachment
+  and a marketing email.
+  **Update 2026-11-21:** Person A's fix is on main and the batch has now been run. See "Incoming batch results"
+  below.
+- **Invoices don't print a department**, so routing would have no department manager. `run_incoming.py` uses the
+  department the line coding suggestions give the most money to, and the report marks it "suggested by coding".
+- **Very short invoice numbers can collide.** The normalized-number duplicate check keeps digits only, so `A-1`
+  and `B-1` from the same vendor match as `DUPLICATE_EXACT`. Real numbers are longer; watch for it in the batch.
+  Update: it didn't happen in the real batch.
 - **`field_confidence`, `extraction_warnings` and `was_ocr` are ignored.** `LOW_EXTRACTION_CONFIDENCE` exists
   in `FLAG_CODES` but is never raised.
 - **No received date in the schema**, so "stale" and "future" use the as-of date.
+
+## Incoming batch results (2026-11-21)
+
+`cd backend && python scripts/run_incoming.py`, after Person A's extraction fix. All 56 files were read: 0
+unreadable, **19 hold**, **14 review**, **23 can proceed**, $89,963.04 CAD on hold. The 4 emails with no bill
+(EM-056 to EM-059) were listed correctly. The two scans and the two French invoices were checked by hand against
+the files. Numbers, dates and totals were all read correctly, so none of the flags below come from extraction
+mistakes.
+
+### Against HACKATHON_PLAN §4, row by row
+
+| §4 row | Result |
+|---|---|
+| Exact duplicates: Polar 000961, Cloudbarn INV-01561, Harlow 001468 | ✅ `DUPLICATE_EXACT` on all three (AP-00393, AP-00370, AP-00389). Cloudbarn's original was paid by AP virtual card (CT-00556). `ALREADY_PAID_BY_CARD` is deliberately not raised for AP virtual-card payments, and the exact match already holds the bill. |
+| Brightline "583" | ✅ `DUPLICATE_EXACT` (normalized: 583 == FA-000583), plus `PO_REQUIRED_MISSING` |
+| Voyageur "000903-A" | ✅ Caught, and stricter than §4: `DUPLICATE_EXACT` (normalized, score 0.95) rather than a near match. AP-00277 is already paid, so blocking is right. |
+| Queen St rent $18,758 | ✅ Not flagged as a duplicate. Routed P02: department manager (U003, delegate for U012), then finance step (U002) |
+| Blue Heron, Zephyr | ✅ `VENDOR_NOT_FOUND` |
+| Riverbend 1739 | ⚠️ Partial. ✅ `PO_REQUIRED_MISSING` and `TAX_MISSING`. `pending_review` only adds the P05 finance step to the route; there's no flag, because `VENDOR_PENDING_REVIEW` isn't in `FLAG_CODES`. ❌ **No GST number** (none on the invoice or in the master) isn't checked. |
+| Harlow **and** Stern (EM-026) | ✅ `VENDOR_LOOKALIKE` of V026, plus the P06 finance step |
+| V053 Great Lakes Incorporated | n/a: both Great Lakes files matched V002 |
+| Cascadia 1625 and `scan_8049.png` | ✅ `BANK_CHANGE_UNVERIFIED` on both |
+| Polar 000964 fuel 22% | ✅ `OVER_FUEL_SURCHARGE_CAP` |
+| Northbound AB charged HST | ✅ `TAX_WRONG_FOR_PROVINCE` |
+| Beaumont QC, no QST | ✅ `TAX_MISSING` |
+| Signal & Sparrow PST on services | ✅ `PST_ON_SERVICES` |
+| Ironwood, no tax | ✅ `TAX_MISSING`, plus `PO_REQUIRED_MISSING` |
+| Evergreen total | ✅ `TOTAL_MISMATCH` (3,339 vs 3,439) |
+| Northstar line math | ✅ `LINE_MATH_ERROR` (24 × 150) |
+| Requires a PO, field blank (Summit, Hardhat, Alpenglow, Brightline, Fixwell + credit note, Ironwood, Keystone, Torque) | ✅ `PO_REQUIRED_MISSING` on all 9, and on Riverbend (10 total) |
+| Credit notes: Fixwell, Great Lakes | ✅ `CREDIT_NOTE`, not routed for payment. The Fixwell credit note is also held for its missing PO, as §4 expects. |
+| USD: Sparkgrid, Tessera | ✅ Converted at the rate printed on the bill. No false Canadian-tax flags. "Preferred method = card" isn't shown; that belongs to payment, not controls. |
+| French: Laurentian, Place Mont-Royal | ✅ Comma decimals read correctly (5,015.98 and 6,990.48). No false flags. |
+| Scans `scan_8049.png`, `scan_8749.png` | ✅ Read by the vision model and checked against the images. No false GST or bank flags. |
+| EM-029 Orion 279 + 281 (+ 287) | ✅ Two bills from one email. C023's $25k NTE isn't breached (October total $14,543.10), so no NTE flag. ❌ False `DUPLICATE_LIKELY` between 279 and 281 (see below). |
+| EM-056 to EM-059 | ✅ Listed as statement, payment inquiry, missing attachment and marketing |
+
+### False alarms
+1. **Orion 279 ↔ 281, `DUPLICATE_LIKELY` (warn).** Different invoice numbers, both attached to the same email,
+   with amounts 0.5% apart. The near-match rule (same vendor, amount within 1%, within 14 days) uses
+   invoice-number similarity only for the score, not as a condition. Possible fix: require some number
+   similarity, or skip two bills from the same email. Not changed yet, because it also moves the history replay
+   numbers.
+2. **Lattice 557, `OVER_CONTRACT_RATE` (warn).** The $8,200 is a one-off "Implementation and data migration",
+   not the monthly fee. The check compares any bill from a fixed-monthly vendor to the $1,320 fee. The bill still
+   deserves a question (it isn't covered by the contract), but the message is wrong.
+3. **Cloudbarn INV-01561, extra `DUPLICATE_LIKELY` vs AP-00411 (INV-01567, the October subscription).** On a
+   fixed-monthly vendor, consecutive invoice numbers always look ≥ 60% alike, so the "recurring" guard doesn't
+   help. This is harmless here, since the exact duplicate already blocks the bill. On a clean monthly bill it
+   would be noise.
+4. **Debatable: `POSSIBLE_SPLIT` (warn) on Cascadia (1619 + 1624 + 1625, $15,308.84) and Orion (279 + 281 + 287,
+   $14,543.10).** Carriers and consultants often bill per load or per engagement, but three bills in 3 days
+   above $10k together is exactly the pattern P01 is about. Kept as a warning.
+
+### Misses
+1. **Vendor with no GST number** (Riverbend). There's no check and no flag code. `GST_NUMBER_MISMATCH` doesn't
+   fit, because there's nothing to compare.
+2. **`pending_review` vendor has no flag** (Riverbend), only the extra P05 route step. Needs `VENDOR_PENDING_REVIEW`
+   (open question 2).
+3. **Not checked, worth knowing:** Cascadia 1624 (`scan_8049.png`) is dated 2026-10-24 but already prints the new
+   account (…9679), which was only changed on 2026-10-27 by an unverified email request. The bill is held anyway.
+
+### Caught beyond §4 (checked against the PDFs: real, not extraction errors)
+- Summit 000809 is printed with date 2026-11-27, in the future → `DATE_ANOMALY`.
+- Lumen FA-001761 is printed with date 2026-04-06, 210 days old → `DATE_ANOMALY`.
+- Torque 1771 is under contract C025, which expired 2026-06-30 → `CONTRACT_EXPIRED`.
+- Aurora AU26-2207 ($2,343.50 vs $2,150 fee, +9%) and Pinecone PI26-2809 ($826.80 vs $780, +6%) →
+  `OVER_CONTRACT_RATE`.
+- Redline FA-001687: October pre-tax billing reaches $9,946.54 with AP-00424, over the C027 $9,000 limit →
+  `OVER_CONTRACT_NTE`.
 
 ## Bugs not fixed yet
 
@@ -250,6 +332,8 @@ split false positives and bank fields on `b/controls-fixes`; the history replay 
    `SENDER_DOMAIN_MISMATCH` (warn). `CURRENCY_UNSUPPORTED` would also cover a missing FX rate (or add a separate
    `FX_RATE_MISSING`): today that case is only reported on the `FOREIGN_CURRENCY` info flag, so it doesn't hold
    the bill.
+   In the real batch, `VENDOR_PENDING_REVIEW` would have fired on Riverbend 1739. A code for "vendor has no
+   GST/HST number" (e.g. `GST_NUMBER_MISSING`, warn) would also be needed for Riverbend.
 3. **`RefData` vs `ReferenceRepository`:** API/DB team, let's agree on one.
 
 ## Likely judge questions

@@ -9,6 +9,7 @@ Pure Python, no database, no web framework, no LLM. Bill in, flags out.
 
 ```bash
 pytest tests/controls                 # 72 tests, most based on real cases in the dataset
+python scripts/run_incoming.py        # extract the incoming batch and run the controls on it (needs the API key)
 python scripts/replay_history.py      # all 426 historical invoices, each judged as of its own date (history.py)
 ```
 
@@ -24,6 +25,7 @@ Reference data is read from the repo dataset (`get_settings().dataset_dir / "dat
 | `validate.py` | `validate(bill, ref) -> [Flag]`: vendor, tax, arithmetic, contract, PO, FX, dates, credit notes |
 | `duplicates.py` | `find_duplicates(bill, ref, batch) -> [DuplicateMatch]`, `duplicate_flags(...)`, `find_split(bill, ref, batch)` |
 | `approvals.py` | `route(...) -> [ApprovalStep]`, `can_approve(...)` / `can_release(...) -> PermissionDecision` |
+| `incoming.py` | `run_batch(items)` / `render_report(...)`: controls on the extracted incoming batch as one batch, problem bills first (used by `scripts/run_incoming.py`) |
 | `history.py` | `replay(ref)`: point-in-time replay of the history, plus approvals/payments checks (used by `scripts/replay_history.py`) |
 | `permissions.py` | Re-exports `can_approve` / `can_release` from `approvals.py` (the API guide refers to `controls.permissions`) |
 
