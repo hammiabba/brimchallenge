@@ -88,7 +88,6 @@ def extract(data: bytes, filename: str, *, email_id: str | None = None, sender: 
 
 def extract_outcome(data: bytes, filename: str, *, email_id: str | None = None, sender: str | None = None,
                     repo: ReferenceRepository | None = None, client=None) -> ExtractionOutcome:
-    s = get_settings()
     repo = repo or default_repository()
     file_hash = cache.file_sha256(data)
     if problem := filecheck.problem(data, filename):
@@ -103,26 +102,9 @@ def extract_outcome(data: bytes, filename: str, *, email_id: str | None = None, 
                             was_ocr=tr.was_ocr, warnings=[*([renamed] if renamed else []), *tr.warnings])
 
     # LLM step, cached. A cache hit works even without an API key, which keeps demos offline-friendly.
-    use_vision = not tr.text
-    pv = llm_parser.prompt_version()
-    cached = cache.get(file_hash, pv, s.llm_model)
-    if cached:
-        raw = RawInvoice.model_validate(cached["raw"])
-        use_vision = cached.get("input") == "vision"
-    elif client is None and not s.llm_enabled:
-        out.status = "llm_skipped"
-        out.error = "LLM skipped: ANTHROPIC_API_KEY not set"
+    raw, use_vision = _model_output(data, tr.text, read_as, file_hash, not tr.text, client, out)
+    if raw is None:
         return out
-    else:
-        try:
-            raw = llm_parser.parse_invoice(tr.text or None, file_bytes=data if use_vision else None,
-                                           filename=read_as, client=client, usage=out.usage)
-        except Exception as exc:  # one bad file must not stop the batch
-            out.error = f"{type(exc).__name__}: {exc}"
-            return out
-        cache.put(file_hash, pv, s.llm_model, {"input": "vision" if use_vision else "text",
-                                               "model": s.llm_model, "prompt_version": pv,
-                                               "usage": out.usage, "raw": raw.model_dump()})
     if use_vision:
         out.warnings.append("no usable text layer; extracted from the image by the vision model")
 
@@ -139,12 +121,65 @@ def extract_outcome(data: bytes, filename: str, *, email_id: str | None = None, 
     except ExtractionIncomplete as exc:
         out.error = str(exc)
         return out
+    if tr.was_ocr and not use_vision and selfcheck.badly_inconsistent(out.draft):
+        out.draft = _vision_second_opinion(out.draft, data, read_as, file_hash, client, out, source, repo, multi)
     try:
         out.draft = coding.suggest(out.draft, repo)
     except Exception as exc:  # a coding bug must not lose an otherwise good extraction
         out.draft.extraction_warnings.append(f"coding suggestions unavailable: {exc}")
     out.status = "ok"
     return out
+
+
+def _model_output(data: bytes, text: str, read_as: str, cache_key: str, vision: bool, client,
+                  out: ExtractionOutcome) -> tuple[RawInvoice | None, bool]:
+    """(RawInvoice, read from the image?) from the cache or the model. On failure: (None, vision) with
+    out.status / out.error set."""
+    s = get_settings()
+    pv = llm_parser.prompt_version()
+    cached = cache.get(cache_key, pv, s.llm_model)
+    if cached:
+        return RawInvoice.model_validate(cached["raw"]), cached.get("input") == "vision"
+    if client is None and not s.llm_enabled:
+        out.status, out.error = "llm_skipped", "LLM skipped: ANTHROPIC_API_KEY not set"
+        return None, vision
+    try:
+        raw = llm_parser.parse_invoice(None if vision else text, file_bytes=data if vision else None,
+                                       filename=read_as, client=client, usage=out.usage)
+    except Exception as exc:  # one bad file must not stop the batch
+        out.error = f"{type(exc).__name__}: {exc}"
+        return None, vision
+    cache.put(cache_key, pv, s.llm_model, {"input": "vision" if vision else "text", "model": s.llm_model,
+                                           "prompt_version": pv, "usage": out.usage, "raw": raw.model_dump()})
+    return raw, vision
+
+
+def _vision_second_opinion(first: DraftBill, data: bytes, read_as: str, file_hash: str, client,
+                           out: ExtractionOutcome, source: SourceInfo, repo: ReferenceRepository,
+                           penalties: dict[str, float]) -> DraftBill:
+    """OCR text whose totals don't add up gets one re-read of the image by the vision model. The result with
+    fewer arithmetic problems wins (OCR on a tie); either way a warning says which was used."""
+    scratch = ExtractionOutcome(out.file_name, file_hash, "failed", usage=out.usage)
+    raw, _ = _model_output(data, "", read_as, f"{file_hash}-vision", True, client, scratch)
+    try:
+        second = build_draft(raw, source, repo, extra_warnings=out.warnings, extra_penalties=penalties) \
+            if raw is not None else None
+    except ExtractionIncomplete:
+        second = None
+    if second is None:
+        why = scratch.error or "the vision read was incomplete"
+        first.extraction_warnings.append(f"OCR text doesn't add up; a vision re-read wasn't possible ({why})")
+        return first
+    n_ocr, n_vision = selfcheck.arithmetic_problems(first), selfcheck.arithmetic_problems(second)
+    if n_vision < n_ocr:
+        second.extraction_warnings.append(
+            f"OCR text didn't add up ({n_ocr} arithmetic problems); re-read the image with the vision model "
+            f"and used that result ({n_vision})")
+        return second
+    first.extraction_warnings.append(
+        f"OCR text didn't add up ({n_ocr} arithmetic problems); a vision re-read was no better ({n_vision}), "
+        f"so the OCR result is kept")
+    return first
 
 
 # ---------------------------------------------------------------- RawInvoice → DraftBill

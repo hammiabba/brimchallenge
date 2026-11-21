@@ -35,6 +35,26 @@ def is_check_warning(warning: str) -> bool:
     return any(m in warning for m in _CHECK_MARKERS)
 
 
+def arithmetic_problems(bill: DraftBill) -> int:
+    """How many arithmetic checks the bill fails (0 = everything adds up)."""
+    return sum(1 for w in check(bill)[1] if is_check_warning(w))
+
+
+def badly_inconsistent(bill: DraftBill) -> bool:
+    """The total doesn't match subtotal + taxes, or the lines miss the subtotal by more than 1%.
+
+    Used to decide whether OCR text is worth a second read by the vision model: small per-line slips are
+    normal vendor errors, a broken total usually means the OCR misread a digit.
+    """
+    tax_sum = sum((t.amount for t in bill.taxes), Decimal("0"))
+    if abs(bill.subtotal + tax_sum - bill.total) > TOLERANCE:
+        return True
+    if not bill.lines:
+        return False
+    lines_sum = sum((ln.amount for ln in bill.lines), Decimal("0"))
+    return abs(lines_sum - bill.subtotal) > max(abs(bill.subtotal) * Decimal("0.01"), TOLERANCE)
+
+
 def _fmt(d: Decimal) -> str:
     return f"{d.quantize(CENT)}"
 
