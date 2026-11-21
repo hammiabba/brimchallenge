@@ -3,11 +3,10 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.common import READ_ERRORS, WRITE_ERRORS, Limit, Offset
-from app.api.errors import not_implemented
 from app.api.schemas_api import (
     CommentIn,
     Page,
@@ -19,7 +18,7 @@ from app.api.schemas_api import (
 )
 from app.auth.deps import CurrentUser, require_role
 from app.auth.roles import AP_CLERK, BACK_OFFICE_READ, CONTROLLER_ADMIN, FINANCE_MANAGER, RELEASERS
-from app.db.database import get_session
+from app.db.database import get_session, get_write_session
 from app.services import payments
 
 router = APIRouter(tags=["payments"])
@@ -48,17 +47,29 @@ def get_payment(payment_id: str, user: CurrentUser = Depends(require_role(*BACK_
 
 
 @router.post("/bills/{bill_id}/payments", response_model=PaymentDetail, status_code=201, responses=WRITE_ERRORS)
-def schedule_payment(bill_id: str, body: ScheduleIn, user: CurrentUser = Depends(require_role(AP_CLERK))):
-    raise not_implemented("Schedule payment")
+def schedule_payment(bill_id: str, body: ScheduleIn, user: CurrentUser = Depends(require_role(AP_CLERK)),
+                     db: Session = Depends(get_write_session)):
+    payment_id = payments.schedule(db, user, bill_id, body)
+    db.commit()
+    return payments.payment_detail(db, user.role, payment_id)
 
 
 @router.post("/payments/{payment_id}/release", response_model=PaymentDetail, responses=WRITE_ERRORS)
-def release_payment(payment_id: str, idempotency_key: IdempotencyKey,
-                    user: CurrentUser = Depends(require_role(*RELEASERS))):
-    raise not_implemented("Release payment")
+def release_payment(payment_id: str, idempotency_key: IdempotencyKey, response: Response,
+                    user: CurrentUser = Depends(require_role(*RELEASERS)), db: Session = Depends(get_write_session)):
+    """Release a scheduled payment. Send a unique Idempotency-Key per release attempt; retrying with the same key
+    returns the same result (header Idempotent-Replayed: true) and never pays twice."""
+    _, replayed = payments.release(db, user, payment_id, idempotency_key)
+    db.commit()
+    if replayed:
+        response.headers["Idempotent-Replayed"] = "true"
+    return payments.payment_detail(db, user.role, payment_id)
 
 
 @router.post("/payments/{payment_id}/cancel", response_model=PaymentDetail, responses=WRITE_ERRORS)
 def cancel_payment(payment_id: str, body: CommentIn,
-                   user: CurrentUser = Depends(require_role(AP_CLERK, FINANCE_MANAGER, CONTROLLER_ADMIN))):
-    raise not_implemented("Cancel payment")
+                   user: CurrentUser = Depends(require_role(AP_CLERK, FINANCE_MANAGER, CONTROLLER_ADMIN)),
+                   db: Session = Depends(get_write_session)):
+    payments.cancel(db, user, payment_id, body.comment)
+    db.commit()
+    return payments.payment_detail(db, user.role, payment_id)

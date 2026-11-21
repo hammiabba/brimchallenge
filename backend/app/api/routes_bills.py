@@ -11,7 +11,6 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.common import READ_ERRORS, WRITE_ERRORS, Limit, Offset
-from app.api.errors import not_implemented
 from app.api.schemas_api import (
     AssignIn,
     BillDetail,
@@ -28,7 +27,7 @@ from app.api.schemas_api import (
 )
 from app.auth.deps import CurrentUser, require_role
 from app.auth.roles import ALL_ROLES, AP_CLERK, CONTROLLER_ADMIN, FINANCE_MANAGER, SIGNERS
-from app.db.database import get_session
+from app.db.database import get_session, get_write_session
 from app.services import approvals, bills, views
 
 router = APIRouter(tags=["bills"])
@@ -51,46 +50,69 @@ def get_bill(bill_id: str, user: CurrentUser = Depends(require_role(*ALL_ROLES))
 
 
 @router.patch("/bills/{bill_id}", response_model=BillDetail, responses=WRITE_ERRORS)
-def update_bill_header(bill_id: str, body: BillHeaderPatch, user: CurrentUser = Depends(require_role(AP_CLERK))):
-    raise not_implemented("Bill header edit")
+def update_bill_header(bill_id: str, body: BillHeaderPatch, user: CurrentUser = Depends(require_role(AP_CLERK)),
+                       db: Session = Depends(get_write_session)):
+    bills.update_header(db, user, bill_id, body)
+    db.commit()
+    return bills.bill_detail(db, user, bill_id)
 
 
 @router.patch("/bills/{bill_id}/lines/{line_no}", response_model=BillDetail, responses=WRITE_ERRORS)
 def code_line(bill_id: str, line_no: int, body: LineCodingPatch,
-              user: CurrentUser = Depends(require_role(AP_CLERK))):
-    raise not_implemented("Line coding")
+              user: CurrentUser = Depends(require_role(AP_CLERK)), db: Session = Depends(get_write_session)):
+    bills.code_line(db, user, bill_id, line_no, body)
+    db.commit()
+    return bills.bill_detail(db, user, bill_id)
 
 
 @router.post("/bills/{bill_id}/flags/{flag_id}/resolve", response_model=BillDetail, responses=WRITE_ERRORS)
 def resolve_flag(bill_id: str, flag_id: int, body: FlagResolveIn,
-                 user: CurrentUser = Depends(require_role(AP_CLERK, FINANCE_MANAGER, CONTROLLER_ADMIN))):
-    raise not_implemented("Flag resolution")
+                 user: CurrentUser = Depends(require_role(AP_CLERK, FINANCE_MANAGER, CONTROLLER_ADMIN)),
+                 db: Session = Depends(get_write_session)):
+    bills.resolve_flag(db, user, bill_id, flag_id, body)
+    db.commit()
+    return bills.bill_detail(db, user, bill_id)
 
 
 @router.post("/bills/{bill_id}/submit", response_model=BillDetail, responses=WRITE_ERRORS)
-def submit_bill(bill_id: str, body: RowVersionIn, user: CurrentUser = Depends(require_role(AP_CLERK))):
-    raise not_implemented("Submit for approval")
+def submit_bill(bill_id: str, body: RowVersionIn, user: CurrentUser = Depends(require_role(AP_CLERK)),
+                db: Session = Depends(get_write_session)):
+    bills.submit(db, user, bill_id, body.row_version)
+    db.commit()
+    return bills.bill_detail(db, user, bill_id)
 
 
 @router.post("/bills/{bill_id}/approve", response_model=BillDetail, responses=WRITE_ERRORS)
-def approve_bill(bill_id: str, body: DecisionIn, user: CurrentUser = Depends(require_role(*SIGNERS))):
-    raise not_implemented("Approve")
+def approve_bill(bill_id: str, body: DecisionIn, user: CurrentUser = Depends(require_role(*SIGNERS)),
+                 db: Session = Depends(get_write_session)):
+    approvals.approve(db, user, bill_id, body)
+    db.commit()
+    return bills.bill_detail(db, user, bill_id)
 
 
 @router.post("/bills/{bill_id}/reject", response_model=BillDetail, responses=WRITE_ERRORS)
-def reject_bill(bill_id: str, body: RejectIn, user: CurrentUser = Depends(require_role(*SIGNERS))):
-    raise not_implemented("Reject")
+def reject_bill(bill_id: str, body: RejectIn, user: CurrentUser = Depends(require_role(*SIGNERS)),
+                db: Session = Depends(get_write_session)):
+    approvals.reject(db, user, bill_id, body)
+    db.commit()
+    return bills.bill_detail(db, user, bill_id)
 
 
 @router.post("/bills/{bill_id}/route/{step_no}/assign", response_model=BillDetail, responses=WRITE_ERRORS)
 def assign_step(bill_id: str, step_no: int, body: AssignIn,
-                user: CurrentUser = Depends(require_role(FINANCE_MANAGER, CONTROLLER_ADMIN))):
-    raise not_implemented("Approver assignment")
+                user: CurrentUser = Depends(require_role(FINANCE_MANAGER, CONTROLLER_ADMIN)),
+                db: Session = Depends(get_write_session)):
+    approvals.assign_step(db, user, bill_id, step_no, body)
+    db.commit()
+    return bills.bill_detail(db, user, bill_id)
 
 
 @router.post("/bills/{bill_id}/void", response_model=BillDetail, responses=WRITE_ERRORS)
-def void_bill(bill_id: str, body: VoidIn, user: CurrentUser = Depends(require_role(AP_CLERK, CONTROLLER_ADMIN))):
-    raise not_implemented("Void")
+def void_bill(bill_id: str, body: VoidIn, user: CurrentUser = Depends(require_role(AP_CLERK, CONTROLLER_ADMIN)),
+              db: Session = Depends(get_write_session)):
+    bills.void(db, user, bill_id, body)
+    db.commit()
+    return bills.bill_detail(db, user, bill_id)
 
 
 @router.get("/approvals/queue", response_model=list[BillSummary], responses=READ_ERRORS)
