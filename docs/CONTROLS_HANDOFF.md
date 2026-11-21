@@ -133,6 +133,7 @@ $4,000 bills looked like a $12,000 split, and a duplicate pair listed its match 
 | Bill sits on a lookalike vendor record (same name after removing Ltd/Inc/&, or same bank account as another vendor) | `VENDOR_LOOKALIKE` (block) | Classic impersonation fraud (V051/V053/V052). Only flags the *suspicious* copy (fewer past invoices, or not active), never the real vendor. |
 | GST/HST number differs from master | `GST_NUMBER_MISMATCH` (warn) | Could be OCR or a fake invoice. OCR confusions (1/I/!, 0/O) are folded first, so OCR noise doesn't fire it. |
 | Bank details on the invoice differ from master | `BANK_DETAILS_MISMATCH` (block) | Changed bank details on an invoice is the main payment-fraud pattern. Verify by phone on a known number. Only fields present on both the invoice and the master are compared (leading zeros ignored), so a missing institution number isn't a mismatch. |
+| Invoice dated **before** a bank change already shows the account that change set up | `BANK_DETAILS_MISMATCH` (block, `kind: account_before_change`) | A genuine invoice prints the account in use on its date. Showing the new one means it was made or edited after the change (Cascadia scan 1624: dated Oct 24, shows …9679 from the Oct 27 change). The master already holds the new account, so the plain comparison above can't see it. Only a change dated strictly after the invoice counts. History bills dated before a later change carry no bank details (`bill_from_history` leaves them empty rather than copying today's account). |
 | Vendor's latest bank change was never verified by callback | `BANK_CHANGE_UNVERIFIED` (block) | Cascadia (V004) changed its account by email on Oct 27 with no callback. Hold every payment to it. |
 
 ### Tax (`validate.check_tax`)
@@ -204,7 +205,7 @@ Layered, strongest first. Checked against history (minus rejected invoices) *and
 | --- | --- | --- |
 | `exact` | Same vendor, same invoice number | `DUPLICATE_EXACT` (block) |
 | `normalized` | Same vendor, same number after dropping prefixes, punctuation and leading zeros (`FA-000583` = `583`) | `DUPLICATE_EXACT` (block) |
-| `near` | Same vendor, amount within 1%, within 14 days, **and** invoice numbers ≥ 60% alike or both bills naming the same service month ("October", "octobre", 2026-10-…) | `DUPLICATE_LIKELY` (warn) |
+| `near` | Same vendor, amount within 1%, within 14 days, **and** invoice numbers ≥ 60% alike or both bills naming the same service month ("October", "octobre", 2026-10-…). For fixed-monthly vendors only the same service month counts. | `DUPLICATE_LIKELY` (warn) |
 | `cross_vendor` | Different vendor record with the same bank account, amount within 1%, within 30 days | `DUPLICATE_LIKELY` (warn) |
 | `card_paid` | Employee card charge with a similar merchant name, same amount, within 45 days | `ALREADY_PAID_BY_CARD` (block) |
 
@@ -215,6 +216,9 @@ Layered, strongest first. Checked against history (minus rejected invoices) *and
   bill would match last month's.
   Update: the ≥ 60% number rule now applies to every vendor (it's part of `near` above). Two bills that name the
   same month still match with unrelated numbers, so a re-issued October rent bill is still caught.
+  Update (`b/controls-polish`): for fixed-monthly vendors, number similarity no longer counts at all, because
+  consecutive monthly numbers always look alike (Cloudbarn INV-01561 / INV-01567: 75%). Only the same service month
+  makes a near match for them. A re-sent copy is still caught by the exact and normalized checks.
 - **A bill in both the reference data and the batch counts once** (same vendor, invoice number, date and total):
   the API's inbox job stores bills one at a time, so earlier bills are in both. See "Where the API calls the
   controls".
@@ -346,23 +350,28 @@ mistakes.
    Fix (`b/controls-false-alarms`): one-off lines are left out of the fee comparison and get their own warning
    (`kind: one_off`): "One-off charge of $8,200.00 (Implementation and data migration) is not part of the
    $1,320.00/month fee in C005. Not an overcharge by itself: confirm it was ordered."
-3. **Cloudbarn INV-01561, extra `DUPLICATE_LIKELY` vs AP-00411 (INV-01567, the October subscription).** On a
+3. ✅ **Fixed.** **Cloudbarn INV-01561, extra `DUPLICATE_LIKELY` vs AP-00411 (INV-01567, the October subscription).** On a
    fixed-monthly vendor, consecutive invoice numbers always look ≥ 60% alike, so the "recurring" guard doesn't
    help. This is harmless here, since the exact duplicate already blocks the bill. On a clean monthly bill it
    would be noise.
+   Fix (`b/controls-polish`): for fixed-monthly vendors a near match needs the same service month. INV-01561 now
+   gets only `DUPLICATE_EXACT` vs AP-00370 (September's, paid).
 4. **Debatable: `POSSIBLE_SPLIT` (warn) on Cascadia (1619 + 1624 + 1625, $15,308.84) and Orion (279 + 281 + 287,
    $14,543.10).** Carriers and consultants often bill per load or per engagement, but three bills in 3 days
    above $10k together is exactly the pattern P01 is about. Kept as a warning.
 
 ### Misses
-1. **Not checked, worth knowing:** Cascadia 1624 (`scan_8049.png`) is dated 2026-10-24 but already prints the new
+1. ✅ **Now checked.** **Not checked, worth knowing:** Cascadia 1624 (`scan_8049.png`) is dated 2026-10-24 but already prints the new
    account (…9679), which was only changed on 2026-10-27 by an unverified email request. The bill is held anyway.
+   Update (`b/controls-polish`): flagged on its own now, see "Cascadia: likely edited or forged invoice".
 
 ### Cascadia: likely edited or forged invoice
 
 Cascadia's scanned invoice is dated 3 days before the Oct 27 bank change but already shows the new bank account. A
 real invoice from before the change would show the old account, so the invoice was likely edited or forged. The
 engine holds the bill, but it doesn't yet flag this specific date mismatch on its own.
+Update: it does now. `BANK_DETAILS_MISMATCH` (`kind: account_before_change`) fires on the scan: "Invoice dated
+2026-10-24 shows bank account …9679, but that account was only set up on 2026-10-27 (BC-009, via email_request)."
 
 ### Rerun after the false-alarm fixes (`b/controls-false-alarms`)
 
@@ -377,6 +386,22 @@ Riverbend 1739 now also gets `VENDOR_PENDING_REVIEW` and `GST_NUMBER_MISSING`. N
 14 review, 23 can proceed, $89,963.04 CAD on hold (Riverbend was already held for its missing PO). No bill came from
 an unexpected sender domain, none has an unknown PO number or a missing FX rate, and no requester is terminated.
 The history replay output is identical.
+
+### Rerun after the polish (`b/controls-polish`)
+
+**20 hold, 13 review, 23 can proceed, $92,064.84 CAD on hold** (was 19 / 14 / 23 and $89,963.04).
+- The new bank-account check fires on 2 bills. **Cascadia `scan_8049.png`** was already held, and the new flag now
+  leads its hold reason. **Lumen FA-001761** moves from review to hold ($2,101.80): dated 2026-04-06, it prints
+  account …0921, which BC-006 (verified by callback) only set up on 2026-04-26. That can be harmless (a vendor
+  re-sending an old unpaid invoice may regenerate it with current bank details), but it's worth a call, and the
+  bill is also 210 days old.
+- Cloudbarn INV-01561 lost only its near match to next month's bill. `DUPLICATE_LIKELY` is now 0.
+  `DUPLICATE_EXACT` is still on the same 5 bills.
+- History replay: identical.
+- Ruff now passes on `backend/app/controls/` (long lines, `l` names and a lambda fixed, no behavior change).
+
+These numbers are with tax and math flags as `warn`. If `b/tax-math-block` (PR #23) is merged as well, the 4 bills
+it moves to hold come on top.
 
 ### Caught beyond §4 (checked against the PDFs: real, not extraction errors)
 - Summit 000809 is printed with date 2026-11-27, in the future → `DATE_ANOMALY`.
@@ -438,6 +463,8 @@ each duplicate pair or split group is counted once. Lead with Cascadia:
 Cascadia's scanned invoice is dated 3 days before the Oct 27 bank change but already shows the new bank account. A
 real invoice from before the change would show the old account, so the invoice was likely edited or forged. The
 engine holds the bill, but it doesn't yet flag this specific date mismatch on its own.
+Update: it does now. `BANK_DETAILS_MISMATCH` (`kind: account_before_change`) fires on the scan: "Invoice dated
+2026-10-24 shows bank account …9679, but that account was only set up on 2026-10-27 (BC-009, via email_request)."
 
 **Why recompute tax instead of trusting the invoice?**
 The printed tax is what we're auditing. Expected tax comes from the place of supply, the vendor and the line type.
