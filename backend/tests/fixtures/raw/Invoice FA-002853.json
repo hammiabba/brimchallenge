@@ -3,7 +3,7 @@
   "file_hash": "d26200f0a49347bad6cc290f746c6565b6762cf704b7337de5615807627e5af0",
   "input": "text",
   "model": "claude-opus-5-5",
-  "prompt_version": "3",
+  "prompt_version": "4",
   "raw": {
     "document_type": "invoice",
     "vendor_name": "Fibrewave Communications",

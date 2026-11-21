@@ -3,7 +3,7 @@
   "file_hash": "7722144a8aa838414b3be32d96853a4ceab65242f16340bdbd7169f745a8e731",
   "input": "text",
   "model": "claude-opus-5-5",
-  "prompt_version": "3",
+  "prompt_version": "4",
   "raw": {
     "document_type": "invoice",
     "vendor_name": "Ledgerline Chartered Professional Accountants",

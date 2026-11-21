@@ -188,3 +188,24 @@ def test_multi_invoice_file_warns_and_lowers_confidence(repo):
     bill = pipeline.extract(data, "batch.pdf", repo=repo, client=FakeClient(raw_invoice(invoice_number="A-1001")))
     assert any("appears to contain 2 invoices" in w for w in bill.extraction_warnings)
     assert bill.field_confidence["invoice_number"] <= 0.5 and bill.field_confidence["total"] <= 0.5
+
+
+def test_zero_amount_unknown_tax_line_is_dropped_quietly(repo):
+    from app.extraction.llm_parser import RawTax
+
+    raw = raw_invoice(currency="USD", vendor_name="Tessera Analytics Inc.", vendor_gst_number=None,
+                      vendor_address="351 King St W, Seattle WA 43465",
+                      taxes=[RawTax(label="Sales tax", rate=None, amount="$0.00")], total="$5,710.00",
+                      bill_to_address="1055 W Hastings St, Suite 900, Vancouver BC V6E 2E9")
+    bill = pipeline.extract(HARLOW.read_bytes(), HARLOW.name, repo=repo, client=FakeClient(raw))
+    assert [t.code.value for t in bill.taxes] == ["FOREIGN"]
+    assert not any("unrecognised tax line" in w for w in bill.extraction_warnings)
+
+
+def test_unknown_tax_line_with_an_amount_is_still_reported(repo):
+    from app.extraction.llm_parser import RawTax
+
+    raw = raw_invoice(taxes=[RawTax(label="HST (13%)", rate="13%", amount="$742.30"),
+                             RawTax(label="Eco fee", rate=None, amount="$4.00")], total="$6,456.30")
+    bill = pipeline.extract(HARLOW.read_bytes(), HARLOW.name, repo=repo, client=FakeClient(raw))
+    assert any("unrecognised tax line 'Eco fee'" in w for w in bill.extraction_warnings)

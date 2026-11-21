@@ -3,7 +3,7 @@
   "file_hash": "9104f814f3953ef17ba03582383af7b1883b4227e95887fcfcc4c6cd4c09572a",
   "input": "text",
   "model": "claude-opus-5-5",
-  "prompt_version": "3",
+  "prompt_version": "4",
   "raw": {
     "document_type": "invoice",
     "vendor_name": "Orion Strategy Partners",

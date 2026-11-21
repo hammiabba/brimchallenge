@@ -3,7 +3,7 @@
   "file_hash": "31089b83c448e981c8319a36162c1aeaee9a12bb5171d801fb6f7b14b28701a3",
   "input": "text",
   "model": "claude-opus-5-5",
-  "prompt_version": "3",
+  "prompt_version": "4",
   "raw": {
     "document_type": "invoice",
     "vendor_name": "Fixwell Facility Services",

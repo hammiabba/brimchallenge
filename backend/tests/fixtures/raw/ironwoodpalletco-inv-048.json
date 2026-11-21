@@ -3,7 +3,7 @@
   "file_hash": "949e2999c5cd577e5e379a8912f500c63809cadcfc6986cb4d0112097897bab7",
   "input": "text",
   "model": "claude-opus-5-5",
-  "prompt_version": "3",
+  "prompt_version": "4",
   "raw": {
     "document_type": "invoice",
     "vendor_name": "Ironwood Pallet Co.",

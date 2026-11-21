@@ -3,10 +3,10 @@
   "file_hash": "d296f7c716cbab182ed59adab7b9580844d10ee5a0d124e8780227383a8218a3",
   "input": "text",
   "model": "claude-opus-5-5",
-  "prompt_version": "3",
+  "prompt_version": "4",
   "raw": {
     "document_type": "invoice",
-    "vendor_name": "Lattice Ledger  Systems",
+    "vendor_name": "Lattice Ledger Systems",
     "vendor_address": "6893 Granville St, Mississauga ON N3Y 1K7",
     "vendor_gst_number": "548383828RT0001",
     "vendor_qst_number": null,

@@ -3,7 +3,7 @@
   "file_hash": "577c9c73cf79511dd3b8309911af4fd6014cbf82ae321e2a123ea26b2d77cf4f",
   "input": "text",
   "model": "claude-opus-5-5",
-  "prompt_version": "3",
+  "prompt_version": "4",
   "raw": {
     "document_type": "invoice",
     "vendor_name": "Laurentian Logistics Inc.",

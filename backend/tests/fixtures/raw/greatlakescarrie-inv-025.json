@@ -3,7 +3,7 @@
   "file_hash": "50d0ccba78d89b4c03b89cec283cb0802d4e0ab402ebe8a3a542035061e9cedf",
   "input": "text",
   "model": "claude-opus-5-5",
-  "prompt_version": "3",
+  "prompt_version": "4",
   "raw": {
     "document_type": "credit_note",
     "vendor_name": "Great Lakes Carriers Inc.",

@@ -3,7 +3,7 @@
   "file_hash": "be10faef4f0584d14a99c2993c36f622893692b6351713889687b280fdcb1baa",
   "input": "text",
   "model": "claude-opus-5-5",
-  "prompt_version": "3",
+  "prompt_version": "4",
   "raw": {
     "document_type": "invoice",
     "vendor_name": "Riverbend Catering Co.",

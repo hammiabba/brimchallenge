@@ -3,7 +3,7 @@
   "file_hash": "34bd806e0e8015fa9b633e3dc7f892e026b7d830553b524554af925974c18efa",
   "input": "text",
   "model": "claude-opus-5-5",
-  "prompt_version": "3",
+  "prompt_version": "4",
   "raw": {
     "document_type": "invoice",
     "vendor_name": "Polar Freight Lines Ltd.",

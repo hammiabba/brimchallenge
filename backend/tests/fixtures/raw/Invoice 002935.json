@@ -3,7 +3,7 @@
   "file_hash": "79b9cf7f71f8f836370d6e76ae259322fc4630430b50eb56604b3f76265b87b1",
   "input": "text",
   "model": "claude-opus-5-5",
-  "prompt_version": "3",
+  "prompt_version": "4",
   "raw": {
     "document_type": "invoice",
     "vendor_name": "Queen Street Properties Inc.",

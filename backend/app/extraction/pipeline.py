@@ -272,6 +272,8 @@ def build_draft(raw: RawInvoice, source: SourceInfo, repo: ReferenceRepository,
         rate = normalize.parse_rate(rt.rate) or normalize.parse_rate(
             m[0] if (m := re.search(r"\d+(?:[.,]\d+)?\s*%", rt.label)) else None)
         code = normalize.map_tax_label(rt.label, rate)
+        if code is None and amount is not None and amount == 0:
+            continue  # "Sales tax $0.00" on a foreign invoice: no tax charged, nothing to map
         if amount is None or code is None:
             warnings.append(f"unrecognised tax line {rt.label!r} {rt.amount!r}; not mapped to a tax code")
             continue

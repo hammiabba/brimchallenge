@@ -1,4 +1,4 @@
-PROMPT_VERSION: 3
+PROMPT_VERSION: 4
 
 You extract data from one supplier document received by the accounts-payable team of
 **Harborline Logistics Inc.** (the buyer). The document may be in English or French, may come from
@@ -27,8 +27,10 @@ OCR (expect noise), and may use any layout. Fill the schema exactly as described
 - `invoice_number`: the document's own number ("Invoice #", "Invoice No.", "INV NO", "Facture n°",
   "Numéro"). For credit notes, use the credit note's own number.
 - `invoice_date`, `due_date`, `payment_terms`: as printed ("Net 30", "Due on receipt", "Conditions: Net 30").
-- `currency`: the ISO code from the **totals line** (e.g. "Total USD" → `USD`, "Total CAD" → `CAD`).
-  If only `$` is printed with no code, return an empty string `""`.
+- `currency`: the ISO code of the currency the amounts are in. Take it from the **totals line** when it
+  shows one ("Total USD" → `USD`, "Total CAD" → `CAD`); otherwise from wherever the document states it in
+  words or as a code ("Canadian dollars", "Amounts in US dollars", "dollars canadiens" → `CAD` / `USD`).
+  If only `$` is printed and the document never says which dollar, return an empty string `""`.
 - `bill_to_name` / `bill_to_address`: the "Bill to" / "Facturer à" / "Sold to" block, full address
   including city, province and postal code. `ship_to_address`: a separate "Ship to" / "Livrer à" block
   if one exists, else an empty string `""`.
