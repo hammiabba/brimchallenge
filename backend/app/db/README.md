@@ -9,10 +9,14 @@ Importing anything here never connects to or creates a database.
 
 | File | Contents |
 |---|---|
-| `models.py` | The schema: 25 tables (reference data from the dataset CSVs, bills and their lines/taxes, controls runs and flags, approval routes and decisions, vendor bank accounts and change requests, payments, absences, emails, intake items, the audit log). Also the allowed-value tuples behind every CHECK constraint. Import it as a module (`from app.db import models`): `TaxCode` and `AuditEvent` also exist in `app.shared.schemas`. |
-| `database.py` | `make_engine(url=None)`, `get_engine()`, `get_session_factory()`, `get_session()` (a FastAPI dependency for later), `resolve_database_url()`. |
+| `database.py` | `make_engine(url=None)` (path resolution, SQLite pragmas, 15 s busy timeout, SQLAlchemy's pysqlite transaction recipe), `get_engine()`, `as_write_engine(engine)`, `resolve_database_url()`. Two session factories on one engine and pool: `get_session_factory()` / `get_session()` for **read sessions** (plain `BEGIN`) and `get_write_session_factory()` / `get_write_session()` for **write sessions** (`BEGIN IMMEDIATE`); the generators are FastAPI dependencies. |
+| `settings.py` | `DbSettings` / `get_db_settings()`: DB-only settings from the environment and `.env`; currently `AUDIT_HMAC_KEY` (a `SecretStr`). |
 | `types.py` | `to_cents` / `from_cents`, `dec_to_text` / `text_to_dec`, `utcnow` / `to_utc`. |
-| `migrations/` | Alembic `env.py`, the template for new revisions, and `versions/` (`0001_baseline.py`). |
+| `models.py` | The schema: 25 tables (reference data from the dataset CSVs, bills and their lines/taxes, controls runs and flags, approval routes and decisions, vendor bank accounts and change requests, payments, absences, emails, intake items, the audit log). Also the allowed-value tuples behind every CHECK constraint. Import it as a module (`from app.db import models`): `TaxCode` and `AuditEvent` also exist in `app.shared.schemas`. |
+| `seed.py` | `seed_all(session, dataset_dir) -> SeedReport` (insert-only, one `BEGIN IMMEDIATE` transaction, pre-flight first) and the `python -m app.db.seed` CLI. See "Seeding". |
+| `seed_mapping.py` | Pure functions mapping one dataset row (all strings) to table columns, with strict money / boolean / date parsers; unit-tested without a database. |
+| `audit.py` | The audit log: `log_event` (write sessions only), `verify_chain`, `chain_head`, `list_events`, `iter_events_csv`, plus `to_audit_json`, `redact`, `mask_digit_runs` and the `AuditAction` names. See "Audit log". |
+| `migrations/` | Alembic `env.py`, the template for new revisions, and `versions/` (`0001_baseline.py`, `0002_audit_chain_unique.py`). |
 
 Tests: `backend/tests/db/` (each test migrates a fresh SQLite file in pytest's `tmp_path`).
 
@@ -183,8 +187,13 @@ session.commit()  # the caller commits: the change and its event land together, 
   `users` <-> `departments` foreign keys reference each other inline, which only SQLite accepts at CREATE TABLE time.
   The migration refuses to run on another database. A Postgres port needs a trigger function and an
   `op.create_foreign_key` step for `departments.manager_user_id`.
-- Alembic runs SQLite migrations without transactional DDL, so a migration that fails halfway can leave tables
-  behind. On a dev or test database, delete the file and rerun.
+- **Each migration is atomic; a multi-revision upgrade is not.** Alembic still logs "Will assume non-transactional
+  DDL" for SQLite and commits after every revision, but with the pysqlite recipe each revision runs inside a real
+  transaction: if a revision fails, everything it did (DDL and DML) rolls back and `alembic_version` stays at the
+  previous revision. Tested by running a revision that created a table, inserted a row and created an index, then
+  raised: none of the three survived. An `upgrade head` across several revisions stops at the last one that
+  succeeded; the ones before it stay committed. (Before the recipe, the failed revision's CREATE TABLE survived
+  while `alembic_version` still pointed at the previous revision, so a rerun failed with "table already exists".)
 - **Never use `batch_alter_table` on `audit_events`.** On SQLite a batch block can rebuild the table (create a copy,
   move the rows, drop the original), and the rebuild silently drops the append-only triggers. Use plain
   `op.create_index` / `op.drop_index`, and add columns with `op.add_column` only if SQLite supports it directly.
