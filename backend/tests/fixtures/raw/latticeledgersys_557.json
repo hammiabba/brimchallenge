@@ -1,0 +1,47 @@
+{
+  "file_name": "latticeledgersys_557.pdf",
+  "file_hash": "d296f7c716cbab182ed59adab7b9580844d10ee5a0d124e8780227383a8218a3",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "3",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Lattice Ledger  Systems",
+    "vendor_address": "6893 Granville St, Mississauga ON N3Y 1K7",
+    "vendor_gst_number": "548383828RT0001",
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "557",
+    "invoice_date": "2026-10-31",
+    "due_date": "2026-11-30",
+    "payment_terms": "Net 30",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "88 Queens Quay W, Suite 1400, Toronto ON M5J 0B8",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "Implementation and data migration",
+        "quantity": "1",
+        "unit_price": "$8,200.00",
+        "amount": "$8,200.00",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "$8,200.00",
+    "taxes": [
+      {
+        "label": "HST (13%)",
+        "rate": "13%",
+        "amount": "$1,066.00"
+      }
+    ],
+    "total": "$9,266.00",
+    "bank_institution": "010",
+    "bank_transit": "28847",
+    "bank_account": "274198068"
+  }
+}

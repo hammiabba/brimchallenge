@@ -1,0 +1,47 @@
+{
+  "file_name": "torqueindustrial_1771.pdf",
+  "file_hash": "dc4bd393baf7e49b9b471dc01603040d56a17b2d1bc5e2eaa9ece41368b46a3c",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "3",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Torque Industrial Maintenance",
+    "vendor_address": "8822 Harbour Rd, Calgary AB T1T 9V8",
+    "vendor_gst_number": "283027511RT0001",
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "1771",
+    "invoice_date": "2026-10-27",
+    "due_date": "2026-11-26",
+    "payment_terms": "Net 30",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "250 6 Ave SW, Suite 700, Calgary AB T2P 3H7",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": true,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "Dock door repair",
+        "quantity": "1",
+        "unit_price": "$2,150.00",
+        "amount": "$2,150.00",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "$2,150.00",
+    "taxes": [
+      {
+        "label": "GST (5%)",
+        "rate": "5%",
+        "amount": "$107.50"
+      }
+    ],
+    "total": "$2,257.50",
+    "bank_institution": "001",
+    "bank_transit": "36533",
+    "bank_account": "350265306"
+  }
+}

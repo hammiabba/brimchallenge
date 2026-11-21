@@ -1,0 +1,47 @@
+{
+  "file_name": "Invoice AU26-2207.pdf",
+  "file_hash": "7169da20cff4252127f3c8b2706ac44930a093878944b753b3fb097182d0973e",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "3",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Aurora Mobile Business",
+    "vendor_address": "5804 Granville St, Toronto ON L4J 6S4",
+    "vendor_gst_number": "511304707RT0001",
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "AU26-2207",
+    "invoice_date": "2026-11-02",
+    "due_date": "2026-11-23",
+    "payment_terms": "Net 21",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "1055 W Hastings St, Suite 900, Vancouver BC V6E 2E9",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "Business mobile plans (36 lines)",
+        "quantity": "1",
+        "unit_price": "$2,343.50",
+        "amount": "$2,343.50",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "$2,343.50",
+    "taxes": [
+      {
+        "label": "GST (5%)",
+        "rate": "5%",
+        "amount": "$117.18"
+      }
+    ],
+    "total": "$2,460.68",
+    "bank_institution": "010",
+    "bank_transit": "26841",
+    "bank_account": "377190807"
+  }
+}

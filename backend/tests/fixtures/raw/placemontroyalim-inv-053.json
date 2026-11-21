@@ -1,0 +1,59 @@
+{
+  "file_name": "placemontroyalim-inv-053.pdf",
+  "file_hash": "b6ca724c4ab26e3aff4455ff2ad1e74f17702946a8e42eb0ed538994f06a6575",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "3",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Place Mont-Royal Immobilier",
+    "vendor_address": "8767 Harbour Rd, Montreal QC G7R 8P4",
+    "vendor_gst_number": "157763705RT0001",
+    "vendor_qst_number": "8775870781TQ0001",
+    "vendor_email": null,
+    "invoice_number": "FA-000566",
+    "invoice_date": "2026-11-01",
+    "due_date": "2026-11-01",
+    "payment_terms": "Due on receipt",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "1250 Rene-Levesque O, Bureau 2200, Montreal QC H3B 4W8",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "Loyer de base - Montreal",
+        "quantity": "1",
+        "unit_price": "5 300,00 $",
+        "amount": "5 300,00 $",
+        "line_type": "services"
+      },
+      {
+        "description": "Frais d'exploitation - Montreal",
+        "quantity": "1",
+        "unit_price": "780,00 $",
+        "amount": "780,00 $",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "6 080,00 $",
+    "taxes": [
+      {
+        "label": "TPS (5 %)",
+        "rate": "5 %",
+        "amount": "304,00 $"
+      },
+      {
+        "label": "TVQ (9,975 %)",
+        "rate": "9,975 %",
+        "amount": "606,48 $"
+      }
+    ],
+    "total": "6 990,48 $",
+    "bank_institution": "010",
+    "bank_transit": "79257",
+    "bank_account": "81820788"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "file_name": "greatlakescarrie-inv-025.pdf",
+  "file_hash": "50d0ccba78d89b4c03b89cec283cb0802d4e0ab402ebe8a3a542035061e9cedf",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "3",
+  "raw": {
+    "document_type": "credit_note",
+    "vendor_name": "Great Lakes Carriers Inc.",
+    "vendor_address": "6086 Centre St, Hamilton ON P7M 6H6",
+    "vendor_gst_number": "367912731RT0001",
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "CN-GR26-2274",
+    "invoice_date": "2026-10-27",
+    "due_date": "2026-11-26",
+    "payment_terms": "Net 30",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "1055 W Hastings St, Suite 900, Vancouver BC V6E 2E9",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "Credit - damaged shipment claim",
+        "quantity": "1",
+        "unit_price": "-$640.00",
+        "amount": "-$640.00",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "-$640.00",
+    "taxes": [
+      {
+        "label": "GST (5%)",
+        "rate": "5%",
+        "amount": "-$32.00"
+      }
+    ],
+    "total": "-$672.00",
+    "bank_institution": "010",
+    "bank_transit": "66160",
+    "bank_account": "234408577"
+  }
+}

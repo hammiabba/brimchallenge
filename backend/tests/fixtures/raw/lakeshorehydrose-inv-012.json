@@ -1,0 +1,47 @@
+{
+  "file_name": "lakeshorehydrose-inv-012.pdf",
+  "file_hash": "67eaaa110a3c96ee166b1c06ebbc9ec3b14be6fdd83a661fe50b8d489c25f68b",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "3",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Lakeshore Hydro Services",
+    "vendor_address": "4029 Portage Ave, Toronto ON P8A 1A7",
+    "vendor_gst_number": "511235570RT0001",
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "INV-03018",
+    "invoice_date": "2026-10-24",
+    "due_date": "2026-11-14",
+    "payment_terms": "Net 21",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "88 Queens Quay W, Suite 1400, Toronto ON M5J 0B8",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "Energy - October",
+        "quantity": "1",
+        "unit_price": "$4,380.01",
+        "amount": "$4,380.01",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "$4,380.01",
+    "taxes": [
+      {
+        "label": "HST (13%)",
+        "rate": "13%",
+        "amount": "$569.40"
+      }
+    ],
+    "total": "$4,949.41",
+    "bank_institution": "002",
+    "bank_transit": "86503",
+    "bank_account": "57551807"
+  }
+}

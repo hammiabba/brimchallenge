@@ -1,0 +1,41 @@
+{
+  "file_name": "tesseraanalytics-inv-050.pdf",
+  "file_hash": "2e56e22d3d24c330915952f3586ef630f7cbd4d2d6d52877765666987dc90fb1",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "3",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Tessera Analytics Inc.",
+    "vendor_address": "351 King St W, Seattle WA 43465",
+    "vendor_gst_number": null,
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "002715",
+    "invoice_date": "2026-10-31",
+    "due_date": "2026-11-30",
+    "payment_terms": "Net 30",
+    "currency": "USD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "1055 W Hastings St, Suite 900, Vancouver BC V6E 2E9",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "Tessera Analytics Pro - 12 seats",
+        "quantity": "1",
+        "unit_price": "$3,100.00",
+        "amount": "$3,100.00",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "$3,100.00",
+    "taxes": [],
+    "total": "$3,100.00",
+    "bank_institution": null,
+    "bank_transit": null,
+    "bank_account": null
+  }
+}

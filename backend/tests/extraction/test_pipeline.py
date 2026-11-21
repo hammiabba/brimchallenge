@@ -15,20 +15,8 @@ from app.extraction.llm_parser import (
     parse_invoice,
 )
 from app.shared.schemas import MatchMethod, TaxCode
-from tests.conftest import INCOMING
+from tests.conftest import INCOMING, to_wire
 from tests.pdfs import invoice_page, make_pdf
-
-
-def to_wire(raw: RawInvoice) -> WireInvoice:
-    """What the API now returns for `raw`: the same values, with "" where RawInvoice has None."""
-    def blank(v):
-        if isinstance(v, dict):
-            return {k: blank(x) for k, x in v.items()}
-        if isinstance(v, list):
-            return [blank(x) for x in v]
-        return "" if v is None else v
-
-    return WireInvoice.model_validate(blank(raw.model_dump()))
 
 
 class FakeClient:
