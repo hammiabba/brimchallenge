@@ -22,6 +22,7 @@ from .validate import _norm_name, flag, to_cad
 
 NEAR_AMOUNT_PCT = Decimal("0.01")  # amounts within 1%
 NEAR_DAYS = 14
+NEAR_NUMBER_SIM = 0.6  # a near duplicate needs invoice numbers this alike, or the same service period
 CARD_DAYS = 45
 SPLIT_WINDOW_DAYS = 3
 
@@ -39,6 +40,27 @@ def norm_invoice_no(s: str) -> str:
     """FA-000583 -> 583, 000903-A -> 903, INV-02990 -> 2990. Keeps digits only, drops leading zeros."""
     digits = re.sub(r"[^0-9]", "", s or "")
     return digits.lstrip("0")
+
+
+_MONTHS = {
+    m: i + 1 for i, names in enumerate([
+        ("january", "janvier"), ("february", "février", "fevrier"), ("march", "mars"), ("april", "avril"),
+        ("may", "mai"), ("june", "juin"), ("july", "juillet"), ("august", "août", "aout"),
+        ("september", "septembre"), ("october", "octobre"), ("november", "novembre"),
+        ("december", "décembre", "decembre")])
+    for m in names
+}
+_MONTH_RE = re.compile(r"\b(" + "|".join(_MONTHS) + r")\b", re.IGNORECASE)
+_YM_RE = re.compile(r"\b20\d\d-(0[1-9]|1[0-2])\b")
+
+
+def service_period(descriptions: Iterable[str]) -> frozenset[int]:
+    """Months named in the line descriptions ("Energy - October", "2026-10-01 to 2026-10-31"). Empty if none."""
+    months: set[int] = set()
+    for text in descriptions:
+        months |= {_MONTHS[m.lower()] for m in _MONTH_RE.findall(text or "")}
+        months |= {int(m) for m in _YM_RE.findall(text or "")}
+    return frozenset(months)
 
 
 def _similar(a: str, b: str) -> float:
@@ -66,6 +88,7 @@ class _Cand:
     name: str = ""              # normalized vendor name: how unknown vendors are compared
     department_id: str = ""
     po: str = ""
+    period: frozenset[int] = frozenset()  # months named in the lines, see service_period()
 
 
 def _candidates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill]) -> list[_Cand]:
@@ -79,7 +102,8 @@ def _candidates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill]) -> li
         _Cand(i["invoice_id"], i["vendor_id"], i["vendor_invoice_number"], d(i["invoice_date"]),
               money(i["total"]), money(i["total_cad"]), i["status"], money(i["total"]) < 0,
               _norm_name(ref.vendors.get(i["vendor_id"], {}).get("legal_name", "")),
-              i["department_id"], i["po_id"])
+              i["department_id"], i["po_id"],
+              service_period(ln["description"] for ln in ref.invoice_lines.get(i["invoice_id"], [])))
         for i in ref.invoices.values()
         if i["invoice_id"] != me and i["status"] != "rejected"
     ]
@@ -87,7 +111,8 @@ def _candidates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill]) -> li
         if b is not bill:
             out.append(_Cand(bill_id(b), vendor_id(b) or "", b.invoice_number, b.invoice_date,
                              b.total, to_cad(b, ref)[0], "in_batch", is_credit(b),
-                             _norm_name(b.vendor.name_on_invoice), b.department_id or "", b.po_number or ""))
+                             _norm_name(b.vendor.name_on_invoice), b.department_id or "", b.po_number or "",
+                             service_period(ln.description for ln in b.lines)))
     return out
 
 
@@ -114,8 +139,8 @@ def find_duplicates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill] = 
     bank = bill.vendor.bank
     my_bank = (bank.transit, bank.account) if bank.account else \
         ((vendor["bank_transit"], vendor["bank_account"]) if vendor and vendor["bank_account"] else None)
-    recurring = _is_recurring_vendor(ref, vid or "")
     credit = is_credit(bill)
+    my_period = service_period(ln.description for ln in bill.lines)
 
     for c in _candidates(bill, ref, batch):
         if c.credit != credit:
@@ -137,12 +162,18 @@ def find_duplicates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill] = 
             continue
         if same_vendor and _close_amount(c.total, bill.total) and days <= NEAR_DAYS:
             sim = _similar(norm_invoice_no(c.number), my_no)
-            # For fixed-monthly vendors, need the number to look alike too, otherwise every rent bill matches.
-            if recurring and sim < 0.6:
+            same_period = bool(my_period) and my_period == c.period
+            # Same vendor and amount alone isn't enough: Orion 279 and 281 are two phases billed the same day.
+            # The numbers must look alike, or both bills must name the same months (two "October" bills from one
+            # vendor). This also keeps fixed-monthly vendors (rent, SaaS) from matching every month's bill.
+            if sim < NEAR_NUMBER_SIM and not same_period:
                 continue
+            why = ["same vendor", f"amount {c.total} vs {bill.total}", f"{days} days apart",
+                   f"invoice numbers {sim:.0%} similar"]
+            if same_period:
+                why.append("same service period")
             matches.append(DuplicateMatch(kind="near", score=round(0.6 + 0.3 * sim, 2), matched_invoice_id=c.id,
-                                          reasons=["same vendor", f"amount {c.total} vs {bill.total}",
-                                                   f"{days} days apart", f"invoice numbers {sim:.0%} similar", status]))
+                                          reasons=why + [status]))
             continue
         if not same_vendor and my_bank and _close_amount(c.total, bill.total) and days <= 30:
             other = ref.vendors.get(c.vendor_id)
