@@ -87,3 +87,158 @@ Notes from the run, no fix needed:
 
 Nothing to fix: 56/56 extracted, 100% on the golden eval and on all 56 expectation rows. Accuracy before = after =
 100%. Remaining effort goes to unseen-layout robustness (Step 3), which is what the hidden batch tests.
+
+## Step 3: Robustness
+
+### Vision second opinion
+`pipeline._vision_second_opinion`: when the text came from **OCR** and the draft is badly inconsistent
+(`selfcheck.badly_inconsistent`: total ≠ subtotal + taxes, or the lines miss the subtotal by more than 1%), the
+image is sent once to the vision model. The result with fewer arithmetic problems wins (OCR on a tie), and a
+warning names the one used. Both reads are cached (the vision read under `<sha256>-vision`). Born-digital PDFs are
+never re-read: a re-read can't fix a total that is wrong on the document (Evergreen).
+- **Decision:** tesseract isn't installed here and can't be (no Homebrew), so the real scans already go straight
+  to vision. The fallback is tested with simulated OCR text: what tesseract would return, with one digit of the
+  total misread.
+- Offline: `tests/extraction/test_vision_fallback.py`, 7 tests (vision wins, both cached, vision no better → OCR
+  kept, vision call fails → OCR kept with a warning, consistent OCR not re-read, a <1% line slip not re-read,
+  text-layer PDFs never re-read).
+- Live: `test_live_vision_second_opinion_fixes_misread_ocr[scan_8049.png|scan_8749.png]` → **2 passed**. The
+  model read the misread total from the text, the check fired, and vision returned 6693.69 / 4719.28.
+
+### Unseen layouts
+`tests/fixtures/synthetic/make_layouts.py` renders one Laurentian invoice (V005, Montreal, GST + QST, 3 lines) as:
+no table (prose), right-aligned totals, French labels with decimal commas and written-out dates, totals before the
+lines; plus a Tessera USD invoice with a US address. `tests/extraction/test_synthetic_layouts.py`.
+
+| layout | first run (prompt v3) | after the fixes (prompt v4) |
+|---|---|---|
+| table_less | core fields right; warning "currency not printed; assumed CAD" though the text says "Canadian dollars" | right, no warnings |
+| right_aligned | right | right |
+| french | right; "currency assumed CAD" (correct: only `$` is printed) | same (kept, it's true) |
+| totals_first | right | right |
+| usd | right; "unrecognised tax line 'Sales tax' $0.00" | right, no warnings |
+
+All five extracted the same core fields (vendor, number, dates, currency, subtotal, taxes, total, province, line
+count) on the first try. Two general fixes came out of it (Step 2 proper):
+1. **Prompt v4:** currency is taken from the totals line when it shows one, otherwise from wherever the document
+   states it in words ("Canadian dollars", "Amounts in US dollars", "dollars canadiens").
+2. **A zero-amount tax line with an unknown label is dropped quietly** ("Sales tax $0.00" on a US invoice); an
+   unknown label with a real amount still warns.
+
+After the bump, all 56 files were re-extracted (246 s, 218,173 in / 25,711 out tokens, ≈ $1.39) and re-recorded,
+plus the 5 layouts. Eval: still **100%** (135/135); batch expectations: 176/176; live synthetic: **5 passed**.
+Offline, the layouts replay from `tests/fixtures/synthetic/raw/` on every `pytest`.
+
+## Step 4: Flags end to end 📝
+
+`tests/api/test_flags_end_to_end.py`: `POST /intake/inbox/jobs` on a fresh seeded DB, extraction replayed from
+the fixtures, bills stored by the DB lane, controls run with the whole batch, flags read back via `GET /bills/{id}`.
+One run per module (about 4 s). 46 passed, 1 xfailed.
+
+| File | Expected | Actual | Result |
+|---|---|---|---|
+| Invoice HA26-2766 | VENDOR_LOOKALIKE | VENDOR_LOOKALIKE (block) | pass |
+| Invoice 4443 (Blue Heron) | VENDOR_NOT_FOUND | VENDOR_NOT_FOUND (block) | pass |
+| zephyrdataservic_7590 | VENDOR_NOT_FOUND | VENDOR_NOT_FOUND (block) | pass |
+| cascadiacartagel_1625 | BANK_CHANGE_UNVERIFIED | BANK_CHANGE_UNVERIFIED (block), POSSIBLE_SPLIT | pass |
+| scan_8049 (Cascadia 1624) | BANK_CHANGE_UNVERIFIED | BANK_CHANGE_UNVERIFIED, BANK_DETAILS_MISMATCH (block), POSSIBLE_SPLIT | pass |
+| Invoice 000964 (Polar) | OVER_FUEL_SURCHARGE_CAP | OVER_FUEL_SURCHARGE_CAP (warn) | pass |
+| northboundcourie_000639 | TAX_WRONG_FOR_PROVINCE | TAX_WRONG_FOR_PROVINCE (warn) | pass |
+| beaumontrivieres_FA000557 | TAX_MISSING | TAX_MISSING (warn) | pass |
+| signalsparrowcre_000970 | PST_ON_SERVICES | PST_ON_SERVICES (warn) | pass |
+| ironwoodpalletco-inv-048 | a missing-tax flag | TAX_MISSING, PO_REQUIRED_MISSING | pass |
+| evergreenenergyu_000850 | TOTAL_MISMATCH | TOTAL_MISMATCH (warn) | pass |
+| northstarmediabu_NO261773 | LINE_MATH_ERROR | LINE_MATH_ERROR (warn) | pass |
+| Summit 000809, Hardhat 853, Alpenglow, Brightline, Fixwell FA-000415 + CN, Ironwood, Keystone, Torque | PO_REQUIRED_MISSING | PO_REQUIRED_MISSING (block) on all 9 | pass |
+| Invoice 000961 (Polar) | exact duplicate | DUPLICATE_EXACT (block) | pass |
+| cloudbarnsoftwar_INV01561 | exact duplicate (paid by card) | DUPLICATE_EXACT (block) | pass |
+| harlowsternllp_001468 | exact duplicate | DUPLICATE_EXACT (block) | pass |
+| Brightline 583 (= FA-000583) | reformatted duplicate | DUPLICATE_EXACT (block) | pass |
+| Voyageur 000903-A | near duplicate | DUPLICATE_EXACT (block) | **xfail**: controls (ISSUES_FOR_B #2) |
+| Invoice 002935 (Queen Street rent) | no duplicate | no flags | pass |
+| riverbendcaterin_1739 | pending-review vendor | VENDOR_PENDING_REVIEW, GST_NUMBER_MISSING, TAX_MISSING, PO_REQUIRED_MISSING | pass |
+
+- **Cloudbarn:** the "paid by card" is the history invoice AP-00370, settled by AP virtual card (CT-00556), so
+  the exact-duplicate flag is the right catch. No separate `ALREADY_PAID_BY_CARD` is expected.
+- **Voyageur:** extraction reads `000903-A` exactly. Controls' `norm_invoice_no` keeps only the digits ("903"),
+  which makes it an exact match. Payment is held either way. Strict xfail plus `ISSUES_FOR_B.md` item 2.
+- **Unlisted block flags, explained:** Lumen FA-001761 and scan 1624 get `BANK_DETAILS_MISMATCH`. Both are dated
+  before their vendor's bank change (BC-006 / BC-009) but print the new account, which matches the master today.
+  Extraction is right; whether that should block is controls' call.
+
+**Clean files** (no `block` flag; each checked on the PDF and master: active vendor, no PO required, bank as on
+file, right tax for the province, arithmetic adds up, no earlier invoice with that number), 18 in all:
+FA-000318, FA-001619, FA-002853, INV-00734, TR26-1042, Benefitwise 262, Granville GR26-2864, Great Lakes GR26-2271,
+Harlow 001470, Lakeshore INV-03018, Lattice 557 (a `OVER_CONTRACT_RATE` warn only), Laurentian FA-002399, Ledgerline
+FA-002176, Maple Tire 1531, Papertrail 2217, Place Mont-Royal FA-000566, Polar 000963, Prairie scan 8749. All pass.
+
+## Step 5: Open decisions
+
+- **`draft_json`:** kept as is. `as_extracted` is written at the first re-check and never overwritten (tested
+  across two edits). Each re-check records a `bill.rechecked` audit event (actor `system`, before/after
+  confidence and warnings, edited fields in the comment). The note stays in `ISSUES_FOR_DB.md` (open point 1).
+- **Learned codings survive restarts:** `coding.feedback.replay_learned_codings(db)` rebuilds the in-memory store
+  from every accepted/overridden line on an app bill. It's hooked once at start-up (`app/main.py`, its own commit
+  `feat(api): call replay_on_startup from main`, `ISSUES_FOR_DB.md` hook 6) and honours test overrides of
+  `get_session`. A missing DB is logged, not fatal. Tests: override → forget (restart) → replay → next suggestion
+  cites the corrected bill; a new app start on the same DB replays it; history bills are never replayed.
+
+## Step 6: A-owned endpoints 📝
+
+**Decision:** main already serves `GET /intake/emails` (API lane: class, reason, items with bill ids, class filter,
+pagination, `BACK_OFFICE_READ`). A second route on the same path would shadow it, so the list gains the suggested
+action through an additive `EmailOut.suggested_action` field and one call, `app.intake.review.action_for(e)`, in
+`services/intake.list_emails` (hook commit `feat(api): call action_for from list_emails`). A's router adds the
+two missing reads.
+
+**Decision:** approvers follow the matrix's treatment of intake reads (`/intake/emails`, `/intake/items`: C F X Au),
+so they're refused. The router-wide guard in `main.py` (C F X) is removed; each A route has its own
+`require_role(*BACK_OFFICE_READ)` (commit `feat(api): mount the intake router without a router-wide guard`).
+
+**Decision:** the in-memory `/intake/upload`, `/intake/inbox/run` and `/intake/drafts` (with `_DRAFTS`) are
+retired; `/submissions` and the inbox job replace them. `tests/api/test_intake_guard.py`, which tested the old
+routes, is replaced by `tests/api/test_intake_review.py`.
+
+**Decision:** originals are kept by content hash in `settings.files_dir` (`backend/files/`, gitignored), written by
+the pipeline for every file it reads. `GET /intake/files/{file_hash}` serves them with the content type sniffed
+from the bytes (`inline` for PDF/images, `nosniff`). It falls back to the dataset inbox for older items, checking
+the hash. It only serves hashes that an intake item references, and rejects anything that isn't 64 hex characters.
+
+Intake endpoints in `/openapi.json` (49 paths in all):
+
+| Method | Path | Owner | Roles |
+|---|---|---|---|
+| GET | `/intake/emails` | API lane (+ A's `suggested_action`) | C F X Au |
+| GET | `/intake/emails/{email_id}` | **A** | C F X Au |
+| GET | `/intake/files/{file_hash}` | **A** | C F X Au |
+| POST | `/intake/inbox/jobs` | API lane | C |
+| GET | `/intake/inbox/jobs/{job_id}` | API lane | C F X Au |
+| GET | `/intake/items` | API lane | C F X Au |
+| GET/POST | `/submissions` | API lane | E C |
+
+Tests (`tests/api/test_intake_review.py`, 19): EM-056 `reconcile_later`; EM-057 AP-00049 paid 2026-03-09 by EFT,
+BRIM-EFT-26388945, with no bank numbers in the reply; EM-058 resend reply; EM-059 `ignore`; EM-029 links 2 bills;
+the list shows the action on all 59 and filters by class; four back-office roles can read; employee and approver
+get 403; unknown email 404 `email.not_found`; malformed or unknown hash 404; PDF and PNG served byte-exact with
+the right type; the inbox fallback works. Matrix rows in their own commit.
+
+**Live smoke test** (uvicorn on a fresh seeded SQLite DB, real LLM cache so no API cost), trimmed:
+```
+1. POST /auth/login U004 -> 200 {"user_id":"U004","role":"ap_clerk"}
+2. POST /intake/inbox/jobs ... done in 3.1 s: 59 emails, 56 items, 56 bills, 0 failed
+3. GET /intake/emails?email_class=payment_inquiry -> 200 [{"email_id":"EM-057","action":"answer_status"}]
+   GET /intake/emails/EM-057 -> 200 "Invoice 1743 (AP-00049, 369.75 CAD, dated 2026-02-04) was paid on 2026-03-09
+   by EFT, reference BRIM-EFT-26388945."  reply: "Hello, Invoice 1743 dated 2026-02-04 was paid on 2026-03-09 by
+   EFT (369.75 CAD), reference BRIM-EFT-26388945. Best regards, Accounts Payable, Harborline Logistics"
+4. POST /submissions Invoice HA26-2766.pdf -> 202; item ok, bill AP-00450 with warning "already_received: this
+   exact file was already received as bill AP-00450 ... no new bill was created" (the inbox had it as EM-026)
+5. GET /bills/AP-00450 -> 200 V052 HA26-2766 6452.30 needs_review, flags [VENDOR_LOOKALIKE block],
+   line 1 suggested 6310 / D08 "Harlow and Stern LLP's default GL account (no past invoices to learn from)"
+6. PATCH /bills/AP-00450 requester U013 -> 200, line 1 department D01 "...; department D01 from requester U013"
+   PATCH /bills/AP-00450/lines/1 6420/D01 -> 200 coding_status overridden
+7. GET /intake/files/43bef153... -> 200 application/pdf, 2457 bytes, identical to the PDF on disk,
+   inline; filename="Invoice HA26-2766.pdf"
+   employee U013 GET /intake/emails/EM-057 -> 403
+```
+The smoke test showed the step-6 reason still started with the original "· D08 Executive" label, which read as a
+contradiction. The suffix now says "(replaces D08)".
