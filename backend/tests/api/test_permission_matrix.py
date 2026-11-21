@@ -23,6 +23,9 @@ def test_role_matrix(as_role, case: Case, role: str):
     assert r.status_code == case.expected(role), f"{role} {case.id}: {r.status_code} {r.text[:300]}"
     if r.status_code >= 400:
         assert set(r.json()["error"]) == {"code", "message", "details"}
+    if r.status_code == 404:
+        # Out of scope and nonexistent look identical apart from the id in the message.
+        assert r.json()["error"]["code"].endswith(".not_found")
 
 
 def _spec_operations(client) -> list[tuple[str, str]]:
