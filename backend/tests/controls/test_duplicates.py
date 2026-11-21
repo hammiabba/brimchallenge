@@ -114,3 +114,21 @@ def test_service_period_reads_months_in_english_french_and_dates():
     assert service_period(["Loyer de base - novembre"]) == {11}
     assert service_period(["Hosting 2026-09-01 to 2026-09-30"]) == {9}
     assert service_period(["Consulting hours - phase 1"]) == frozenset()
+
+
+# ---- fixed-monthly vendors: next month's bill isn't a likely duplicate (incoming false alarm 3) ----
+def test_subscription_bill_is_not_a_likely_duplicate_of_next_months(ref, make_bill):
+    # Cloudbarn (V015, fixed monthly C001): INV-01561 re-sent on 2026-10-09; INV-01567 (AP-00411) is October's
+    bill = make_bill(vendor_id="V015", province="AB", amount="2400.00", number="INV-01561", when=date(2026, 10, 9),
+                     description="Cloudbarn Workspace subscription (24 seats)")
+    found = kinds(find_duplicates(bill, ref))
+    assert ("exact", "AP-00370") in found  # September's INV-01561, already paid: still caught
+    assert not any(kind == "near" for kind, _ in found)
+
+
+def test_subscription_bills_for_the_same_month_still_match(ref, make_bill):
+    a = make_bill(vendor_id="V015", province="AB", amount="2400.00", number="INV-09001", when=date(2026, 10, 9),
+                  file_hash="s1", description="Cloudbarn Workspace subscription - October")
+    b = make_bill(vendor_id="V015", province="AB", amount="2400.00", number="X-77", when=date(2026, 10, 12),
+                  file_hash="s2", description="Cloudbarn Workspace subscription - October")
+    assert any(m.kind == "near" for m in find_duplicates(a, ref, [a, b]))

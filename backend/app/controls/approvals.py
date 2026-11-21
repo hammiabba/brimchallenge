@@ -249,7 +249,8 @@ def can_release(user_id: str, amount_cad: Decimal, approver_ids: set[str], flags
         return PermissionDecision(allowed=False,
                                   reason=f"Payment is on hold until these are resolved: {', '.join(open_blocks)}.")
     if user_id in approver_ids:
-        return PermissionDecision(allowed=False, reason=f"{user_id} approved this bill, so they can't release its payment (P11).")
+        return PermissionDecision(allowed=False,
+                                  reason=f"{user_id} approved this bill, so they can't release its payment (P11).")
     limit = _release_threshold(ref)
     if u["role"] == "finance_manager":
         if abs(amount_cad) <= limit:
