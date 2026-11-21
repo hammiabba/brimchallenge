@@ -1,8 +1,9 @@
 """
 Shared test fixtures.
 
-Network is blocked for the whole test session: any test that accidentally reaches
-the real LLM (or anything else) fails loudly instead of silently costing money.
+Network is blocked for every test: any test that accidentally reaches the real LLM
+(or anything else) fails loudly instead of silently costing money. The only exception
+is tests marked `@pytest.mark.live`, which are opt-in (see tests/extraction/test_live_llm.py).
 """
 from __future__ import annotations
 
@@ -21,8 +22,11 @@ class _NetworkBlocked(RuntimeError):
     pass
 
 
-@pytest.fixture(autouse=True, scope="session")
-def _block_network():
+@pytest.fixture(autouse=True)
+def _block_network(request):
+    if request.node.get_closest_marker("live"):
+        yield
+        return
     real_connect = socket.socket.connect
 
     def guard(self, address):

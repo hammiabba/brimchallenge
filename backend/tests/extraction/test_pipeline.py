@@ -6,17 +6,39 @@ from types import SimpleNamespace
 import pytest
 
 from app.extraction import pipeline, text_layer
-from app.extraction.llm_parser import LLMUnavailableError, RawInvoice, RawLine, RawTax
+from app.extraction.llm_parser import (
+    LLMUnavailableError,
+    RawInvoice,
+    RawLine,
+    RawTax,
+    WireInvoice,
+    parse_invoice,
+)
 from app.shared.schemas import MatchMethod, TaxCode
 from tests.conftest import INCOMING
 
 
+def to_wire(raw: RawInvoice) -> WireInvoice:
+    """What the API now returns for `raw`: the same values, with "" where RawInvoice has None."""
+    def blank(v):
+        if isinstance(v, dict):
+            return {k: blank(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [blank(x) for x in v]
+        return "" if v is None else v
+
+    return WireInvoice.model_validate(blank(raw.model_dump()))
+
+
 class FakeClient:
-    """Mimics `anthropic.Anthropic().messages.parse` and records each call."""
+    """Mimics `anthropic.Anthropic().messages.parse` and records each call.
+
+    Takes the RawInvoice we expect and answers with its wire form, as the real API would.
+    """
 
     def __init__(self, raw: RawInvoice, stop_reason: str = "end_turn"):
         self.calls: list[dict] = []
-        self._resp = SimpleNamespace(stop_reason=stop_reason, parsed_output=raw)
+        self._resp = SimpleNamespace(stop_reason=stop_reason, parsed_output=to_wire(raw))
         self.messages = SimpleNamespace(parse=self._parse)
 
     def _parse(self, **kwargs):
@@ -64,6 +86,14 @@ def test_full_pipeline_on_text_pdf(repo):
     # The text layer was used, so the model received text, not an image.
     sent = client.calls[0]["messages"][0]["content"][0]
     assert sent["type"] == "text" and "HA26-2766" in sent["text"]
+    # The API is asked for the union-free wire schema, never the internal model.
+    assert client.calls[0]["output_format"] is WireInvoice
+
+
+def test_parse_invoice_returns_same_raw_invoice_as_before():
+    expected = raw_invoice(po_number=None, ship_to_address=None, vendor_qst_number=None)
+    assert to_wire(expected).vendor_qst_number == ""
+    assert parse_invoice("some text", client=FakeClient(expected)) == expected
 
 
 def test_second_run_hits_cache_without_key(repo):

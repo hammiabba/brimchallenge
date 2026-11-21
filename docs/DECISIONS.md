@@ -20,3 +20,4 @@ One line per decision: **what** and **why**. Add to this file when you make a ch
 | 14 | Money | `Decimal` everywhere | Float rounding errors make arithmetic checks and duplicate matching unreliable. |
 | 15 | Time | Fixed `AS_OF_DATE` from config | The dataset is frozen at 2026-11-02; using the real clock would make results drift. |
 | 16 | Intake | Pipeline returns an `ExtractionOutcome` wrapper (ok / llm_skipped / failed) | `DraftBill` requires an invoice number and date, so a failed or skipped extraction can't be a DraftBill; no schema change needed. |
+| 17 | Extraction | The LLM fills a union-free `WireInvoice` (plain strings, `""` = not printed); `to_raw()` converts it to `RawInvoice` (`None` = absent) | Structured outputs reject schemas with more than 16 union-typed parameters (we had 23 → HTTP 400). Keeping `None` inside the app means normalize/pipeline/cache don't change, and the wire schema has headroom for new fields. A test guards the count. |
