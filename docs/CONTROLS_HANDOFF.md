@@ -431,6 +431,17 @@ before paying") and stays held for its missing PO, with `VENDOR_PENDING_REVIEW`.
 - Redline FA-001687: October pre-tax billing reaches $9,946.54 with AP-00424, over the C027 $9,000 limit →
   `OVER_CONTRACT_NTE`.
 
+### Detection coverage map (`b/coverage-map`)
+
+[`docs/DETECTION_COVERAGE.md`](DETECTION_COVERAGE.md) maps each "real-world mess" item in the brief to the flags
+that catch it, with one example bill (from the batch, or the history when the batch has none). It also lists what
+nothing catches. `backend/tests/controls/test_detection_coverage.py` runs the batch offline, replaying the recorded
+model output in `backend/tests/fixtures/raw/`. It fails if any example stops getting its flag.
+Rerun on main after PR #23 and #26: still 24 hold / 9 review / 23 can proceed, $110,405.03 on hold. Gaps found:
+low-quality scans have no flag (`LOW_EXTRACTION_CONFIDENCE` is never raised, see Known gaps). Self-approval
+can't be seen at intake because invoices print no requester (it's enforced at approval). Seven flags, and
+`DATE_ANOMALY`'s "due before invoice" case, have no real example and are only tested on made-up bills.
+
 ## Bugs not fixed yet
 
 From the code review. The review's other items were fixed: permissions, currency, unknown vendors, contract and
