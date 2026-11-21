@@ -1,1 +1,0 @@
-bunu oxuyan balacam olar
