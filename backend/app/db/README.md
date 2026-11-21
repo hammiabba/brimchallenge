@@ -9,12 +9,13 @@ Importing anything here never connects to or creates a database.
 
 | File | Contents |
 |---|---|
-| `database.py` | `make_engine(url=None)` (path resolution, SQLite pragmas, 15 s busy timeout, SQLAlchemy's pysqlite transaction recipe), `get_engine()`, `as_write_engine(engine)`, `resolve_database_url()`. Two session factories on one engine and pool: `get_session_factory()` / `get_session()` for **read sessions** (plain `BEGIN`) and `get_write_session_factory()` / `get_write_session()` for **write sessions** (`BEGIN IMMEDIATE`); the generators are FastAPI dependencies. |
+| `database.py` | `make_engine(url=None)` (path resolution, SQLite pragmas, 15 s busy timeout, SQLAlchemy's pysqlite transaction recipe), `get_engine()`, `as_write_engine(engine)`, `resolve_database_url()`. Two session factories on one engine and pool: `get_session_factory()` / `get_session()` for **read sessions** (plain `BEGIN`) and `get_write_session_factory()` / `get_write_session()` for **write sessions** (`BEGIN IMMEDIATE`); the generators are FastAPI dependencies. `require_write_session(session, caller)` raises RuntimeError on SQLite unless the session is a write session. |
 | `settings.py` | `DbSettings` / `get_db_settings()`: DB-only settings from the environment and `.env`; currently `AUDIT_HMAC_KEY` (a `SecretStr`). |
 | `types.py` | `to_cents` / `from_cents`, `dec_to_text` / `text_to_dec`, `utcnow` / `to_utc`. |
 | `models.py` | The schema: 25 tables (reference data from the dataset CSVs, bills and their lines/taxes, controls runs and flags, approval routes and decisions, vendor bank accounts and change requests, payments, absences, emails, intake items, the audit log). Also the allowed-value tuples behind every CHECK constraint. Import it as a module (`from app.db import models`): `TaxCode` and `AuditEvent` also exist in `app.shared.schemas`. |
 | `seed.py` | `seed_all(session, dataset_dir) -> SeedReport` (insert-only, one `BEGIN IMMEDIATE` transaction, pre-flight first) and the `python -m app.db.seed` CLI. See "Seeding". |
 | `seed_mapping.py` | Pure functions mapping one dataset row (all strings) to table columns, with strict money / boolean / date parsers; unit-tested without a database. |
+| `bills.py` | Bill persistence (no commits, no audit events; the API services log): `next_bill_id`, `create_bill_from_draft` (DraftBill -> app bill, lines, taxes; bad extracted references stored as NULL with warnings), `load_draft_bill` (current DraftBill: document facts from `draft_json`, editable state from the columns and tables), `save_controls_run` (versioned runs, flags, route steps; overridden / resolved flags carry over when unchanged), `latest_controls_run`, `route_for_bill` (the `route` for `can_approve`) and `approver_ids_for_bill` (the `approver_ids` for `can_release`). Writers need a write session. |
 | `audit.py` | The audit log: `log_event` (write sessions only), `verify_chain`, `chain_head`, `list_events`, `iter_events_csv`, plus `to_audit_json`, `redact`, `mask_digit_runs` and the `AuditAction` names. See "Audit log". |
 | `migrations/` | Alembic `env.py`, the template for new revisions, and `versions/` (`0001_baseline.py`, `0002_audit_chain_unique.py`). |
 
@@ -207,6 +208,9 @@ session.commit()  # the caller commits: the change and its event land together, 
 
 - A `DbReferenceRepository` implementing `app.reference.repository.ReferenceRepository` (see
   `app/reference/README.md`), and a `RefData` built from the database for `app.controls`.
-- Storage for `DraftBill` + `EmailTriage` to replace the TEMP dict in `api/routes_intake.py` (Person A's file).
-- Storage for `ControlsResult` per bill, and the approval history `can_release` needs.
+- Storage for `EmailTriage` (the `emails` triage columns) and `intake_items`, and wiring `api/routes_intake.py`
+  (Person A's file) to `bills.create_bill_from_draft` in place of its TEMP dict.
+- Recording approval decisions, and deriving what `can_approve` / `can_release` need beyond `bills.py`: the step
+  being signed, `approval_complete`, the CAD amount the route was built for (a split's combined amount), and the
+  flags still blocking (stored flags whose resolution is open).
 - The bill and payment state machines.
