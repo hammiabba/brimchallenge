@@ -16,6 +16,7 @@ Importing anything here never connects to or creates a database.
 | `seed.py` | `seed_all(session, dataset_dir) -> SeedReport` (insert-only, one `BEGIN IMMEDIATE` transaction, pre-flight first) and the `python -m app.db.seed` CLI. See "Seeding". |
 | `seed_mapping.py` | Pure functions mapping one dataset row (all strings) to table columns, with strict money / boolean / date parsers; unit-tested without a database. |
 | `bills.py` | Bill persistence (no commits, no audit events; the API services log): `next_bill_id`, `create_bill_from_draft` (DraftBill -> app bill, lines, taxes; bad extracted references stored as NULL with warnings), `load_draft_bill` (current DraftBill: document facts from `draft_json`, editable state from the columns and tables), `save_controls_run` (versioned runs, flags, route steps; overridden / resolved flags carry over when unchanged), `latest_controls_run`, `route_for_bill` (the `route` for `can_approve`) and `approver_ids_for_bill` (the `approver_ids` for `can_release`). Writers need a write session. |
+| `refdata_db.py` | DB-backed RefData for `app.controls`: `rows_as_csv(session, exclude_bill_id=None)` renders the database as the CSV rows controls' `build_refdata` reads (one list per stem in `REFDATA_FILES`), and `refdata_from_db(session, exclude_bill_id=None, as_of=None)` hands them to `build_refdata`. Nothing is re-interpreted here. Includes app bills (not `void`) and verified app bank changes; policies come from the table, so admin edits apply. Read-only. **When running controls on a stored bill, pass its own `exclude_bill_id`**, or it is reported as a duplicate of itself. |
 | `audit.py` | The audit log: `log_event` (write sessions only), `verify_chain`, `chain_head`, `list_events`, `iter_events_csv`, plus `to_audit_json`, `redact`, `mask_digit_runs` and the `AuditAction` names. See "Audit log". |
 | `migrations/` | Alembic `env.py`, the template for new revisions, and `versions/` (`0001_baseline.py`, `0002_audit_chain_unique.py`). |
 
@@ -206,8 +207,8 @@ session.commit()  # the caller commits: the change and its event land together, 
 
 ## Not built yet
 
-- A `DbReferenceRepository` implementing `app.reference.repository.ReferenceRepository` (see
-  `app/reference/README.md`), and a `RefData` built from the database for `app.controls`.
+- A `DbReferenceRepository` implementing `app.reference.repository.ReferenceRepository` for extraction and coding
+  (see `app/reference/README.md`). The controls side is done: `refdata_db.refdata_from_db`.
 - Storage for `EmailTriage` (the `emails` triage columns) and `intake_items`, and wiring `api/routes_intake.py`
   (Person A's file) to `bills.create_bill_from_draft` in place of its TEMP dict.
 - Recording approval decisions, and deriving what `can_approve` / `can_release` need beyond `bills.py`: the step
