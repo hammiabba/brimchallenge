@@ -27,6 +27,7 @@ from app.api.errors import ApiError
 from app.auth.deps import CurrentUser
 from app.auth.roles import EMPLOYEE
 from app.config import get_settings
+from app.controls.incoming import with_department
 from app.db import models
 from app.db.audit import SYSTEM_ACTOR, AuditAction
 from app.db.bills import create_bill_from_draft
@@ -107,8 +108,13 @@ def _write_session(bind: Engine) -> Session:
 
 
 def store_outcome(bind: Engine, job: Extracted, *, started_by: str, batch: list[DraftBill]) -> str | None:
-    """One write transaction per file: update the intake item and, if a DraftBill came out, create the bill, apply
-    the submitter overrides, run controls with the batch, and record one event. Returns the new bill id."""
+    """One write transaction per file: update the intake item and, if a DraftBill came out, create the bill, fill in
+    who it's for, run controls with the batch, and record one event. Returns the new bill id.
+
+    Department, when the document gives none: the submitter's own (employees), else the department the line coding
+    suggestions put the most money on (controls.incoming.with_department), so routing has a manager to send the
+    bill to. draft_json keeps the document exactly as read; the source is recorded in the event and shown on the
+    bill as department_source ("coding" = suggested, not yet confirmed by a person)."""
     with _write_session(bind) as db:
         item = db.get(models.IntakeItem, job.item_id)
         out = job.outcome
@@ -124,14 +130,21 @@ def store_outcome(bind: Engine, job: Extracted, *, started_by: str, batch: list[
             bill = db.get(models.Bill, bill_id)
             if job.overrides.requester_user_id:
                 bill.requester_user_id = job.overrides.requester_user_id
+            source = "invoice" if bill.department_id else None
             if job.overrides.department_id:
-                bill.department_id = job.overrides.department_id
+                bill.department_id, source = job.overrides.department_id, "submitter"
+            elif bill.department_id is None:
+                suggested, how = with_department(out.draft)
+                if how == "coding" and db.get(models.Department, suggested.department_id) is not None:
+                    bill.department_id, source = suggested.department_id, "coding"
+                    item.warnings = [*item.warnings, f"department {suggested.department_id} suggested from coding"]
             others = [d for d in batch if d is not out.draft]
             controls_runner.rerun(db, bill_id, batch=others)
             record(db, actor_user_id=SYSTEM_ACTOR, actor_role=SYSTEM_ACTOR, action=AuditAction.BILL_CREATED,
                    entity_type="bill", entity_id=bill_id,
                    after={"intake_item_id": item.item_id, "file_name": item.file_name, "email_id": job.email_id,
-                          "started_by": started_by, "status": "needs_review", "warnings": item.warnings})
+                          "started_by": started_by, "status": "needs_review", "department_id": bill.department_id,
+                          "department_source": source, "warnings": item.warnings})
         else:
             record(db, actor_user_id=SYSTEM_ACTOR, actor_role=SYSTEM_ACTOR, action="intake.item_failed",
                    entity_type="intake_item", entity_id=str(item.item_id),
