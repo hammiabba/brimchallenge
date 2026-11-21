@@ -152,6 +152,7 @@ def find_duplicates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill] = 
         ((vendor["bank_transit"], vendor["bank_account"]) if vendor and vendor["bank_account"] else None)
     credit = is_credit(bill)
     my_period = service_period(ln.description for ln in bill.lines)
+    recurring = _is_recurring_vendor(ref, vid or "")
 
     for c in _candidates(bill, ref, batch):
         if c.credit != credit:
@@ -176,7 +177,11 @@ def find_duplicates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill] = 
             same_period = bool(my_period) and my_period == c.period
             # Same vendor and amount alone isn't enough: Orion 279 and 281 are two phases billed the same day.
             # The numbers must look alike, or both bills must name the same months (two "October" bills from one
-            # vendor). This also keeps fixed-monthly vendors (rent, SaaS) from matching every month's bill.
+            # vendor). Fixed-monthly vendors (rent, SaaS) bill the same amount every month with consecutive numbers
+            # (Cloudbarn INV-01561 / INV-01567 are 75% alike), so for them only the same service month counts. A
+            # re-sent copy is still caught by the exact and normalized number checks above.
+            if recurring and not same_period:
+                continue
             if sim < NEAR_NUMBER_SIM and not same_period:
                 continue
             why = ["same vendor", f"amount {c.total} vs {bill.total}", f"{days} days apart",
