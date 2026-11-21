@@ -110,11 +110,14 @@ Exit codes: 0 seeded, 1 pre-flight failed (nothing written), 2 `--reset` refused
 
 ## Audit log
 
-`audit.py`. Every state change writes one event with `log_event()`, in the same transaction as the change:
+`audit.py`. Every state change writes one event with `log_event()`, in the same transaction as the change, on a
+**write session**:
 
 ```python
 from app.db.audit import AuditAction, log_event
+from app.db.database import get_write_session
 
+# in a route: session: Session = Depends(get_write_session)
 bill.status = "approved"
 log_event(session, actor_user_id=user.user_id, actor_role=user.role, action=AuditAction.BILL_APPROVED,
           entity_type="bill", entity_id=bill.bill_id, before={"status": "pending_approval"},
@@ -122,26 +125,45 @@ log_event(session, actor_user_id=user.user_id, actor_role=user.role, action=Audi
 session.commit()  # the caller commits: the change and its event land together, or neither does
 ```
 
+- **Write sessions vs read sessions** (`database.py`). SQLite transactions follow SQLAlchemy's pysqlite recipe: the
+  driver's own BEGIN handling is off and SQLAlchemy emits BEGIN itself, so SAVEPOINTs nest properly and a rollback
+  undoes everything. `get_session()` / `get_session_factory()` give **read sessions** (plain, deferred `BEGIN`: no
+  lock until a write). `get_write_session()` / `get_write_session_factory()` give **write sessions**
+  (`BEGIN IMMEDIATE`: the write lock is taken at the first statement and held until commit or rollback). Both use
+  the same engine and pool; the difference is the execution option `sqlite_begin="IMMEDIATE"` (`as_write_engine`).
+  The busy timeout is 15 s. Use a write session for anything that writes, and keep write transactions short (SQLite
+  has one writer at a time). `log_event` on SQLite **refuses a read session** with
+  `RuntimeError("log_event requires a write session (get_write_session)")`.
 - **Never commits or closes the session.** The insert runs in a SAVEPOINT inside the caller's transaction; if the
-  caller rolls back, the event is gone too. On SQLite, when no transaction is open yet, it first sends
-  `BEGIN IMMEDIATE` (pysqlite would otherwise let the SAVEPOINT's RELEASE commit the event on its own) and so takes
-  the write lock before reading the latest hash.
+  caller rolls back, the event is gone too. Because the write session holds the lock from its first statement,
+  nobody can append between `log_event` reading the latest hash and inserting the new event.
 - **Never rejects an event for its content.** Any `action` string is accepted; `AuditAction` lists the standard
   dotted names (`bill.approved`, `payment.released`, ...). Only an empty actor, role, action, entity type or entity
   id is refused (ValueError). Use `SYSTEM_ACTOR` (`"system"`, role `"system"`) for the seed and background jobs.
 - **Payloads.** `before` / `after` go through `to_audit_json` (Decimal as an exact string, datetimes as ISO 8601 UTC
   with `Z`, enums as values, pydantic models dumped, sets sorted; anything unknown is a TypeError) and then `redact`:
-  values under `account`, `new_account`, `bank_account` or `account_number` become `{"last4", "fingerprint"}`
-  (first 12 hex characters of sha256). The fingerprint lets two events about one account be matched; it is not a
-  secret (an unsalted hash of a short number can be brute-forced). `comment` is not redacted: never put account
-  numbers in it.
+  values under `account`, `new_account`, `bank_account` or `account_number` become `{"last4", "fingerprint"}`.
+- **The HMAC key.** The fingerprint is the first 12 hex characters of HMAC-SHA256 keyed by `AUDIT_HMAC_KEY`, so two
+  events about one account can be matched but a number can't be recovered by hashing every possible account. Set
+  `AUDIT_HMAC_KEY` in `.env` (read by `app/db/settings.py`) to 32+ random characters:
+  `python -c "import secrets; print(secrets.token_hex(32))"`. If it's missing or shorter, `log_event` raises
+  `AuditKeyError` the first time it needs a fingerprint (events without account numbers still work). The key is a
+  `SecretStr`: it never appears in logs, errors or stored rows. Changing it changes every future fingerprint, so
+  old and new events about the same account no longer match; keep it stable.
+- **Masking free text.** Runs of 7 or more digits are masked to stars plus their last 4
+  (`"new acct 593014216 per call"` -> `"new acct *****4216 per call"`) in `comment`, and in `before` / `after` strings
+  under any key containing `comment`, `note` or `memo` (case-insensitive). Shorter numbers, like a 6-digit invoice
+  number, are left alone; so are other keys (an `invoice_number` of 10 digits stays). Digits split by spaces or
+  dashes aren't caught, so still don't paste account numbers into comments.
 - **Hash chain.** Each event stores `prev_hash` (`"GENESIS"` for the first) and
   `hash = sha256(prev_hash + "\n" + canonical JSON of the event's fields except seq and hash)`. A UNIQUE index on
   `prev_hash` (migration 0002) stops the chain from forking; if another writer extended the same event first,
   `log_event` re-reads and retries, up to 5 attempts, then raises `AuditChainConflict`.
 - **`verify_chain(session) -> ChainReport(ok, count, first_bad_seq, reason)`** recomputes every hash in `seq` order
-  and finds the first edited, inserted or deleted event. It can't see the newest events being removed (truncation);
-  record the latest hash somewhere else (e.g. with each export) to catch that.
+  and finds the first edited, inserted or deleted event. It can't see the newest events being removed (truncation).
+- **`chain_head(session) -> (seq, hash) | None`** returns the newest event, or None on an empty log. Record it with
+  each export (somewhere the database can't change); later, that seq must still exist with that hash, which catches
+  the truncation `verify_chain` can't.
 - **Reading, for the audit API** (no authorization here; the route checks the role):
   `list_events(session, entity_type=, entity_id=, actor_user_id=, action=, since=, until=, after_seq=, limit=100)`
   returns `AuditRecord`s (a `schemas.AuditEvent` plus `seq`, `request_id`, `prev_hash`, `hash`), oldest first.
@@ -163,6 +185,13 @@ session.commit()  # the caller commits: the change and its event land together, 
   `op.create_foreign_key` step for `departments.manager_user_id`.
 - Alembic runs SQLite migrations without transactional DDL, so a migration that fails halfway can leave tables
   behind. On a dev or test database, delete the file and rerun.
+- **Never use `batch_alter_table` on `audit_events`.** On SQLite a batch block can rebuild the table (create a copy,
+  move the rows, drop the original), and the rebuild silently drops the append-only triggers. Use plain
+  `op.create_index` / `op.drop_index`, and add columns with `op.add_column` only if SQLite supports it directly.
+  Any future migration that touches `audit_events` must end by asserting the triggers still exist, e.g. in
+  `upgrade()`: `SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name IN ('audit_events_no_update',
+  'audit_events_no_delete')` must return 2, else raise. (Autogenerate emits `batch_alter_table` by default: always
+  rewrite it for this table.)
 - Never write to `dataset/`. Never commit a database file.
 
 ## Not built yet
@@ -172,5 +201,3 @@ session.commit()  # the caller commits: the change and its event land together, 
 - Storage for `DraftBill` + `EmailTriage` to replace the TEMP dict in `api/routes_intake.py` (Person A's file).
 - Storage for `ControlsResult` per bill, and the approval history `can_release` needs.
 - The bill and payment state machines.
-- The general pysqlite transaction fix in `database.make_engine` (SQLAlchemy's documented recipe: let SQLAlchemy
-  emit BEGIN itself), so every SAVEPOINT and DDL statement is transactional, not only `log_event`'s.
