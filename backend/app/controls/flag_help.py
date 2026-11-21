@@ -50,9 +50,9 @@ FLAG_HELP: dict[str, FlagHelp] = {
         "Vendor pending review",
         "The vendor hasn't finished onboarding review, so a finance manager approval is added to the route."),
     "GST_NUMBER_MISSING": FlagHelp(
-        "No GST number",
-        "No GST/HST registration number is on the invoice or on file, so ask the vendor for it before claiming "
-        "the tax back."),
+        "GST charged, no GST number",
+        "A vendor with no GST/HST registration number charged GST/HST, which can't be claimed back and can be a sign "
+        "of a fake invoice, so get the vendor's number before paying."),
     "SENDER_DOMAIN_MISMATCH": FlagHelp(
         "Unexpected sender",
         "The email came from a different domain than the vendor's usual contact, so confirm with the vendor that "

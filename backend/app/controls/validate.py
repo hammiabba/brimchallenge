@@ -14,7 +14,18 @@ from difflib import SequenceMatcher
 
 from app.shared.schemas import FLAG_CODES, DraftBill, Flag, Severity
 
-from .refdata import RefData, bill_id, currency, d, given_fx_rate, is_credit, money, tax_amounts, vendor_id
+from .refdata import (
+    FEDERAL_TAX,
+    RefData,
+    bill_id,
+    currency,
+    d,
+    given_fx_rate,
+    is_credit,
+    money,
+    tax_amounts,
+    vendor_id,
+)
 
 TOL = Decimal("0.02")        # rounding tolerance per amount (2 cents)
 TAX_TOL = Decimal("0.05")    # tax is rounded per line on some invoices, allow 5 cents
@@ -218,13 +229,16 @@ def check_vendor(bill: DraftBill, ref: RefData) -> list[Flag]:
         flags.append(flag("VENDOR_NOT_ACTIVE", f"{v['legal_name']} is '{v['status']}' in the vendor master.",
                           field="vendor"))
 
-    # Canadian vendor with no GST/HST number anywhere: tax can't be claimed back, and if they charge none,
-    # we can't tell whether they're a small supplier or just left it off.
-    if v["country"] == "CA" and not bill.vendor.gst_number and not v["gst_hst_number"]:
+    # A small supplier (no GST/HST number on file or on the invoice) shouldn't charge GST/HST. Charging it anyway
+    # means the tax can't be claimed back, and it's a common fake-invoice signal. No tax charged is fine.
+    gst_charged = tax_amounts(bill)[0]
+    if is_small_supplier(bill, v) and gst_charged > 0:
         flags.append(flag("GST_NUMBER_MISSING",
-                          f"No GST/HST registration number on the invoice or in the vendor master for "
-                          f"{v['legal_name'].rstrip('.')}. Ask the vendor for it (needed to claim the tax back).",
-                          field="vendor.gst_number"))
+                          f"{v['legal_name'].rstrip('.')} charged GST/HST of {_amt(gst_charged)} but has no GST/HST "
+                          f"registration number on the invoice or on file. Without one the tax can't be claimed back, "
+                          f"and charging tax with no number is a common sign of a fake invoice. Get the vendor's "
+                          f"number before paying.",
+                          evidence={"charged_gst_hst": str(gst_charged)}, field="vendor.gst_number"))
 
     # Email came from a domain other than the vendor's AP contact on file
     sender = (bill.source.sender_address or "").strip().lower()
@@ -295,11 +309,20 @@ def check_vendor(bill: DraftBill, ref: RefData) -> list[Flag]:
 # ---------------------------------------------------------------------------
 # Tax
 # ---------------------------------------------------------------------------
-def expected_tax_codes(province: str, vendor: dict, line_type: str) -> tuple[str | None, str | None]:
-    """(federal code, provincial code) that SHOULD apply. Place of supply = ship_to_province."""
+def is_small_supplier(bill: DraftBill, vendor: dict) -> bool:
+    """A Canadian vendor from the master with no GST/HST number on file and none on the invoice: a small supplier
+    that isn't registered, so it charges no GST/HST. Unknown vendors aren't covered (no master record to go on)."""
+    return (vendor.get("country") == "CA" and "vendor_id" in vendor
+            and not vendor.get("gst_hst_number") and not bill.vendor.gst_number)
+
+
+def expected_tax_codes(province: str, vendor: dict, line_type: str,
+                       registered: bool = True) -> tuple[str | None, str | None]:
+    """(federal code, provincial code) that SHOULD apply. Place of supply = ship_to_province.
+    registered=False is a small supplier (see is_small_supplier): no tax expected."""
     if vendor.get("country") and vendor["country"] != "CA":
         return "FOREIGN", None
-    if vendor.get("category") == "Insurance":
+    if vendor.get("category") == "Insurance" or not registered:
         return "EXEMPT", None
     if province == "ON":
         return "HST13", None
@@ -323,6 +346,7 @@ def check_tax(bill: DraftBill, ref: RefData) -> list[Flag]:
         # Unknown vendor: no master record, so assume a taxable Canadian supplier, unless the bill is in a
         # foreign currency (then treat it as a foreign vendor, which charges no Canadian tax).
         v = {"country": "CA" if currency(bill) == "CAD" else "XX", "category": ""}
+    small = is_small_supplier(bill, v)
 
     def rate(code: str | None) -> Decimal:
         return Decimal(ref.tax_codes[code]["rate"]) if code else Decimal("0")
@@ -330,7 +354,7 @@ def check_tax(bill: DraftBill, ref: RefData) -> list[Flag]:
     exp_fed = exp_prov = Decimal("0")
     exp_codes: set[str] = set()
     for line in bill.lines:
-        fed, prov = expected_tax_codes(bill.ship_to_province, v, line.line_type)
+        fed, prov = expected_tax_codes(bill.ship_to_province, v, line.line_type, registered=not small)
         if fed is None:
             return []
         exp_fed += line.amount * rate(fed)
@@ -341,6 +365,10 @@ def check_tax(bill: DraftBill, ref: RefData) -> list[Flag]:
 
     fed_chg, prov_chg = tax_amounts(bill)
     charged_codes = {t.code.value for t in bill.taxes if t.amount}
+    if small:
+        # GST/HST charged by a small supplier is reported as GST_NUMBER_MISSING (check_vendor), not as a tax error
+        fed_chg = Decimal("0")
+        charged_codes -= FEDERAL_TAX
     amounts_ok = abs(fed_chg - exp_fed) <= TAX_TOL and abs(prov_chg - exp_prov) <= TAX_TOL
     if amounts_ok and charged_codes <= exp_codes:
         return []

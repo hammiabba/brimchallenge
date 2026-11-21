@@ -67,3 +67,31 @@ def test_sender_domain_mismatch(ref, make_bill):
     assert f.evidence == {"sender_domain": "polar-freight-billing.example", "known_domain": "polarfreight.example"}
     bill.source.sender_address = "AR@PolarFreight.example"
     assert not flags_of(bill, ref, "SENDER_DOMAIN_MISMATCH")
+
+
+# ---- small suppliers: Canadian vendor with no GST/HST number on file or on the invoice (PR #23 review) ----
+def small_supplier_bill(make_bill, charge_gst):
+    bill = make_bill(vendor_id="V054", province="BC")  # Riverbend: CA, no GST number in the master
+    bill.vendor.gst_number = None
+    if not charge_gst:
+        bill.taxes, bill.total = [], bill.subtotal
+        bill.total_cad = bill.total
+    return bill
+
+
+def test_small_supplier_charging_no_tax_is_clean(ref, make_bill):
+    codes = {f.code for f in validate(small_supplier_bill(make_bill, charge_gst=False), ref)}
+    assert not codes & {"TAX_MISSING", "TAX_WRONG_FOR_PROVINCE", "GST_NUMBER_MISSING"}
+
+
+def test_small_supplier_charging_gst_gets_a_warning_not_a_tax_block(ref, make_bill):
+    flags = validate(small_supplier_bill(make_bill, charge_gst=True), ref)
+    [f] = [x for x in flags if x.code == "GST_NUMBER_MISSING"]
+    assert f.severity == Severity.WARN and "can't be claimed back" in f.message and "fake invoice" in f.message
+    assert not {x.code for x in flags} & {"TAX_MISSING", "TAX_WRONG_FOR_PROVINCE"}
+
+
+def test_gst_number_printed_on_the_invoice_means_registered(ref, make_bill):
+    bill = small_supplier_bill(make_bill, charge_gst=False)
+    bill.vendor.gst_number = "123456789RT0001"  # master is missing it, but the invoice shows one
+    assert "TAX_MISSING" in {f.code for f in validate(bill, ref)}
