@@ -143,7 +143,8 @@ FLAG_HELP: dict[str, FlagHelp] = {
         "that it wasn't already paid."),
     "LOW_EXTRACTION_CONFIDENCE": FlagHelp(
         "Check extracted data",
-        "Some fields were hard to read from the document, so compare them with the original before approving."),
+        "Some key fields (vendor, invoice number, date, amounts or bank details) were hard to read, or the bill was "
+        "read from a scanned image, so compare them with the original document before approving."),
     "REQUESTER_TERMINATED": FlagHelp(
         "Requester has left",
         "The person who requested this no longer works here, so confirm with their manager that it's still needed."),

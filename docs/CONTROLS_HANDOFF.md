@@ -202,6 +202,7 @@ Tolerance is 2 cents. Extraction never "fixes" printed numbers, so these catch b
 | No reliable FX rate (unsupported currency, or no USD rate for the date and none on the bill) | `CURRENCY_UNSUPPORTED` (block), message starts "FX rate missing" | The CAD amount is left unknown (never 1, never guessed), so the bill is held. Routing uses the face amount and says so on every step. Replaces the `FOREIGN_CURRENCY` info flag for this case. |
 | Invoice dated in the future, due before invoice date, or over 180 days old | `DATE_ANOMALY` (warn) | "Today" is the fixed as-of date (2026-11-02) from settings, never the machine clock, so results don't change with the demo date. |
 | Credit note | `CREDIT_NOTE` (info) | Apply it to an open invoice instead of paying it. |
+| A key field (vendor, invoice number, invoice date, subtotal, taxes, total, bank details) read with confidence under 0.7, or a scanned bill (`source.was_ocr`) with extraction notes | `LOW_EXTRACTION_CONFIDENCE` (warn), `validate.check_extraction_confidence` | Names the weak fields, weakest first, and quotes the scan notes. The threshold is 0.7: extraction scores a clean text read 0.95 and a clean scan 0.75, and lowers a field for an OCR correction (-0.15), a resolved or ambiguous date (-0.15 / -0.45), a failed check (-0.2 to -0.4), a weak vendor match (the match score) or a missing value (0). So any one deduction on a scanned field is caught, and a clean read isn't. On a text-layer bill, a weak field another flag already reports (the total on `TOTAL_MISMATCH`, the subtotal on `SUBTOTAL_MISMATCH`, the vendor on `VENDOR_NOT_FOUND`) isn't repeated: the text is exact, so that's the vendor's mistake, not a misread. Bills with no scores (history, hand-entered) are never flagged. Extraction has no bank score yet, so bank details only count once it adds one. A clerk's edit sets that field to 1.0, but scan notes stay, so a scanned bill keeps the warning until someone resolves it. |
 
 ### Duplicates (`duplicates.find_duplicates`)
 
@@ -303,6 +304,7 @@ routing follows.
   Update: it didn't happen in the real batch.
 - **`field_confidence`, `extraction_warnings` and `was_ocr` are ignored.** `LOW_EXTRACTION_CONFIDENCE` exists
   in `FLAG_CODES` but is never raised.
+  Update (`b/low-confidence`): now raised by `validate.check_extraction_confidence`, see "FX, dates, credit notes".
 - **No received date in the schema**, so "stale" and "future" use the as-of date.
 
 ## Incoming batch results (2026-11-21)
@@ -441,6 +443,15 @@ Rerun on main after PR #23 and #26: still 24 hold / 9 review / 23 can proceed, $
 low-quality scans have no flag (`LOW_EXTRACTION_CONFIDENCE` is never raised, see Known gaps). Self-approval
 can't be seen at intake because invoices print no requester (it's enforced at approval). Seven flags, and
 `DATE_ANOMALY`'s "due before invoice" case, have no real example and are only tested on made-up bills.
+
+### Rerun with `LOW_EXTRACTION_CONFIDENCE` (`b/low-confidence`)
+
+**24 hold, 10 review, 22 can proceed, $110,405.03 CAD on hold.** Only the two scans changed. Each was read by the
+vision model (no tesseract here) and carries that note, so both get the warning. Prairie Natural Gas `scan_8749.png`
+moved from can proceed to review. Cascadia `scan_8049.png` was already on hold for its bank flags. No text-layer bill
+is flagged: Evergreen's weak total is left to `TOTAL_MISMATCH`, and Blue Heron's and Zephyr's weak vendor to
+`VENDOR_NOT_FOUND`. History replay: identical, because history bills have no confidence scores. The coverage map
+now lists the scans under this flag.
 
 ## Bugs not fixed yet
 
