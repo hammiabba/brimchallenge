@@ -1,0 +1,26 @@
+{
+  "file": "sparkgridcrminc_FA002342.pdf",
+  "email_id": "EM-021",
+  "sender": "ar@sparkgridcrm.example",
+  "verified": false,
+  "notes": "USD, US vendor, no Canadian tax",
+  "expected": {
+    "vendor_id": "V018",
+    "invoice_number": "FA-002342",
+    "invoice_date": "2026-10-26",
+    "due_date": "2026-11-25",
+    "currency": "USD",
+    "is_credit_note": false,
+    "subtotal": "1950.00",
+    "taxes": [
+      {
+        "code": "FOREIGN",
+        "amount": "0.00"
+      }
+    ],
+    "total": "1950.00",
+    "ship_to_province": "BC",
+    "po_number": null,
+    "line_count": 1
+  }
+}

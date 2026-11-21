@@ -1,0 +1,26 @@
+{
+  "file": "Invoice HA26-2766.pdf",
+  "email_id": "EM-026",
+  "sender": "ar@harlowandstern-llp.example",
+  "verified": false,
+  "notes": "Lookalike of V026 Harlow & Stern; matches V052 by GST",
+  "expected": {
+    "vendor_id": "V052",
+    "invoice_number": "HA26-2766",
+    "invoice_date": "2026-10-27",
+    "due_date": "2026-11-26",
+    "currency": "CAD",
+    "is_credit_note": false,
+    "subtotal": "5710.00",
+    "taxes": [
+      {
+        "code": "HST13",
+        "amount": "742.30"
+      }
+    ],
+    "total": "6452.30",
+    "ship_to_province": "ON",
+    "po_number": null,
+    "line_count": 2
+  }
+}

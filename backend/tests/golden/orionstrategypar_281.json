@@ -1,0 +1,26 @@
+{
+  "file": "orionstrategypar_281.pdf",
+  "email_id": "EM-029",
+  "sender": "ar@orionstrategy.example",
+  "verified": false,
+  "notes": "Second attachment of EM-029",
+  "expected": {
+    "vendor_id": "V029",
+    "invoice_number": "281",
+    "invoice_date": "2026-10-28",
+    "due_date": "2026-11-27",
+    "currency": "CAD",
+    "is_credit_note": false,
+    "subtotal": "4320.00",
+    "taxes": [
+      {
+        "code": "HST13",
+        "amount": "561.60"
+      }
+    ],
+    "total": "4881.60",
+    "ship_to_province": "ON",
+    "po_number": null,
+    "line_count": 1
+  }
+}

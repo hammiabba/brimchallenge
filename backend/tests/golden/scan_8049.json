@@ -1,0 +1,30 @@
+{
+  "file": "scan_8049.png",
+  "email_id": "EM-013",
+  "sender": "ar@cascadiacartage.example",
+  "verified": false,
+  "notes": "Scan; bank Inst 003 Transit 92968 Acct 953389679",
+  "expected": {
+    "vendor_id": "V004",
+    "invoice_number": "1624",
+    "invoice_date": "2026-10-24",
+    "due_date": "2026-11-23",
+    "currency": "CAD",
+    "is_credit_note": false,
+    "subtotal": "5821.87",
+    "taxes": [
+      {
+        "code": "GST5",
+        "amount": "291.09"
+      },
+      {
+        "code": "QST9975",
+        "amount": "580.73"
+      }
+    ],
+    "total": "6693.69",
+    "ship_to_province": "QC",
+    "po_number": null,
+    "line_count": 5
+  }
+}

@@ -46,3 +46,17 @@ next-env.d.ts
 .eslintcache
 .turbo
 .swc
+
+# python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# generated output and caches (never commit)
+backend/.cache/
+backend/output/

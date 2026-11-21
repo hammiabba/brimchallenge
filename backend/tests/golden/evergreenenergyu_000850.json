@@ -1,0 +1,26 @@
+{
+  "file": "evergreenenergyu_000850.pdf",
+  "email_id": "EM-003",
+  "sender": "ar@evergreenenergy.example",
+  "verified": false,
+  "notes": "Printed total is wrong (3180 + 159 = 3339); keep 3439",
+  "expected": {
+    "vendor_id": "V041",
+    "invoice_number": "000850",
+    "invoice_date": "2026-10-20",
+    "due_date": "2026-11-10",
+    "currency": "CAD",
+    "is_credit_note": false,
+    "subtotal": "3180.00",
+    "taxes": [
+      {
+        "code": "GST5",
+        "amount": "159.00"
+      }
+    ],
+    "total": "3439.00",
+    "ship_to_province": "BC",
+    "po_number": null,
+    "line_count": 1
+  }
+}

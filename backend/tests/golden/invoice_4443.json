@@ -1,0 +1,26 @@
+{
+  "file": "Invoice 4443.pdf",
+  "email_id": "EM-001",
+  "sender": "ar@blueheron.example",
+  "verified": false,
+  "notes": "Blue Heron Couriers: not in vendor master",
+  "expected": {
+    "vendor_id": null,
+    "invoice_number": "4443",
+    "invoice_date": "2026-10-20",
+    "due_date": "2026-11-19",
+    "currency": "CAD",
+    "is_credit_note": false,
+    "subtotal": "1340.70",
+    "taxes": [
+      {
+        "code": "GST5",
+        "amount": "67.04"
+      }
+    ],
+    "total": "1407.74",
+    "ship_to_province": "AB",
+    "po_number": null,
+    "line_count": 2
+  }
+}

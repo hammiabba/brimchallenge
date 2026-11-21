@@ -1,0 +1,30 @@
+{
+  "file": "placemontroyalim-inv-053.pdf",
+  "email_id": "EM-052",
+  "sender": "ar@placemontroyal.example",
+  "verified": false,
+  "notes": "French layout; due on receipt",
+  "expected": {
+    "vendor_id": "V039",
+    "invoice_number": "FA-000566",
+    "invoice_date": "2026-11-01",
+    "due_date": "2026-11-01",
+    "currency": "CAD",
+    "is_credit_note": false,
+    "subtotal": "6080.00",
+    "taxes": [
+      {
+        "code": "GST5",
+        "amount": "304.00"
+      },
+      {
+        "code": "QST9975",
+        "amount": "606.48"
+      }
+    ],
+    "total": "6990.48",
+    "ship_to_province": "QC",
+    "po_number": null,
+    "line_count": 2
+  }
+}
