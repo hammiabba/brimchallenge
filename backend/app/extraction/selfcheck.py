@@ -31,7 +31,9 @@ def _fmt(d: Decimal) -> str:
 
 
 def check(bill: DraftBill, *, was_ocr: bool = False, ocr_fixed_fields: set[str] | None = None,
-          missing_fields: set[str] | None = None) -> tuple[dict[str, float], list[str]]:
+          missing_fields: set[str] | None = None,
+          penalties: dict[str, float] | None = None) -> tuple[dict[str, float], list[str]]:
+    """`penalties` lowers named fields by a fixed amount (e.g. an ambiguous date that was read, not checked)."""
     base = 0.75 if was_ocr else 0.95
     conf = {f: base for f in FIELDS}
     warnings: list[str] = []
@@ -42,6 +44,9 @@ def check(bill: DraftBill, *, was_ocr: bool = False, ocr_fixed_fields: set[str] 
     for f in ocr_fixed_fields or ():
         if f in conf:
             lower(f, 0.15)
+    for f, by in (penalties or {}).items():
+        if f in conf:
+            lower(f, by)
     for f in missing_fields or ():
         if f in conf:
             conf[f] = 0.0

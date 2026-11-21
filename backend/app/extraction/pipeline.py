@@ -41,6 +41,9 @@ from app.shared.schemas import (
 )
 
 CENT = Decimal("0.01")
+# Confidence taken off a date that was ambiguous: settled by evidence, or still a day-first guess.
+DATE_RESOLVED_PENALTY = 0.15
+DATE_AMBIGUOUS_PENALTY = 0.45
 
 
 class ExtractionIncomplete(ValueError):
@@ -154,12 +157,8 @@ def build_draft(raw: RawInvoice, source: SourceInfo, repo: ReferenceRepository,
         raise ExtractionIncomplete("document is a statement of account, not an invoice")
     if not raw.invoice_number:
         raise ExtractionIncomplete("no invoice number found on the document")
-    invoice_date = normalize.parse_date(raw.invoice_date)
-    if invoice_date is None:
+    if normalize.parse_date(raw.invoice_date) is None:
         raise ExtractionIncomplete(f"could not read the invoice date ({raw.invoice_date!r})")
-    due_date = normalize.parse_date(raw.due_date)
-    if due_date is None:
-        missing.add("due_date")
 
     # --- vendor identity, with OCR fixes on structured IDs only
     gst, w1 = normalize.fix_tax_number(raw.vendor_gst_number, "gst")
@@ -177,6 +176,17 @@ def build_draft(raw: RawInvoice, source: SourceInfo, repo: ReferenceRepository,
     vendor, vm_warnings = vendor_match.resolve(vendor, source.sender_address, repo)
     warnings += vm_warnings
     master = repo.vendor(vendor.vendor_id) if vendor.vendor_id else None
+
+    # --- dates: read together, so the due date and payment terms can settle a "03/04/2026"
+    terms_days = _terms_days(raw.payment_terms)
+    expected_terms = terms_days if terms_days is not None else _terms_days((master or {}).get("payment_terms_days"))
+    dates = normalize.resolve_dates(raw.invoice_date, raw.due_date, expected_terms, get_settings().as_of_date)
+    invoice_date, due_date = dates.invoice_date, dates.due_date
+    warnings += dates.warnings
+    penalties = {f: DATE_RESOLVED_PENALTY for f in dates.resolved}
+    penalties |= {f: DATE_AMBIGUOUS_PENALTY for f in dates.ambiguous}
+    if due_date is None:
+        missing.add("due_date")
     foreign = (master is not None and master.get("country", "CA") != "CA") or normalize.looks_foreign(
         raw.vendor_address)
 
@@ -258,14 +268,14 @@ def build_draft(raw: RawInvoice, source: SourceInfo, repo: ReferenceRepository,
     bill = DraftBill(
         source=source, vendor=vendor,
         invoice_number=raw.invoice_number.strip(), invoice_date=invoice_date, due_date=due_date,
-        payment_terms_days=_terms_days(raw.payment_terms), currency=currency,
+        payment_terms_days=terms_days, currency=currency,
         is_credit_note=raw.document_type == "credit_note" or total < 0,
         ship_to_province=ship_to, po_number=po, contract_id=contract_id,
         lines=lines, subtotal=subtotal, taxes=taxes, total=total,
         fx_rate_to_cad=fx, total_cad=(total * fx).quantize(CENT),
     )
     conf, check_warnings = selfcheck.check(bill, was_ocr=source.was_ocr, ocr_fixed_fields=ocr_fixed,
-                                           missing_fields=missing)
+                                           missing_fields=missing, penalties=penalties)
     conf["vendor"] = round(min(conf["vendor"], max(vendor.match_score, 0.3)), 2)
     return bill.model_copy(update={"field_confidence": conf,
                                    "extraction_warnings": warnings + check_warnings})
