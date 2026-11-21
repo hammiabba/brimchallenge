@@ -15,8 +15,15 @@ model from `schemas_api.py`. No business logic in routes.
 | `routes_*.py` | One router per area: auth, bills, intake jobs/submissions, payments, vendors, spend, admin, audit. |
 
 ## Status
-All endpoints exist with typed models so `/openapi.json` is complete. Auth endpoints are live; the rest return
-**501** until their service lands. The permission matrix (`tests/api/matrix.py`) lists every endpoint × role.
+All endpoints exist with typed models so `/openapi.json` is complete.
+
+- **Live:** auth; bill list and detail (scoped); approval queue; submissions list; intake items; payments list,
+  dashboard and detail; vendors list and detail; bank changes list; spend; admin reads; audit list, entity history,
+  CSV export.
+- **501 until the DB helpers land:** every write (they need `log_event()`, DB-backed RefData, bill rebuild and
+  controls-run storage) and the inbox job.
+
+The permission matrix (`tests/api/matrix.py`) lists every endpoint x role.
 
 ## Adding an endpoint
 1. Add the route with `Depends(require_role(...))` and typed request/response models.

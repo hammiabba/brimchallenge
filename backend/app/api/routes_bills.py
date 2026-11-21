@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
 
 from app.api.common import READ_ERRORS, WRITE_ERRORS, Limit, Offset
 from app.api.errors import not_implemented
@@ -27,6 +28,8 @@ from app.api.schemas_api import (
 )
 from app.auth.deps import CurrentUser, require_role
 from app.auth.roles import ALL_ROLES, AP_CLERK, CONTROLLER_ADMIN, FINANCE_MANAGER, SIGNERS
+from app.db.database import get_session
+from app.services import approvals, bills, views
 
 router = APIRouter(tags=["bills"])
 
@@ -36,13 +39,15 @@ def list_bills(user: CurrentUser = Depends(require_role(*ALL_ROLES)),
                status: Annotated[list[BillStatus] | None, Query()] = None,
                vendor_id: str | None = None, department_id: str | None = None,
                q: Annotated[str | None, Query(max_length=100)] = None,
-               limit: Limit = 50, offset: Offset = 0):
-    raise not_implemented("Bill list")
+               limit: Limit = 50, offset: Offset = 0, db: Session = Depends(get_session)):
+    return bills.list_bills(db, user, status=status, vendor_id=vendor_id, department_id=department_id, q=q,
+                            limit=limit, offset=offset)
 
 
 @router.get("/bills/{bill_id}", response_model=BillDetail, responses=READ_ERRORS)
-def get_bill(bill_id: str, user: CurrentUser = Depends(require_role(*ALL_ROLES))):
-    raise not_implemented("Bill detail")
+def get_bill(bill_id: str, user: CurrentUser = Depends(require_role(*ALL_ROLES)),
+             db: Session = Depends(get_session)):
+    return bills.bill_detail(db, user, bill_id)
 
 
 @router.patch("/bills/{bill_id}", response_model=BillDetail, responses=WRITE_ERRORS)
@@ -89,5 +94,5 @@ def void_bill(bill_id: str, body: VoidIn, user: CurrentUser = Depends(require_ro
 
 
 @router.get("/approvals/queue", response_model=list[BillSummary], responses=READ_ERRORS)
-def approval_queue(user: CurrentUser = Depends(require_role(*SIGNERS))):
-    raise not_implemented("Approval queue")
+def approval_queue(user: CurrentUser = Depends(require_role(*SIGNERS)), db: Session = Depends(get_session)):
+    return views.bill_summaries(db, approvals.queue(db, user))
