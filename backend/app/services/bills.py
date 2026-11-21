@@ -11,6 +11,7 @@ from app.api.errors import ApiError, not_found
 from app.auth.deps import CurrentUser
 from app.auth.roles import CONTROLLER_ADMIN, FINANCE_MANAGER
 from app.coding.feedback import learn_from_line
+from app.coding.requester import requester_problem
 from app.controls.duplicates import norm_invoice_no
 from app.db import models
 from app.db.audit import AuditAction
@@ -121,6 +122,8 @@ def update_header(db: Session, user: CurrentUser, bill_id: str, patch: s.BillHea
         value = changes.get(field)
         if value is not None and db.get(model, value) is None:
             raise ApiError(422, f"bill.unknown_{field}", f"{value} doesn't exist.", {"field": field})
+    if problem := requester_problem(db, changes.get("requester_user_id")):
+        raise ApiError(422, "bill.requester_not_allowed", problem, {"field": "requester_user_id"})
     if "ship_to_province" in changes and changes["ship_to_province"] not in (None, *models.PROVINCES):
         raise ApiError(422, "bill.bad_province", "ship_to_province must be a Canadian province or territory code.")
     before = {k: getattr(bill, k) for k in changes}
