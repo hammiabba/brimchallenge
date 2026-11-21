@@ -36,6 +36,7 @@ from app.db.types import to_utc, utcnow
 from app.extraction.pipeline import ExtractionOutcome, extract_outcome
 from app.intake.classifier import classify
 from app.intake.received import link_to_existing_bill
+from app.intake.review import action_for
 from app.intake.upload import ALLOWED_EXTS
 from app.services import controls_runner
 from app.services.events import record
@@ -80,7 +81,7 @@ def list_emails(db: Session, *, email_class: str | None, triaged: bool | None, l
             items.setdefault(item.email_id, []).append(item)
     out = [s.EmailOut(email_id=e.email_id, from_name=e.from_name, from_address=e.from_address, subject=e.subject,
                       received_at=e.received_at, attachments=list(e.attachments or []), email_class=e.email_class,
-                      triage_reason=e.triage_reason, triaged_at=e.triaged_at,
+                      triage_reason=e.triage_reason, triaged_at=e.triaged_at, suggested_action=action_for(e),
                       items=[s.IntakeItemOut.model_validate(i) for i in items.get(e.email_id, [])]) for e in rows]
     return s.Page[s.EmailOut](items=out, total=total, limit=limit, offset=offset)
 
