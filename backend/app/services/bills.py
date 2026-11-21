@@ -1,14 +1,23 @@
-"""Bill reads: the scoped list and the one-screen detail (header, lines and coding, taxes, latest controls run with
-flags and route, every approval decision, payments and the bill's audit history)."""
+"""Bills: the scoped list and the one-screen detail (header, lines and coding, taxes, latest controls run with
+flags and route, every approval decision, payments and the bill's audit history), edits, flag resolution,
+submit and void."""
 from __future__ import annotations
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api import schemas_api as s
+from app.api.errors import ApiError, not_found
 from app.auth.deps import CurrentUser
+from app.auth.roles import CONTROLLER_ADMIN, FINANCE_MANAGER
+from app.controls.duplicates import norm_invoice_no
 from app.db import models
-from app.services import approvals, audit, views
+from app.db.audit import AuditAction
+from app.db.bills import latest_controls_run
+from app.db.types import utcnow
+from app.services import approvals, audit, controls_runner, views
+from app.services.events import record
+from app.services.guards import check_row_version, invalid_state
 from app.services.money import cents
 from app.services.pagination import paginate
 from app.services.scope import get_bill_for, visible_bills
@@ -76,3 +85,132 @@ def bill_detail(db: Session, user: CurrentUser, bill_id: str) -> s.BillDetail:
         lines=[views.line_out(ln) for ln in lines], taxes=[views.tax_out(t) for t in taxes],
         latest_run=_latest_run_out(db, bill.bill_id), decisions=[views.decision_out(d) for d in decisions],
         payments=views.payment_summaries(db, payments), audit=audit.entity_history(db, AUDIT_ENTITY, bill.bill_id))
+
+
+# ---------------------------------------------------------------- writes
+# Each runs in the route's write session with one audit event; the route commits. Edits re-run controls so the
+# flags and route on screen always match the bill as it now stands.
+
+EDITABLE = ("needs_review", "on_hold")
+_HEADER_REFS = {"vendor_id": models.Vendor, "po_id": models.PurchaseOrder, "contract_id": models.Contract,
+                "department_id": models.Department, "requester_user_id": models.User}
+
+
+def _editable_bill(db: Session, user: CurrentUser, bill_id: str, row_version: int,
+                   allowed: tuple[str, ...] = EDITABLE) -> models.Bill:
+    bill = get_bill_for(db, user, bill_id)
+    check_row_version(bill.row_version, row_version, "bill")
+    if bill.status not in allowed:
+        raise invalid_state("bill", bill.status, allowed)
+    return bill
+
+
+def _require_app_bill(bill: models.Bill) -> None:
+    if bill.origin != "app":
+        raise ApiError(409, "bill.history_read_only", "Bills loaded from the dataset history can't be edited.")
+
+
+def update_header(db: Session, user: CurrentUser, bill_id: str, patch: s.BillHeaderPatch) -> None:
+    bill = _editable_bill(db, user, bill_id, patch.row_version)
+    _require_app_bill(bill)
+    changes = patch.model_dump(exclude_unset=True, exclude={"row_version"})
+    if not changes:
+        raise ApiError(422, "request.empty", "Nothing to change.")
+    for field, model in _HEADER_REFS.items():
+        value = changes.get(field)
+        if value is not None and db.get(model, value) is None:
+            raise ApiError(422, f"bill.unknown_{field}", f"{value} doesn't exist.", {"field": field})
+    if "ship_to_province" in changes and changes["ship_to_province"] not in (None, *models.PROVINCES):
+        raise ApiError(422, "bill.bad_province", "ship_to_province must be a Canadian province or territory code.")
+    before = {k: getattr(bill, k) for k in changes}
+    for key, value in changes.items():
+        setattr(bill, key, value)
+    if "vendor_invoice_number" in changes:
+        bill.norm_invoice_number = norm_invoice_no(changes["vendor_invoice_number"])
+    bill.updated_at = utcnow()
+    controls_runner.rerun(db, bill_id)
+    record(db, actor_user_id=user.user_id, actor_role=user.role, action=AuditAction.BILL_UPDATED,
+           entity_type=AUDIT_ENTITY, entity_id=bill_id, before=before, after=changes)
+
+
+def code_line(db: Session, user: CurrentUser, bill_id: str, line_no: int, patch: s.LineCodingPatch) -> None:
+    bill = _editable_bill(db, user, bill_id, patch.row_version)
+    _require_app_bill(bill)
+    line = db.get(models.BillLine, (bill_id, line_no))
+    if line is None:
+        raise not_found("bill_line", f"{bill_id}/{line_no}")
+    if db.get(models.GlAccount, patch.gl_account) is None:
+        raise ApiError(422, "bill.unknown_gl_account", f"GL account {patch.gl_account} doesn't exist.")
+    if db.get(models.Department, patch.department_id) is None:
+        raise ApiError(422, "bill.unknown_department_id", f"Department {patch.department_id} doesn't exist.")
+    before = {"gl_account": line.gl_account, "department_id": line.department_id,
+              "coding_status": line.coding_status}
+    accepted = (patch.gl_account, patch.department_id) == (line.suggested_gl_account, line.suggested_department_id)
+    line.gl_account, line.department_id = patch.gl_account, patch.department_id
+    line.coding_status = "accepted" if accepted else "overridden"
+    line.coded_by, line.coded_at = user.user_id, utcnow()
+    bill.updated_at = utcnow()  # bumps row_version: the bill as a whole changed
+    controls_runner.rerun(db, bill_id)
+    record(db, actor_user_id=user.user_id, actor_role=user.role, action=AuditAction.BILL_CODING_CHANGED,
+           entity_type=AUDIT_ENTITY, entity_id=bill_id, before={"line_no": line_no, **before},
+           after={"line_no": line_no, "gl_account": patch.gl_account, "department_id": patch.department_id,
+                  "coding_status": line.coding_status, "suggested_gl_account": line.suggested_gl_account})
+
+
+def resolve_flag(db: Session, user: CurrentUser, bill_id: str, flag_id: int, body: s.FlagResolveIn) -> None:
+    """Resolve (fixed) or override (accepted as is, with a reason) one open flag of the latest controls run.
+    Overriding a blocking flag needs finance or controller rights; an AP clerk can resolve anything and override
+    warnings."""
+    bill = _editable_bill(db, user, bill_id, body.row_version)
+    stored = latest_controls_run(db, bill_id)
+    flag = db.get(models.BillFlag, flag_id)
+    if flag is None or stored is None or flag.run_id != stored.run_id:
+        raise not_found("flag", str(flag_id))
+    if flag.resolution != "open":
+        raise invalid_state("flag", flag.resolution, "open")
+    if body.resolution == "overridden":
+        if not body.comment:
+            raise ApiError(422, "flag.comment_required", "Say why you're overriding this flag.")
+        if flag.severity == "block" and user.role not in (FINANCE_MANAGER, CONTROLLER_ADMIN):
+            raise ApiError(403, "flag.override_needs_finance",
+                           "Only a finance manager or the controller can override a blocking flag.")
+    flag.resolution, flag.resolved_by, flag.resolved_at = body.resolution, user.user_id, utcnow()
+    flag.resolution_comment = body.comment
+    bill.updated_at = utcnow()
+    action = AuditAction.BILL_FLAG_OVERRIDDEN if body.resolution == "overridden" else AuditAction.BILL_FLAG_RESOLVED
+    record(db, actor_user_id=user.user_id, actor_role=user.role, action=action, entity_type=AUDIT_ENTITY,
+           entity_id=bill_id, before={"flag_id": flag_id, "code": flag.code, "resolution": "open"},
+           after={"flag_id": flag_id, "code": flag.code, "severity": flag.severity, "resolution": body.resolution},
+           comment=body.comment)
+
+
+def submit(db: Session, user: CurrentUser, bill_id: str, row_version: int) -> None:
+    """needs_review / on_hold -> pending_approval. Controls run fresh first; if a blocking flag is still open the
+    whole transaction is refused (409) and nothing changes."""
+    bill = _editable_bill(db, user, bill_id, row_version)
+    _require_app_bill(bill)
+    result, _ = controls_runner.rerun(db, bill_id)
+    blocking = controls_runner.open_blocking_codes(db, bill_id)
+    if blocking:
+        raise ApiError(409, "bill.blocked", "Resolve or override the blocking flags before submitting.",
+                       {"open_blocking_flags": blocking})
+    if not result.route:
+        raise ApiError(409, "bill.no_route", "Controls produced no approval route for this bill.")
+    before = bill.status
+    bill.status, bill.updated_at = "pending_approval", utcnow()
+    record(db, actor_user_id=user.user_id, actor_role=user.role, action=AuditAction.BILL_SUBMITTED,
+           entity_type=AUDIT_ENTITY, entity_id=bill_id, before={"status": before},
+           after={"status": "pending_approval", "route": [{"step_no": st.step_no, "role": st.role,
+                                                           "user_id": st.user_id} for st in result.route]})
+
+
+def void(db: Session, user: CurrentUser, bill_id: str, body: s.VoidIn) -> None:
+    """Void instead of delete. AP can void bills still in review; the controller can also void bills awaiting or
+    past approval, as long as no payment is scheduled."""
+    allowed = EDITABLE + (("pending_approval", "approved") if user.role == CONTROLLER_ADMIN else ())
+    bill = _editable_bill(db, user, bill_id, body.row_version, allowed)
+    before = bill.status
+    bill.status, bill.updated_at = "void", utcnow()
+    record(db, actor_user_id=user.user_id, actor_role=user.role, action=AuditAction.BILL_VOIDED,
+           entity_type=AUDIT_ENTITY, entity_id=bill_id, before={"status": before}, after={"status": "void"},
+           comment=body.comment)
