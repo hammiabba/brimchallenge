@@ -109,7 +109,7 @@ CASES: list[Case] = [
         "user_id": "U007", "delegate_user_id": "U003", "starts_on": "2026-11-10"}}),
     # audit
     Case("GET", "/audit", "X Au", ok=200),
-    Case("GET", "/audit/invoice/" + B, "X Au", ok=200),
+    Case("GET", "/audit/bill/" + B, "X Au", ok=200),
     Case("GET", "/audit/export", "X Au", ok=200),
     # intake lane's router, guarded at mount time in app/main.py
     Case("GET", "/intake/drafts", "C F X", ok=200),

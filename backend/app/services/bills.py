@@ -8,13 +8,13 @@ from sqlalchemy.orm import Session
 from app.api import schemas_api as s
 from app.auth.deps import CurrentUser
 from app.db import models
-from app.services import approvals, views
+from app.services import approvals, audit, views
 from app.services.money import cents
 from app.services.pagination import paginate
 from app.services.scope import get_bill_for, visible_bills
 
-# Bills are "invoice" entities in the audit log (app.shared.schemas.AuditEvent.entity_type).
-AUDIT_ENTITY = "invoice"
+# Entity type for bills in the audit log (the DB layer's convention: entity_type="bill").
+AUDIT_ENTITY = "bill"
 
 
 def list_bills(db: Session, user: CurrentUser, *, status: list[str] | None, vendor_id: str | None,
@@ -67,9 +67,6 @@ def bill_detail(db: Session, user: CurrentUser, bill_id: str) -> s.BillDetail:
                            .order_by(models.ApprovalDecision.acted_at, models.ApprovalDecision.step_no))
     payments = list(db.scalars(select(models.Payment).where(models.Payment.bill_id == bill.bill_id)
                                .order_by(models.Payment.scheduled_date)))
-    audit = db.scalars(select(models.AuditEvent).where(models.AuditEvent.entity_type == AUDIT_ENTITY,
-                                                       models.AuditEvent.entity_id == bill.bill_id)
-                       .order_by(models.AuditEvent.seq))
     return s.BillDetail(
         **summary.model_dump(),
         subtotal=cents(bill.subtotal_cents), fx_rate_to_cad=bill.fx_rate_to_cad, fx_rate_date=bill.fx_rate_date,
@@ -78,4 +75,4 @@ def bill_detail(db: Session, user: CurrentUser, bill_id: str) -> s.BillDetail:
         created_by=bill.created_by, updated_at=bill.updated_at, extracted=views.extracted_for(user.role, bill),
         lines=[views.line_out(ln) for ln in lines], taxes=[views.tax_out(t) for t in taxes],
         latest_run=_latest_run_out(db, bill.bill_id), decisions=[views.decision_out(d) for d in decisions],
-        payments=views.payment_summaries(db, payments), audit=[views.audit_out(e) for e in audit])
+        payments=views.payment_summaries(db, payments), audit=audit.entity_history(db, AUDIT_ENTITY, bill.bill_id))

@@ -76,13 +76,6 @@ def payment_summaries(db: Session, payments: list[models.Payment]) -> list[s.Pay
     return [payment_summary(p, names.get(p.vendor_id)) for p in payments]
 
 
-def audit_out(e: models.AuditEvent) -> s.AuditEventOut:
-    return s.AuditEventOut(seq=e.seq, event_id=e.event_id, at=e.at, actor_user_id=e.actor_user_id,
-                           actor_role=e.actor_role, on_behalf_of=e.on_behalf_of, action=e.action,
-                           entity_type=e.entity_type, entity_id=e.entity_id, before=e.before_json,
-                           after=e.after_json, comment=e.comment, request_id=e.request_id)
-
-
 def bank_account_out(role: str, acct: models.VendorBankAccount | None) -> s.BankAccountOut | None:
     if acct is None:
         return None

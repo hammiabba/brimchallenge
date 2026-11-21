@@ -5,14 +5,14 @@ from __future__ import annotations
 from datetime import timedelta
 from decimal import Decimal
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api import schemas_api as s
 from app.api.errors import not_found
 from app.config import get_settings
 from app.db import models
-from app.services import views
+from app.services import audit, views
 from app.services.money import cents
 from app.services.pagination import paginate
 
@@ -73,14 +73,11 @@ def payment_detail(db: Session, role: str, payment_id: str) -> s.PaymentDetail:
                        .order_by(models.BillLine.line_no))
     decisions = db.scalars(select(models.ApprovalDecision).where(models.ApprovalDecision.bill_id == bill.bill_id)
                            .order_by(models.ApprovalDecision.acted_at))
-    audit = db.scalars(select(models.AuditEvent).where(or_(
-        and_(models.AuditEvent.entity_type == "payment", models.AuditEvent.entity_id == p.payment_id),
-        and_(models.AuditEvent.entity_type == "invoice", models.AuditEvent.entity_id == bill.bill_id),
-    )).order_by(models.AuditEvent.seq))
+    events = audit.entity_history(db, "payment", p.payment_id) + audit.entity_history(db, "bill", bill.bill_id)
     summary = views.payment_summary(p, names.get(p.vendor_id))
     return s.PaymentDetail(
         **summary.model_dump(), fx_rate_to_cad=p.fx_rate_to_cad, fx_rate_date=p.fx_rate_date,
         discount_taken=cents(p.discount_taken_cents),
         bank_account=views.bank_account_out(role, _account_paid_to(db, p)),
         bill=views.bill_summary(bill, names.get(bill.vendor_id)), lines=[views.line_out(ln) for ln in lines],
-        decisions=[views.decision_out(d) for d in decisions], audit=[views.audit_out(e) for e in audit])
+        decisions=[views.decision_out(d) for d in decisions], audit=sorted(events, key=lambda e: e.seq))

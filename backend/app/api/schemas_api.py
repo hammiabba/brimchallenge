@@ -235,6 +235,11 @@ class AuditEventOut(ApiModel):
     request_id: str | None
 
 
+class AuditPage(ApiModel):
+    items: list[AuditEventOut]
+    next_after_seq: int | None = Field(None, description="Pass as after_seq to get the next page; None at the end")
+
+
 class BillDetail(BillSummary):
     subtotal: Money
     fx_rate_to_cad: DecimalText

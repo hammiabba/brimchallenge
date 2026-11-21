@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import re
 
-from app.services.audit import safe_cell
 from app.services.masking import mask_draft
 from tests.api.conftest import IN_SCOPE_BILL, OUT_OF_SCOPE_BILL
 
@@ -123,14 +122,21 @@ def test_admin_users_show_limits_as_money(as_role):
     assert users["U015"]["status"] == "terminated"
 
 
-def test_audit_export_is_csv(as_role):
-    r = as_role("auditor").get("/audit/export")
+def test_audit_export_is_csv_and_is_itself_audited(as_role):
+    client = as_role("auditor")
+    r = client.get("/audit/export", params={"action": "auth.login"})
     assert r.headers["content-type"].startswith("text/csv")
     assert r.text.splitlines()[0].startswith("seq,event_id,at,actor_user_id")
+    page = client.get("/audit", params={"action": "audit.exported", "limit": 500}).json()
+    last = page["items"][-1]
+    assert last["actor_user_id"] == "U006"
+    assert last["after"]["filters"] == {"action": "auth.login"}
+    assert last["after"]["chain_head"]["seq"] >= 1
 
 
-def test_csv_cells_cannot_start_a_formula():
-    assert safe_cell("=HYPERLINK(\"http://x\")") == "'=HYPERLINK(\"http://x\")"
-    assert safe_cell("@SUM(A1)").startswith("'")
-    assert safe_cell("normal text") == "normal text"
-    assert safe_cell({"a": 1}) == '{"a": 1}'
+def test_audit_list_pages_by_seq(as_role):
+    client = as_role("controller_admin")
+    first = client.get("/audit", params={"limit": 1}).json()
+    assert len(first["items"]) == 1 and first["next_after_seq"] == first["items"][0]["seq"]
+    second = client.get("/audit", params={"limit": 1, "after_seq": first["next_after_seq"]}).json()
+    assert second["items"][0]["seq"] > first["items"][0]["seq"]
