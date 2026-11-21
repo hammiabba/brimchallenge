@@ -11,7 +11,7 @@ from app.api.errors import ApiError, not_found
 from app.auth.deps import CurrentUser
 from app.auth.roles import CONTROLLER_ADMIN, FINANCE_MANAGER
 from app.coding.feedback import learn_from_line
-from app.coding.requester import requester_problem
+from app.coding.requester import recode_for_requester, requester_problem
 from app.controls.duplicates import norm_invoice_no
 from app.db import models
 from app.db.audit import AuditAction
@@ -131,6 +131,7 @@ def update_header(db: Session, user: CurrentUser, bill_id: str, patch: s.BillHea
         setattr(bill, key, value)
     if "vendor_invoice_number" in changes:
         bill.norm_invoice_number = norm_invoice_no(changes["vendor_invoice_number"])
+    recode_for_requester(db, bill, changes)
     bill.updated_at = utcnow()
     controls_runner.rerun(db, bill_id)
     record(db, actor_user_id=user.user_id, actor_role=user.role, action=AuditAction.BILL_UPDATED,
