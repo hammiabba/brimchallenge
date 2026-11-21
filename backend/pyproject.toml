@@ -37,7 +37,11 @@ include = ["app*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# Plain `pytest` stays offline; `pytest -m live` overrides the -m below.
+addopts = "-q -m 'not live'"
+markers = [
+    "live: calls the real LLM API; opt-in via RUN_LIVE_LLM=1 and ANTHROPIC_API_KEY",
+]
 
 [tool.ruff]
 line-length = 120
