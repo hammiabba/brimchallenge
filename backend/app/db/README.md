@@ -17,6 +17,7 @@ Importing anything here never connects to or creates a database.
 | `seed_mapping.py` | Pure functions mapping one dataset row (all strings) to table columns, with strict money / boolean / date parsers; unit-tested without a database. |
 | `bills.py` | Bill persistence (no commits, no audit events; the API services log): `next_bill_id`, `create_bill_from_draft` (DraftBill -> app bill, lines, taxes; bad extracted references stored as NULL with warnings), `load_draft_bill` (current DraftBill: document facts from `draft_json`, editable state from the columns and tables), `save_controls_run` (versioned runs, flags, route steps; overridden / resolved flags carry over when unchanged), `latest_controls_run`, `route_for_bill` (the `route` for `can_approve`) and `approver_ids_for_bill` (the `approver_ids` for `can_release`). Writers need a write session. |
 | `refdata_db.py` | DB-backed RefData for `app.controls`: `rows_as_csv(session, exclude_bill_id=None)` renders the database as the CSV rows controls' `build_refdata` reads (one list per stem in `REFDATA_FILES`), and `refdata_from_db(session, exclude_bill_id=None, as_of=None)` hands them to `build_refdata`. Nothing is re-interpreted here. Includes app bills (not `void`) and verified app bank changes; policies come from the table, so admin edits apply. Read-only. **When running controls on a stored bill, pass its own `exclude_bill_id`**, or it is reported as a duplicate of itself. |
+| `backfill.py` | `backfill_history_controls(session, only_missing=True) -> BackfillReport` and the `python -m app.db.backfill` CLI: one point-in-time controls run per history bill, via `controls.history.replay_bill` and `bills.save_controls_run`. See "Back-fill". |
 | `audit.py` | The audit log: `log_event` (write sessions only), `verify_chain`, `chain_head`, `list_events`, `iter_events_csv`, plus `to_audit_json`, `redact`, `mask_digit_runs` and the `AuditAction` names. See "Audit log". |
 | `migrations/` | Alembic `env.py`, the template for new revisions, and `versions/` (`0001_baseline.py`, `0002_audit_chain_unique.py`). |
 
@@ -113,6 +114,31 @@ They print on stdout after the per-table counts (rows / inserted / skipped) and 
   account is already the new one: the change was applied without verification, which controls must flag.
 
 Exit codes: 0 seeded, 1 pre-flight failed (nothing written), 2 `--reset` refused.
+
+## Back-fill
+
+```bash
+cd backend && python -m app.db.seed --reset && python -m app.db.backfill   # [--database-url URL] [--all]
+```
+
+The seed loads the 426 history bills without controls runs. `backfill.py` adds one run per history bill (version 1,
+with its flags and route steps) so the UI shows them like app bills. It never changes a bill's status, approval
+decisions or payments.
+
+- **Point in time.** Each bill is replayed with Hamid's `controls.history.replay_bill`, not re-implemented: it sees only
+  invoices before it (by invoice date, then id), bank changes made before its invoice date, user absences already
+  started, and its received date as "today". So a duplicate is flagged on the later invoice only, and no history bill
+  carries `BANK_CHANGE_UNVERIFIED` (BC-009 was requested after the last V004 invoice). App bills are left out of the
+  replay's RefData: a history bill couldn't have known about them.
+- **Idempotent.** By default bills that already have a run are skipped, so a second run replays 0. `--all`
+  (`only_missing=False`) replays every history bill and is refused once any has a run, since it would add version-2
+  runs next to the first.
+- **Report** (`BackfillReport`, printed by the CLI): replayed / skipped, flags by severity, the 10 most common codes,
+  the bills carrying `DUPLICATE_EXACT`, `ALREADY_PAID_BY_CARD`, `BANK_CHANGE_UNVERIFIED` and `POSSIBLE_SPLIT`, and
+  `route_mismatches`: bills whose recorded approvers don't include every user on the replayed route (rejected bills
+  aren't compared). Report only; nothing is changed.
+- **Audit.** One `controls.backfilled` event (actor and role `system`, entity `system` / `history`, counts in `after`)
+  per call that replayed something. The function never commits; the CLI commits once at the end.
 
 ## Audit log
 
@@ -215,3 +241,5 @@ session.commit()  # the caller commits: the change and its event land together, 
   being signed, `approval_complete`, the CAD amount the route was built for (a split's combined amount), and the
   flags still blocking (stored flags whose resolution is open).
 - The bill and payment state machines.
+- Re-running controls on history bills after a controls change: the back-fill only fills in missing runs. Replaying all
+  of them again (new versions) needs a decision on whether history should be judged by today's rules.
