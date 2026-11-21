@@ -17,6 +17,7 @@ from app.db import models
 from app.db.audit import AuditAction
 from app.db.bills import latest_controls_run
 from app.db.types import utcnow
+from app.extraction.recheck import recheck_bill
 from app.services import approvals, audit, controls_runner, views
 from app.services.events import record
 from app.services.guards import check_row_version, invalid_state
@@ -133,6 +134,7 @@ def update_header(db: Session, user: CurrentUser, bill_id: str, patch: s.BillHea
         bill.norm_invoice_number = norm_invoice_no(changes["vendor_invoice_number"])
     recode_for_requester(db, bill, changes)
     bill.updated_at = utcnow()
+    recheck_bill(db, bill, changes)
     controls_runner.rerun(db, bill_id)
     record(db, actor_user_id=user.user_id, actor_role=user.role, action=AuditAction.BILL_UPDATED,
            entity_type=AUDIT_ENTITY, entity_id=bill_id, before=before, after=changes)
