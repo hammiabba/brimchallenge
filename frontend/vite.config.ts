@@ -29,6 +29,8 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     // A time zone west of UTC, so a date-only string parsed as UTC midnight would show the previous day and fail.
     env: { TZ: 'America/Toronto' },
-    css: false,
+    // Process only the CSS under src/styles/, so src/design.test.ts can read its text (?raw). Everything else stays
+    // unprocessed; components don't import CSS (main.tsx does).
+    css: { include: [/\/src\/styles\//] },
   },
 })
