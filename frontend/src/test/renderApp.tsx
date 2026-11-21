@@ -1,9 +1,10 @@
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 
 import { App } from '../App'
 import { createQueryClient } from '../api/queryClient'
 import { AppProviders } from '../AppProviders'
+import { LocationProbe } from './LocationProbe'
 
 /** Renders the whole app at `path` with a fresh QueryClient, as main.tsx does but with an in-memory router. */
 export function renderApp(path = '/') {
@@ -12,8 +13,14 @@ export function renderApp(path = '/') {
     <MemoryRouter initialEntries={[path]}>
       <AppProviders queryClient={queryClient} env="test">
         <App />
+        <LocationProbe />
       </AppProviders>
     </MemoryRouter>,
   )
   return { ...result, queryClient }
+}
+
+/** The current in-app location ("/bills?status=paid"), as LocationProbe reports it. */
+export function currentLocation(): string {
+  return screen.getByTestId('location').textContent ?? ''
 }

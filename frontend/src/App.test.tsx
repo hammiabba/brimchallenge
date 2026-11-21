@@ -56,9 +56,10 @@ describe('signed out', () => {
   it('signs in and returns to the page first asked for, with that role\'s sidebar', async () => {
     // What happens after "Sign in", in order: POST /auth/login answers with the user (no /auth/me refetch: the
     // response is written straight into the cache), the router goes back to /bills inside the shell, and only then
-    // does the header ask GET /reference/departments for the department name. Each step is awaited on its own
-    // signal. The login and departments answers are deliberately late, as on a loaded machine: the header first
-    // shows the bare department id, so a check that doesn't wait for the department name fails here every time.
+    // do the header and the bills page ask for their data (GET /reference/departments for the department name, once
+    // for both). Each step is awaited on its own signal. The login and departments answers are deliberately late, as
+    // on a loaded machine: the header first shows the bare department id, so a check that doesn't wait for the
+    // department name fails here every time.
     const fake = installFakeApi({
       'GET /auth/me': SIGNED_OUT,
       'GET /auth/users': { body: PICKER_USERS },
@@ -84,7 +85,9 @@ describe('signed out', () => {
     expect(sidebarLabels()).toEqual(navItemsFor('ap_clerk').map((item) => item.label))
     // 5. The header shows the department name once /reference/departments answers.
     expect(await screen.findByText('AP Specialist, Finance (D02)')).toBeInTheDocument()
-    expect(fake.calls).toEqual(['GET /auth/me', 'GET /auth/users', 'POST /auth/login', 'GET /reference/departments'])
+    expect(fake.calls.filter((call) => call.includes('/auth/'))).toEqual(['GET /auth/me', 'GET /auth/users', 'POST /auth/login'])
+    expect(fake.calls.filter((call) => call === 'GET /reference/departments')).toHaveLength(1)
+    expect(fake.calls.indexOf('GET /reference/departments')).toBeGreaterThan(fake.calls.indexOf('POST /auth/login'))
   })
 
   it('shows a refused sign-in on the form, with the request id', async () => {
@@ -125,15 +128,31 @@ describe('signed in', () => {
     })
     renderApp('/')
 
-    expect(await screen.findByText('You are acting as a delegate')).toBeInTheDocument()
-    expect(screen.getByText('Sam Rivera (U012), from Oct 20, 2026, no end date')).toBeInTheDocument()
+    expect(await screen.findByText('Acting as delegate for Sam Rivera (U012) since Oct 20, 2026')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'About acting as a delegate' })).toBeInTheDocument()
+  })
+
+  it('lists several delegations on the same line', async () => {
+    installFakeApi({
+      'GET /auth/me': { body: makeMe({
+        user_id: 'U003', full_name: 'Priya Natarajan', role: 'finance_manager',
+        acting_for: [
+          { user_id: 'U012', full_name: 'Sam Rivera', starts_on: '2026-10-20', ends_on: null },
+          { user_id: 'U001', full_name: 'Morgan Lee', starts_on: '2026-11-01', ends_on: '2026-11-15' },
+        ],
+      }) },
+    })
+    renderApp('/')
+
+    expect(await screen.findByText('Acting as delegate for Sam Rivera (U012) since Oct 20, 2026, '
+      + 'Morgan Lee (U001) from Nov 1, 2026 to Nov 15, 2026')).toBeInTheDocument()
   })
 
   it('has no delegate banner otherwise', async () => {
     installFakeApi({ 'GET /auth/me': { body: makeMe() } })
     renderApp('/')
     await screen.findByRole('heading', { name: 'Inbox' })
-    expect(screen.queryByText('You are acting as a delegate')).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Delegation' })).not.toBeInTheDocument()
   })
 
   it('notes when a screen is not in the role\'s sidebar', async () => {

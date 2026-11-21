@@ -23,6 +23,8 @@ const RULES: Array<{ rule: string; pattern: RegExp }> = [
     rule: 'no buzzwords',
     pattern: new RegExp(['\\b(seam', 'less|next-', 'gen|reima', 'gine|effort', 'less|power', 'ful|ai-pow', 'ered)\\b'].join(''), 'i'),
   },
+  // Server text (vendor names, messages, comments) is rendered as plain text, never as HTML.
+  { rule: 'no raw HTML injection', pattern: new RegExp(['dangerously', 'SetInnerHTML|inner', 'HTML\\s*='].join('')) },
   { rule: 'no uppercase text transforms', pattern: new RegExp(['text-transform:\\s*upper', 'case|tt="upper', 'case"'].join(''), 'i') },
 ]
 
