@@ -1,6 +1,6 @@
 # db/
 
-**Owner:** DB team. **Status:** schema, baseline migration and seed done; adapters and the audit helper come next.
+**Owner:** DB team. **Status:** schema, baseline migration, seed and audit log done; DB adapters come next.
 
 The app database: SQLAlchemy 2.0 models, engine and session setup, value helpers, and Alembic migrations.
 Importing anything here never connects to or creates a database.
