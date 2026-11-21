@@ -151,6 +151,21 @@ def as_write_engine(engine: Engine) -> Engine:
     return engine.execution_options(**WRITE_EXECUTION_OPTIONS)
 
 
+def require_write_session(session: Session, caller: str = "this operation") -> None:
+    """On SQLite, raise RuntimeError unless `session` is a write session (its connection begins with BEGIN IMMEDIATE).
+
+    Writers call this first so a read session can't write without the write lock. Fetching the connection starts the
+    session's transaction if it hasn't started yet. Other databases are not checked. `caller` names the function in
+    the error: "<caller> requires a write session (get_write_session)". (app.db.audit.log_event has its own copy of
+    this check; folding it into this helper is a later cleanup.)
+    """
+    connection = session.connection()
+    if connection.dialect.name != "sqlite":
+        return
+    if connection.get_execution_options().get(SQLITE_BEGIN_OPTION) != "IMMEDIATE":
+        raise RuntimeError(f"{caller} requires a write session (get_write_session)")
+
+
 @lru_cache(maxsize=1)
 def get_engine() -> Engine:
     """The process-wide engine for the configured database, created on first call."""
