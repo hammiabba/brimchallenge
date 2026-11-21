@@ -1125,6 +1125,11 @@ export interface components {
             decisions: components["schemas"]["DecisionOut"][];
             /** Department Id */
             department_id: string | null;
+            /**
+             * Department Source
+             * @description Where department_id came from. 'coding' means suggested from the line coding and not yet confirmed by a person; editing the department makes it 'user'.
+             */
+            department_source?: ("invoice" | "submitter" | "coding" | "user" | "history") | null;
             /** Due Date */
             due_date: string | null;
             /**

@@ -3,6 +3,7 @@ import { Badge } from '@mantine/core'
 import type {
   BankChangeStatus,
   BillStatus,
+  FlagResolution,
   PaymentStatus,
   Role,
   Severity,
@@ -30,8 +31,9 @@ type StatusBadgeProps =
   | { kind: 'vendor'; status: VendorStatus }
   | { kind: 'bankChange'; status: BankChangeStatus }
   | { kind: 'user'; status: UserStatus }
+  | { kind: 'flag'; status: FlagResolution }
 
-/** The status of a bill, payment, vendor, bank change or user, with its label and tone from src/ui/statusStyles.ts. */
+/** The status of a bill, payment, vendor, bank change, user or flag resolution, with its label and tone from src/ui/statusStyles.ts. */
 export function StatusBadge(props: StatusBadgeProps) {
   const table = STATUS_STYLES[props.kind] as Record<string, { label: string; tone: keyof typeof STATUS_TONES }>
   const style = table[props.status]
@@ -42,6 +44,12 @@ export function StatusBadge(props: StatusBadgeProps) {
 /** A flag's severity: solid red for block, solid amber for warn, a slate tint for info. */
 export function SeverityBadge({ severity }: { severity: Severity }) {
   return <ToneBadge tone={SEVERITY_STYLES[severity]}>{SEVERITY_LABELS[severity]}</ToneBadge>
+}
+
+/** A count of open flags of one severity ("2 block"), in that severity's colours; nothing for zero. */
+export function SeverityCountBadge({ severity, count }: { severity: Severity; count: number }) {
+  if (count <= 0) return null
+  return <ToneBadge tone={SEVERITY_STYLES[severity]}>{`${count} ${severity}`}</ToneBadge>
 }
 
 /** The signed-in user's role, as in the header. */

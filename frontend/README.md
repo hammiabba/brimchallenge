@@ -77,16 +77,22 @@ src/
   api/      client, ApiError, generated schema, notifications, query client defaults, reference-data hooks
   auth/     AuthProvider (GET /auth/me), LoginPage, RequireAuth, role labels
   shell/    AppLayout (header, sidebar, delegate banner), navigation.ts, placeholder and 404 pages
-  lib/      money.ts, dates.ts (with tests)
+  bills/    bills list and review queue (filters in the URL), the read-only bill detail, evidence renderers
+  lib/      money.ts, dates.ts, decimal.ts (with tests)
   ui/       shared pieces: badges, Id / MoneyText / DateText, Icon, contrast check
   styles/   self-hosted fonts and the few global CSS rules
-  test/     test setup, fake API, render helper
+  test/     test setup, fake API, fixtures, render helper
   theme.ts  colours (Brim palette), type scale and Mantine component defaults
   config.ts APP_NAME
 ```
 
 The sidebar for each role is one config file, `src/shell/navigation.ts`. To add a screen, add an item there, list it
-under the roles that use it, and replace its placeholder route in `App.tsx`.
+under the roles that use it, and add its lazy-loaded component to `SCREENS` in `App.tsx` (screens load as their own
+bundle chunks on first visit).
+
+Built so far: the bills list (`/bills`) and the AP review queue (`/review`), with filters kept in the URL
+(`?status=needs_review&vendor=V011&department=D01&q=000804&page=2`, exactly what `GET /bills` supports), and the
+read-only bill detail (`/bills/:billId`). No write actions yet: `allowed_actions` is ignored until the action chunks.
 
 ## Design
 

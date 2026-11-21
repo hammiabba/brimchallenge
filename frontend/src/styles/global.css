@@ -98,3 +98,61 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------------------------------------------------------------- flag highlights (bill detail) */
+
+/* A part of the invoice a flag points at. Highlighted while the flag is hovered, focused or pinned: the primary
+   tint with a 2px Blumine outline (not Sand, which marks edits and selection). */
+.app-flag-target {
+  border-radius: 4px;
+  transition: background-color 150ms ease, outline-color 150ms ease;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.app-flag-target[data-highlighted] {
+  background-color: var(--app-primary-tint);
+  outline-color: var(--mantine-primary-color-filled);
+}
+
+/* A value intake read with low confidence (below 80%): an amber underline, with the percentage in a tooltip. */
+.app-low-confidence {
+  text-decoration: underline;
+  text-decoration-color: var(--app-warn);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+/* ---------------------------------------------------------------- approval route timeline */
+
+/* A vertical timeline: an ordered list with a status icon on a thin 1px line. */
+.app-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.app-timeline-item {
+  position: relative;
+  padding: 0 0 16px 28px;
+}
+
+.app-timeline-item::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 22px;
+  bottom: 2px;
+  width: 1px;
+  background-color: var(--app-border);
+}
+
+.app-timeline-item:last-child::before {
+  display: none;
+}
+
+.app-timeline-bullet {
+  position: absolute;
+  left: 0;
+  top: 1px;
+}

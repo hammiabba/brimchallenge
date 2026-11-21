@@ -30,20 +30,22 @@ function toResponse(reply: FakeReply): Response {
 
 /**
  * Installs the fake. `routes` can be changed after installing (the object is read on every call). Returns the
- * routes object and the list of "METHOD /path" keys called, in order.
+ * routes object, the list of "METHOD /path" keys called, in order, and the full URLs requested (for query strings).
  */
 export function installFakeApi(routes: Record<string, FakeRoute>) {
   const calls: string[] = []
+  const urls: URL[] = []
   vi.stubGlobal('fetch', async (input: Request | string | URL, init?: RequestInit) => {
     const request = input instanceof Request ? input : new Request(input, init)
     const url = new URL(request.url)
     const key = `${request.method} ${url.pathname.replace(/^\/api/, '')}`
     calls.push(key)
+    urls.push(url)
     const route = routes[key]
     if (route === undefined) return toResponse({ status: 404, body: envelope('http.404', 'Not Found') })
     return toResponse(typeof route === 'function' ? await route(request) : route)
   })
-  return { routes, calls }
+  return { routes, calls, urls }
 }
 
 /** A /auth/me answer for a given role, with sensible defaults. */
