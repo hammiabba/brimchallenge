@@ -21,12 +21,13 @@ Reference data is read from the repo dataset (`get_settings().dataset_dir / "dat
 | File | What it does |
 | --- | --- |
 | `engine.py` | `run_controls(bill, batch) -> ControlsResult`: the one call the backend needs |
-| `refdata.py` | Loads the CSVs into one `RefData` object, plus `bill_from_history`. Swap this for DB reads later; nothing else changes. |
+| `refdata.py` | Loads the CSVs into one `RefData` object, plus `bill_from_history` and `history_taxes` (also used by the DB seed). Swap this for DB reads later; nothing else changes. |
 | `validate.py` | `validate(bill, ref) -> [Flag]`: vendor, tax, arithmetic, contract, PO, FX, dates, credit notes |
 | `duplicates.py` | `find_duplicates(bill, ref, batch) -> [DuplicateMatch]`, `duplicate_flags(...)`, `find_split(bill, ref, batch)` |
 | `approvals.py` | `route(...) -> [ApprovalStep]`, `can_approve(...)` / `can_release(...) -> PermissionDecision` |
 | `incoming.py` | `run_batch(items)` / `render_report(...)`: controls on the extracted incoming batch as one batch, problem bills first (used by `scripts/run_incoming.py`) |
 | `history.py` | `replay(ref)`: point-in-time replay of the history, plus approvals/payments checks (used by `scripts/replay_history.py`) |
+| `flag_help.py` | `help_for(code)` / `FLAG_HELP`: short title and one help sentence for every flag code, for the UI |
 | `permissions.py` | Re-exports `can_approve` / `can_release` from `approvals.py` (the API guide refers to `controls.permissions`) |
 
 ## How the pieces fit

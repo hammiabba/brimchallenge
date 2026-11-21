@@ -170,7 +170,7 @@ def default_refdata() -> RefData:
     return load_refdata()
 
 
-def _history_taxes(ref: RefData, inv: dict, lines: list[dict]) -> list[TaxLine]:
+def history_taxes(ref: RefData, inv: dict, lines: list[dict]) -> list[TaxLine]:
     """History stores tax as two amounts; the line tax codes say which code each amount is."""
     out = []
     for amount, codes, fallback in (
@@ -184,6 +184,9 @@ def _history_taxes(ref: RefData, inv: dict, lines: list[dict]) -> list[TaxLine]:
         code = next((c for c in codes if c in FEDERAL_TAX | PROVINCIAL_TAX), fallback)
         out.append(TaxLine(code=TaxCode(code), rate=Decimal(ref.tax_codes[code]["rate"]), amount=amount))
     return out
+
+
+_history_taxes = history_taxes  # old private name, kept so existing imports don't break
 
 
 def bill_from_history(ref: RefData, invoice_id: str) -> DraftBill:
@@ -231,7 +234,7 @@ def bill_from_history(ref: RefData, invoice_id: str) -> DraftBill:
             for l in rows
         ],
         subtotal=money(i["subtotal"]),
-        taxes=_history_taxes(ref, i, rows),
+        taxes=history_taxes(ref, i, rows),
         total=money(i["total"]),
         fx_rate_to_cad=money(i["fx_rate_to_cad"]) or Decimal("1"),
         total_cad=money(i["total_cad"]),

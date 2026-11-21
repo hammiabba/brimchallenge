@@ -22,7 +22,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app.controls.duplicates import norm_invoice_no  # the exact normalization controls uses (public)
-from app.controls.refdata import RefData, _history_taxes  # private: ask Hamid to make _history_taxes public
+from app.controls.refdata import RefData, history_taxes
 from app.db.types import dec_to_text, to_cents, to_utc
 
 # Columns go into the database as plain dicts keyed by column name.
@@ -523,7 +523,7 @@ def map_bill_taxes(invoice: Mapping[str, str], lines: list[Mapping[str, str]], r
                    violations: list[Violation]) -> list[Row]:
     """Split an invoice's gst_hst_amount / pst_qst_amount into bill_taxes rows.
 
-    The tax code of each amount is chosen by controls' own history builder (refdata._history_taxes), so the
+    The tax code of each amount is chosen by controls' own history builder (refdata.history_taxes), so the
     database and the controls engine always agree. Zero amounts produce no row. The rows must add up to
     gst_hst_amount + pst_qst_amount exactly, otherwise a violation is recorded.
     """
@@ -534,7 +534,7 @@ def map_bill_taxes(invoice: Mapping[str, str], lines: list[Mapping[str, str]], r
     if len(violations) > before:
         return []  # an amount was unreadable (e.g. 3 decimals); already reported, nothing safe to split
     try:
-        tax_lines = _history_taxes(ref, dict(invoice), [dict(line) for line in lines])
+        tax_lines = history_taxes(ref, dict(invoice), [dict(line) for line in lines])
     except (KeyError, ValueError) as exc:
         violations.append(Violation("tax_split", "bill_taxes", bill_id, f"could not build tax lines: {exc!r}"))
         return []
