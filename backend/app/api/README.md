@@ -15,16 +15,19 @@ model from `schemas_api.py`. No business logic in routes.
 | `routes_*.py` | One router per area: auth, bills, intake jobs/submissions, payments, vendors, spend, admin, audit. |
 
 ## Status
-All endpoints exist with typed models so `/openapi.json` is complete.
+Every endpoint is live. Writes run in one write session (`get_write_session`) with exactly one audit event through
+`app/services/events.record`, then commit. Controls always run through `app/services/controls_runner.py`
+(flush, RefData from the database with the bill's own `exclude_bill_id`, store the run).
 
-- **Live:** auth; bill list and detail (scoped); approval queue; submissions list; intake items; payments list,
-  dashboard and detail; vendors list and detail; bank changes list; spend; admin reads; audit list, entity history,
-  CSV export.
-- **Live writes:** vendor onboarding, approval and hold; bank change request, verification and rejection;
-  self-service delegation; admin edits to users, policies and absences. Each runs in one write session
-  (`get_write_session`) with exactly one audit event through `app/services/events.record`, then commits.
-- **501 until DB-backed RefData lands:** bill edits, flags, submit, approve/reject, payments and the inbox job
-  (they call controls, which must read the database, not the dataset CSVs).
+- Bills: edit header and line coding (controls re-run), resolve/override flags (blocking overrides need finance),
+  submit (refused with 409 while a blocking flag is open), void.
+- Approvals: approve / reject via `controls.can_approve` on the stored route (delegation recorded as
+  `on_behalf_of`, repeat signing refused), assign an UNASSIGNED step.
+- Payments: schedule (vendor active, no pending bank change, records the bank account version), release with a
+  required `Idempotency-Key` via `controls.can_release` (approvers from `approval_decisions`, only open stored
+  flags; a bank change after scheduling blocks release), cancel.
+- Intake: `POST /submissions` and `POST /intake/inbox/jobs` return 202 and work in a background task; poll
+  `GET /submissions` or `GET /intake/inbox/jobs/{id}`. Results are real bills with a controls run.
 
 The permission matrix (`tests/api/matrix.py`) lists every endpoint x role.
 
