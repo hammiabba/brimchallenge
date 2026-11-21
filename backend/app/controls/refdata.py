@@ -57,6 +57,22 @@ def vendor_id(bill: DraftBill) -> str | None:
     return bill.vendor.vendor_id
 
 
+def currency(bill: DraftBill) -> str:
+    """The bill's currency code, normalized: ' cad' -> 'CAD'. Missing means CAD."""
+    return (bill.currency or "CAD").strip().upper() or "CAD"
+
+
+def given_fx_rate(bill: DraftBill) -> Decimal | None:
+    """The FX rate printed on / extracted from the bill, if one was actually given.
+
+    fx_rate_to_cad defaults to 1 in the schema, so 1 on a foreign bill means "not given".
+    """
+    rate = bill.fx_rate_to_cad
+    if "fx_rate_to_cad" not in bill.model_fields_set or rate is None or rate <= 0 or rate == 1:
+        return None
+    return rate
+
+
 def is_credit(bill: DraftBill) -> bool:
     return bill.is_credit_note or bill.total < 0
 

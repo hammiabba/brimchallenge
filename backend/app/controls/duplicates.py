@@ -17,14 +17,13 @@ from difflib import SequenceMatcher
 
 from app.shared.schemas import DraftBill, DuplicateMatch, Flag
 
-from .refdata import RefData, bill_id, d, is_credit, money, vendor_id
+from .refdata import RefData, bill_id, currency, d, is_credit, money, vendor_id
 from .validate import _norm_name, flag, to_cad
 
 NEAR_AMOUNT_PCT = Decimal("0.01")  # amounts within 1%
 NEAR_DAYS = 14
 CARD_DAYS = 45
-SPLIT_WINDOW_DAYS = 7
-SPLIT_MIN_SHARE = Decimal("0.4")   # only invoices >= 40% of the limit count as "just under"
+SPLIT_WINDOW_DAYS = 3
 
 # DuplicateMatch.kind -> flag code
 DUP_FLAG = {
@@ -61,9 +60,12 @@ class _Cand:
     number: str
     invoice_date: date | None
     total: Decimal
-    total_cad: Decimal
+    total_cad: Decimal | None   # None when a batch bill has no reliable FX rate
     status: str
     credit: bool
+    name: str = ""              # normalized vendor name: how unknown vendors are compared
+    department_id: str = ""
+    po: str = ""
 
 
 def _candidates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill]) -> list[_Cand]:
@@ -75,15 +77,27 @@ def _candidates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill]) -> li
     me = bill_id(bill)
     out = [
         _Cand(i["invoice_id"], i["vendor_id"], i["vendor_invoice_number"], d(i["invoice_date"]),
-              money(i["total"]), money(i["total_cad"]), i["status"], money(i["total"]) < 0)
+              money(i["total"]), money(i["total_cad"]), i["status"], money(i["total"]) < 0,
+              _norm_name(ref.vendors.get(i["vendor_id"], {}).get("legal_name", "")),
+              i["department_id"], i["po_id"])
         for i in ref.invoices.values()
         if i["invoice_id"] != me and i["status"] != "rejected"
     ]
     for b in batch:
         if b is not bill:
             out.append(_Cand(bill_id(b), vendor_id(b) or "", b.invoice_number, b.invoice_date,
-                             b.total, to_cad(b, ref)[0], "in_batch", is_credit(b)))
+                             b.total, to_cad(b, ref)[0], "in_batch", is_credit(b),
+                             _norm_name(b.vendor.name_on_invoice), b.department_id or "", b.po_number or ""))
     return out
+
+
+def _same_vendor(bill: DraftBill, c: _Cand) -> bool:
+    """Same vendor record; for two bills from vendors not in the master, the same name on the invoice."""
+    vid = vendor_id(bill)
+    if vid:
+        return c.vendor_id == vid
+    me = _norm_name(bill.vendor.name_on_invoice)
+    return not c.vendor_id and bool(me) and c.name == me
 
 
 def _is_recurring_vendor(ref: RefData, vid: str) -> bool:
@@ -106,7 +120,7 @@ def find_duplicates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill] = 
     for c in _candidates(bill, ref, batch):
         if c.credit != credit:
             continue  # a credit note shares its invoice's number and amount by design; that's not a duplicate
-        same_vendor = c.vendor_id == vid
+        same_vendor = _same_vendor(bill, c)
         days = abs((c.invoice_date - bill.invoice_date).days) if c.invoice_date else 999
         status = f"{c.id} status: {c.status}"
 
@@ -148,6 +162,7 @@ def _card_matches(bill: DraftBill, ref: RefData) -> list[DuplicateMatch]:
     if not vendor:
         return []
     total_cad, _ = to_cad(bill, ref)
+    cur = currency(bill)
     name = _norm_name(vendor["legal_name"])
     out = []
     for t in ref.card_txns:
@@ -159,8 +174,8 @@ def _card_matches(bill: DraftBill, ref: RefData) -> list[DuplicateMatch]:
         days = (d(t["posted_date"]) - bill.invoice_date).days
         if not (-CARD_DAYS <= days <= CARD_DAYS):
             continue
-        if not (_close_amount(money(t["amount_cad"]), total_cad) or
-                (t["currency"] == bill.currency and _close_amount(money(t["amount"]), bill.total))):
+        if not ((total_cad is not None and _close_amount(money(t["amount_cad"]), total_cad)) or
+                ((t["currency"] or "").upper() == cur and _close_amount(money(t["amount"]), bill.total))):
             continue
         sim = _similar(_norm_name(t["merchant_descriptor"]), name)
         if sim >= 0.6:
@@ -189,23 +204,39 @@ def duplicate_flags(matches: list[DuplicateMatch]) -> list[Flag]:
     return flags
 
 
+def _is_duplicate_pair(bill: DraftBill, c: _Cand) -> bool:
+    """Same invoice number (exact or normalized): a duplicate, which find_duplicates reports, not a split."""
+    my_no = norm_invoice_no(bill.invoice_number)
+    return c.number == bill.invoice_number or bool(my_no and norm_invoice_no(c.number) == my_no)
+
+
+def _split_member(bill: DraftBill, c: _Cand, limit: Decimal) -> bool:
+    """Could candidate `c` be another piece of the same purchase as `bill`?"""
+    if not _same_vendor(bill, c) or c.credit or not c.invoice_date or c.total_cad is None:
+        return False
+    if abs((c.invoice_date - bill.invoice_date).days) > SPLIT_WINDOW_DAYS:
+        return False
+    if not (0 < c.total_cad <= limit):
+        return False
+    if bill.department_id and c.department_id and bill.department_id != c.department_id:
+        return False  # different departments buying from the same vendor isn't one purchase
+    if bill.po_number and c.po and bill.po_number != c.po:
+        return False  # each bill is covered by its own PO (e.g. Deskhive furniture orders)
+    return not _is_duplicate_pair(bill, c)
+
+
 def find_split(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill] = (),
                limit: Decimal | None = None) -> Flag | None:
-    """Several invoices from one vendor, each under the approval limit, close together, adding up to more than it."""
+    """Several invoices from one vendor and department, each under the approval limit, within a few days,
+    adding up to more than it. Duplicate pairs and bills on separate POs are not splits."""
     if limit is None:
         limit = ref.policies["P01"].threshold  # $10,000 from the policy table
     total_cad, _ = to_cad(bill, ref)
-    if total_cad > limit or total_cad <= 0:
+    if total_cad is None or total_cad > limit or total_cad <= 0 or is_credit(bill):
         return None
     if _is_recurring_vendor(ref, vendor_id(bill) or ""):
         return None  # e.g. V037 rent: 11 bills of $8,137.50 are monthly rent, not a split
-    floor = limit * SPLIT_MIN_SHARE
-    if total_cad < floor:
-        return None
-    group = [c for c in _candidates(bill, ref, batch)
-             if c.vendor_id == vendor_id(bill) and c.invoice_date
-             and abs((c.invoice_date - bill.invoice_date).days) <= SPLIT_WINDOW_DAYS
-             and floor <= c.total_cad <= limit]
+    group = [c for c in _candidates(bill, ref, batch) if _split_member(bill, c, limit)]
     combined = total_cad + sum((c.total_cad for c in group), Decimal("0"))
     if group and combined > limit:
         return flag("POSSIBLE_SPLIT",

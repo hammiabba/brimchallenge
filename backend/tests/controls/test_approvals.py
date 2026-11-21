@@ -86,48 +86,51 @@ def test_every_step_is_a_different_person(ref, make_bill):
 # ---- can_approve ----
 def test_requester_cannot_approve(ref, make_bill):
     bill = make_bill(requester="U007")
-    decision = can_approve("U007", route(bill, ref)[0], bill, ref)
+    steps = route(bill, ref)
+    decision = can_approve("U007", steps[0], bill, ref, route=steps)
     assert isinstance(decision, PermissionDecision) and not decision.allowed and "P07" in decision.reason
 
 
 def test_assigned_approver_can_approve(ref, make_bill):
     bill = make_bill()
-    assert can_approve("U007", route(bill, ref)[0], bill, ref).allowed
+    steps = route(bill, ref)
+    assert can_approve("U007", steps[0], bill, ref, route=steps).allowed
 
 
 def test_delegate_approval_says_so(ref, make_bill):
     bill = make_bill(dept="D07", requester="U037")
-    decision = can_approve("U003", route(bill, ref)[0], bill, ref)
+    steps = route(bill, ref)
+    decision = can_approve("U003", steps[0], bill, ref, route=steps)
     assert decision.allowed and "U012" in decision.reason and "P08" in decision.reason
 
 
 # ---- can_release (P09-P11) ----
-def test_finance_manager_releases_under_100k(ref):
-    assert can_release("U003", D("50000"), {"U007"}, [], True, ref).allowed
+def test_finance_manager_releases_under_100k(ref, make_bill):
+    assert can_release("U003", D("50000"), {"U007"}, [], True, ref, bill=make_bill()).allowed
 
 
-def test_finance_manager_cannot_release_over_100k(ref):
-    assert not can_release("U003", D("150000"), {"U007"}, [], True, ref).allowed
+def test_finance_manager_cannot_release_over_100k(ref, make_bill):
+    assert not can_release("U003", D("150000"), {"U007"}, [], True, ref, bill=make_bill()).allowed
 
 
-def test_controller_releases_over_100k(ref):
-    assert can_release("U002", D("150000"), {"U007", "U003"}, [], True, ref).allowed
+def test_controller_releases_over_100k(ref, make_bill):
+    assert can_release("U002", D("150000"), {"U007", "U003"}, [], True, ref, bill=make_bill()).allowed
 
 
-def test_approver_cannot_release(ref):
-    decision = can_release("U003", D("20000"), {"U007", "U003"}, [], True, ref)
+def test_approver_cannot_release(ref, make_bill):
+    decision = can_release("U003", D("20000"), {"U007", "U003"}, [], True, ref, bill=make_bill())
     assert not decision.allowed and "P11" in decision.reason
 
 
-def test_ap_clerk_cannot_release(ref):
-    assert not can_release("U004", D("100"), {"U007"}, [], True, ref).allowed
+def test_ap_clerk_cannot_release(ref, make_bill):
+    assert not can_release("U004", D("100"), {"U007"}, [], True, ref, bill=make_bill()).allowed
 
 
-def test_blocking_flag_holds_payment(ref):
+def test_blocking_flag_holds_payment(ref, make_bill):
     flags = [Flag(code="BANK_CHANGE_UNVERIFIED", severity=Severity.BLOCK, message="x")]
-    decision = can_release("U003", D("1000"), {"U007"}, flags, True, ref)
+    decision = can_release("U003", D("1000"), {"U007"}, flags, True, ref, bill=make_bill())
     assert not decision.allowed and "BANK_CHANGE_UNVERIFIED" in decision.reason
 
 
-def test_not_fully_approved(ref):
-    assert not can_release("U003", D("1000"), {"U007"}, [], False, ref).allowed
+def test_not_fully_approved(ref, make_bill):
+    assert not can_release("U003", D("1000"), {"U007"}, [], False, ref, bill=make_bill()).allowed

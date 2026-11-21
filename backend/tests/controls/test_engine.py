@@ -20,7 +20,8 @@ def test_duplicate_holds_payment(ref):
     result = run_controls(bill_from_history(ref, "AP-00034"), ref=ref)
     assert "DUPLICATE_EXACT" in codes(result) and not result.can_auto_proceed
     assert result.recommendation.startswith("Hold: Possible duplicate of AP-00023")
-    decision = can_release("U003", bill_from_history(ref, "AP-00034").total, {"U007"}, result.flags, True, ref)
+    bill = bill_from_history(ref, "AP-00034")
+    decision = can_release("U003", bill.total, {"U007"}, result.flags, True, ref, bill=bill)
     assert not decision.allowed and "DUPLICATE_EXACT" in decision.reason
 
 

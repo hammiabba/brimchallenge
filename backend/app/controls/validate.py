@@ -10,14 +10,18 @@ from __future__ import annotations
 import re
 from datetime import timedelta
 from decimal import Decimal
+from difflib import SequenceMatcher
 
 from app.shared.schemas import FLAG_CODES, DraftBill, Flag, Severity
 
-from .refdata import RefData, bill_id, d, is_credit, money, tax_amounts, vendor_id
+from .refdata import RefData, bill_id, currency, d, given_fx_rate, is_credit, money, tax_amounts, vendor_id
 
 TOL = Decimal("0.02")        # rounding tolerance per amount (2 cents)
 TAX_TOL = Decimal("0.05")    # tax is rounded per line on some invoices, allow 5 cents
 STALE_DAYS = 180
+NAME_LOOKALIKE = 0.85        # fuzzy name similarity for an unknown vendor to count as a lookalike
+HOURLY = re.compile(r"\b(hours?|hrs?|heures?)\b", re.IGNORECASE)
+OVERAGE = re.compile(r"\b(overage|usage|excess|d[ée]passement)\b", re.IGNORECASE)
 
 
 def flag(code: str, message: str, *, evidence: dict | None = None, field: str | None = None,
@@ -36,26 +40,56 @@ def _amt(x: Decimal) -> str:
 # ---------------------------------------------------------------------------
 # FX
 # ---------------------------------------------------------------------------
-def to_cad(bill: DraftBill, ref: RefData) -> tuple[Decimal, Decimal]:
-    """Returns (total_cad, rate). CAD bills use rate 1."""
-    if bill.currency == "CAD":
-        return bill.total, Decimal("1")
-    rate = ref.fx_rate(bill.invoice_date) if bill.invoice_date else None
+def fx_rate_for(bill: DraftBill, ref: RefData) -> tuple[Decimal | None, str]:
+    """(rate to CAD, where it came from). The rate is None when there is no reliable rate.
+
+    Order: CAD -> 1; a rate given on the bill; the USD/CAD table (USD only, never for other currencies).
+    """
+    cur = currency(bill)
+    if cur == "CAD":
+        return Decimal("1"), "cad"
+    given = given_fx_rate(bill)
+    if given is not None:
+        return given, "bill"
+    if cur == "USD" and bill.invoice_date:
+        rate = ref.fx_rate(bill.invoice_date)
+        if rate is not None:
+            return rate, "table"
+    return None, "missing"
+
+
+def to_cad(bill: DraftBill, ref: RefData) -> tuple[Decimal | None, Decimal | None]:
+    """Returns (total_cad, rate). Both are None when there is no reliable rate: never guessed, never 1."""
+    rate, _ = fx_rate_for(bill, ref)
     if rate is None:
-        rate = ref.fx_rate(ref.as_of) or Decimal("1")
+        return None, None
     return (bill.total * rate).quantize(Decimal("0.01")), rate
 
 
+def amount_for_limits(bill: DraftBill, ref: RefData) -> tuple[Decimal, bool]:
+    """(amount to compare with approval limits, is_converted). Falls back to the face amount when the CAD
+    amount is unknown; callers must say so, because the face amount isn't CAD."""
+    cad, _ = to_cad(bill, ref)
+    return (cad, True) if cad is not None else (bill.total, False)
+
+
 def check_fx(bill: DraftBill, ref: RefData) -> list[Flag]:
-    if bill.currency == "CAD":
+    cur = currency(bill)
+    if cur == "CAD":
         return []
-    cad, rate = to_cad(bill, ref)
-    ev = {"currency": bill.currency, "rate": str(rate), "total_cad": str(cad)}
-    if bill.currency != "USD":
-        msg = (f"Currency {bill.currency} has no FX rates on file, so the CAD amount ({_amt(cad)}) is not reliable. "
-               f"Convert it manually before approving.")
-    elif ref.fx_rate(bill.invoice_date) is None:
-        msg = f"No USD/CAD rate for {bill.invoice_date}; used the latest rate {rate} = CAD {_amt(cad)}."
+    rate, source = fx_rate_for(bill, ref)
+    cad = (bill.total * rate).quantize(Decimal("0.01")) if rate is not None else None
+    ev = {"currency": cur, "rate": str(rate) if rate is not None else None,
+          "rate_source": source, "total_cad": str(cad) if cad is not None else None}
+    # A missing rate should hold the bill, but FLAG_CODES has no code for it (FX_RATE_MISSING /
+    # CURRENCY_UNSUPPORTED), so it is reported on the FOREIGN_CURRENCY flag for now.
+    if rate is None:
+        why = (f"no {cur}/CAD rate on file" if cur != "USD"
+               else f"no USD/CAD rate for {bill.invoice_date} (or the 6 days before)")
+        msg = (f"FX rate missing: {why}, and the bill gives none, so the CAD amount is unknown. "
+               f"Routing uses the face amount {cur} {_amt(bill.total)}. Convert it manually before approving.")
+    elif source == "bill":
+        msg = f"{cur} {_amt(bill.total)} converted at {rate} (rate given on the bill) = CAD {_amt(cad)}."
     else:
         msg = f"USD {_amt(bill.total)} converted at {rate} = CAD {_amt(cad)} (rate of {bill.invoice_date})."
     return [flag("FOREIGN_CURRENCY", msg, evidence=ev, field="currency")]
@@ -95,13 +129,44 @@ def _invoice_count(ref: RefData, vid: str) -> int:
     return sum(1 for i in ref.invoices.values() if i["vendor_id"] == vid)
 
 
+def name_lookalikes(name: str, ref: RefData) -> list[tuple[str, float]]:
+    """Master vendors whose normalized legal name is >= NAME_LOOKALIKE similar to `name`, best first."""
+    me = _norm_name(name or "")
+    if not me:
+        return []
+    out = []
+    for v in ref.vendors.values():
+        sim = SequenceMatcher(None, me, _norm_name(v["legal_name"])).ratio()
+        if sim >= NAME_LOOKALIKE:
+            out.append((v["vendor_id"], round(sim, 2)))
+    return sorted(out, key=lambda x: -x[1])
+
+
+def _unknown_vendor_lookalike(bill: DraftBill, ref: RefData) -> list[Flag]:
+    """An unknown vendor whose printed name resembles a master vendor: possible impersonation."""
+    hits = name_lookalikes(bill.vendor.name_on_invoice, ref)
+    if not hits:
+        return []
+    other_id, sim = hits[0]
+    o = ref.vendors[other_id]
+    ev = {"similar_vendor": other_id, "why": f"name {sim:.0%} similar", "name_on_invoice": bill.vendor.name_on_invoice,
+          "this_status": "not in master", "all_matches": [h[0] for h in hits]}
+    if bill.source.sender_address:
+        ev["sender_domain"] = bill.source.sender_address.split("@")[-1].lower()
+        ev["known_domain"] = o["ap_contact_email"].split("@")[-1].lower()
+    return [flag("VENDOR_LOOKALIKE",
+                 f"'{bill.vendor.name_on_invoice}' isn't in the vendor master but looks like {other_id} "
+                 f"{o['legal_name']} (name {sim:.0%} similar). Verify by phone before approving.",
+                 evidence=ev, field="vendor")]
+
+
 def check_vendor(bill: DraftBill, ref: RefData) -> list[Flag]:
     vid = vendor_id(bill)
     if not vid or vid not in ref.vendors:
         return [flag("VENDOR_NOT_FOUND",
                      f"'{bill.vendor.name_on_invoice}' is not in the vendor master. "
                      f"Onboard and approve the vendor before paying.",
-                     policy="P05", field="vendor")]
+                     policy="P05", field="vendor")] + _unknown_vendor_lookalike(bill, ref)
     v = ref.vendors[vid]
     flags: list[Flag] = []
 
@@ -120,16 +185,22 @@ def check_vendor(bill: DraftBill, ref: RefData) -> list[Flag]:
                               field="vendor.gst_number"))
 
     # Bank details on the invoice vs master
+    # Only fields printed on the invoice AND on file are compared: a missing field is not a mismatch.
     bank = bill.vendor.bank
-    if bank.account:
-        inv_bank = (bank.institution or "", bank.transit or "", bank.account or "")
-        master_bank = (v["bank_institution"], v["bank_transit"], v["bank_account"])
-        if [x.lstrip("0") for x in inv_bank] != [x.lstrip("0") for x in master_bank]:
-            flags.append(flag("BANK_DETAILS_MISMATCH",
-                              "Bank details on the invoice differ from the vendor master. Treat as possible fraud: "
-                              "verify by calling the vendor on a known number before any change.",
-                              evidence={"invoice": "-".join(inv_bank), "master": "-".join(master_bank)},
-                              field="vendor.bank"))
+    pairs = {name: (str(inv).strip().lstrip("0"), str(master).strip().lstrip("0"))
+             for name, inv, master in (("institution", bank.institution, v["bank_institution"]),
+                                       ("transit", bank.transit, v["bank_transit"]),
+                                       ("account", bank.account, v["bank_account"]))
+             if inv and str(inv).strip() and master and str(master).strip()}
+    differ = sorted(name for name, (inv, master) in pairs.items() if inv != master)
+    if differ:
+        flags.append(flag("BANK_DETAILS_MISMATCH",
+                          f"Bank {', '.join(differ)} on the invoice differ from the vendor master. Treat as possible "
+                          f"fraud: verify by calling the vendor on a known number before any change.",
+                          evidence={"fields": differ,
+                                    "invoice": {k: bank.model_dump()[k] for k in pairs},
+                                    "master": {k: v[f"bank_{k}"] for k in pairs}},
+                          field="vendor.bank"))
 
     # Most recent bank change in the history
     changes = sorted((c for c in ref.bank_changes if c["vendor_id"] == vid), key=lambda c: c["changed_at"])
@@ -179,12 +250,19 @@ def expected_tax_codes(province: str, vendor: dict, line_type: str) -> tuple[str
 
 
 def check_tax(bill: DraftBill, ref: RefData) -> list[Flag]:
-    vid = vendor_id(bill)
     # No ship-to province / unsupported province: no flag code for "can't check", so nothing is raised.
-    if not vid or vid not in ref.vendors or not bill.ship_to_province:
+    if not bill.ship_to_province:
         return []
-    v = ref.vendors[vid]
-    rate = lambda code: Decimal(ref.tax_codes[code]["rate"]) if code else Decimal("0")
+    vid = vendor_id(bill)
+    if vid and vid in ref.vendors:
+        v = ref.vendors[vid]
+    else:
+        # Unknown vendor: no master record, so assume a taxable Canadian supplier, unless the bill is in a
+        # foreign currency (then treat it as a foreign vendor, which charges no Canadian tax).
+        v = {"country": "CA" if currency(bill) == "CAD" else "XX", "category": ""}
+
+    def rate(code: str | None) -> Decimal:
+        return Decimal(ref.tax_codes[code]["rate"]) if code else Decimal("0")
 
     exp_fed = exp_prov = Decimal("0")
     exp_codes: set[str] = set()
@@ -273,14 +351,29 @@ def check_contract(bill: DraftBill, ref: RefData) -> list[Flag]:
                           f"Contract {c['contract_id']} ended {c['end_date']}. Renew it or confirm the work was authorized.",
                           evidence={"contract": c["contract_id"], "end_date": c["end_date"]}, field="contract_id"))
 
-    # Billing under the fixed fee has no flag code, so only "over" is raised.
+    # Fixed fee: only the fee line(s) are compared to the contract fee. Usage/overage lines are billed on top
+    # of the fee by design (e.g. Redstone: committed base + data-transfer overage), so they only get a warning
+    # to confirm usage. Billing under the fee has no flag code, so only "over" is raised.
     if c["billing_type"] == "fixed_monthly" and c["monthly_fee"]:
         fee = money(c["monthly_fee"])
-        if bill.subtotal > fee + TOL:
+        overage = [ln for ln in bill.lines if OVERAGE.search(ln.description)]
+        fee_lines = [ln for ln in bill.lines if ln not in overage]
+        billed_fee = sum((ln.amount for ln in fee_lines), Decimal("0")) if bill.lines else bill.subtotal
+        if billed_fee > fee + TOL:
             flags.append(flag("OVER_CONTRACT_RATE",
-                              f"Billed {_amt(bill.subtotal)} before tax, contract {c['contract_id']} fee is {_amt(fee)}/month.",
-                              evidence={"contract": c["contract_id"], "fee": str(fee), "billed": str(bill.subtotal)},
+                              f"Fee billed {_amt(billed_fee)} before tax, contract {c['contract_id']} fee is "
+                              f"{_amt(fee)}/month.",
+                              evidence={"kind": "fee", "contract": c["contract_id"], "fee": str(fee),
+                                        "billed": str(billed_fee)},
                               field="subtotal"))
+        if overage:
+            extra = sum((ln.amount for ln in overage), Decimal("0"))
+            flags.append(flag("OVER_CONTRACT_RATE",
+                              f"Usage overage of {_amt(extra)} billed on top of the {_amt(fee)} fixed fee "
+                              f"({c['contract_id']}). Not an overcharge by itself: confirm the usage.",
+                              evidence={"kind": "overage", "contract": c["contract_id"], "overage": str(extra),
+                                        "lines": [ln.line_no for ln in overage]},
+                              field="lines"))
 
     if c["fuel_surcharge_cap_pct"]:
         cap = Decimal(c["fuel_surcharge_cap_pct"])
@@ -300,8 +393,8 @@ def check_contract(bill: DraftBill, ref: RefData) -> list[Flag]:
     if c["hourly_rate_cap"]:
         cap = money(c["hourly_rate_cap"])
         for l in bill.lines:
-            hourly = "hour" in l.description.lower() or "heure" in l.description.lower() or l.quantity != 1
-            if hourly and l.unit_price > cap + TOL:
+            # Hourly only when the description says so; quantity alone (e.g. 5 pallets) isn't hours.
+            if HOURLY.search(l.description) and l.unit_price > cap + TOL:
                 flags.append(flag("OVER_CONTRACT_RATE",
                                   f"Line {l.line_no} bills {_amt(l.unit_price)}/hr; contract {c['contract_id']} caps the rate at {_amt(cap)}.",
                                   evidence={"line": l.line_no, "rate": str(l.unit_price), "cap": str(cap)}, field="lines"))

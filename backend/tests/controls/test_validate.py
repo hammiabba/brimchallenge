@@ -154,7 +154,7 @@ def test_fuel_surcharge_over_cap(ref, make_bill):
 
 def test_hourly_rate_over_cap(ref, make_bill):
     # C022 caps Harlow & Stern at $520/hr
-    bill = make_bill(vendor_id="V026", amount="3000.00", qty="5", description="Legal services - contract review")
+    bill = make_bill(vendor_id="V026", amount="3000.00", qty="5", description="Legal services - contract review (hrs)")
     assert "OVER_CONTRACT_RATE" in codes(validate(bill, ref))
 
 
