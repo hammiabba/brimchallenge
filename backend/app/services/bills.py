@@ -10,6 +10,7 @@ from app.api import schemas_api as s
 from app.api.errors import ApiError, not_found
 from app.auth.deps import CurrentUser
 from app.auth.roles import CONTROLLER_ADMIN, FINANCE_MANAGER
+from app.coding.feedback import learn_from_line
 from app.controls.duplicates import norm_invoice_no
 from app.db import models
 from app.db.audit import AuditAction
@@ -149,6 +150,7 @@ def code_line(db: Session, user: CurrentUser, bill_id: str, line_no: int, patch:
     line.gl_account, line.department_id = patch.gl_account, patch.department_id
     line.coding_status = "accepted" if accepted else "overridden"
     line.coded_by, line.coded_at = user.user_id, utcnow()
+    learn_from_line(bill, line)
     bill.updated_at = utcnow()  # bumps row_version: the bill as a whole changed
     controls_runner.rerun(db, bill_id)
     record(db, actor_user_id=user.user_id, actor_role=user.role, action=AuditAction.BILL_CODING_CHANGED,
