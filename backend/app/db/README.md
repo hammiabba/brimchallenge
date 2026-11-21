@@ -1,6 +1,6 @@
 # db/
 
-**Owner:** DB team. **Status:** schema and baseline migration done; seeding, adapters and the audit helper come next.
+**Owner:** DB team. **Status:** schema, baseline migration and seed done; adapters and the audit helper come next.
 
 The app database: SQLAlchemy 2.0 models, engine and session setup, value helpers, and Alembic migrations.
 Importing anything here never connects to or creates a database.
@@ -59,6 +59,55 @@ Adding a migration: change `models.py`, then
 misses triggers and CHECK changes), write a full `downgrade()`, run `alembic upgrade head` + `downgrade -1` +
 `upgrade head` + `alembic check` on a scratch database, and run `pytest tests/db`.
 
+## Seeding
+
+Loads the synthetic dataset (`DATASET_DIR`, by default `dataset/brim_ap_dataset`) into the database. From `backend/`,
+with the venv active:
+
+```bash
+python -m app.db.seed                                                   # DATABASE_URL / settings
+python -m app.db.seed --database-url sqlite:////tmp/brim/seed.db        # any other database
+python -m app.db.seed --database-url sqlite:////tmp/brim/seed.db --reset  # start from an empty file
+```
+
+A run first migrates the database to head (`alembic upgrade head`), then seeds it: it reads every CSV as strings
+plus `inbox/emails.json`, maps each row (`seed_mapping.py`), runs the pre-flight, inserts everything in **one
+transaction** (all or nothing), and prints the report. In code: `seed.seed_all(session, dataset_dir) -> SeedReport`
+(use an engine from `make_engine()`). Not seeded: `incoming_invoices/` (those go through intake) and `audit_events`.
+
+- `--database-url URL`: the database to seed. Default: `DATABASE_URL` / settings, with relative SQLite paths
+  resolved against the repo root.
+- `--reset`: deletes the SQLite file and its `-wal` / `-shm` before migrating. The guard refuses, exits with code 2
+  and deletes nothing for: a non-SQLite URL, an in-memory or URI-style SQLite name, a directory, and any path
+  inside the repo's `dataset/` or the configured `DATASET_DIR` (symlinks are resolved before the check).
+
+**Insert-only.** Tables with a natural primary key use `INSERT ... ON CONFLICT (pk) DO NOTHING`; the autoincrement
+tables are matched on a natural key instead: `vendor_bank_accounts` (vendor_id, institution, transit, account),
+`bill_taxes` (bill_id, tax_code), `user_absences` (user_id, starts_on). Existing rows are never updated, so a
+re-seed never overwrites app edits to vendors, users, policies or bills, and a second run inserts 0 rows. (A history
+row the app *deleted* would come back on a re-seed; history rows are meant to be voided, not deleted.)
+
+**Pre-flight validation.** Before anything is written, every mapped row is checked against the schema's own rules
+(NOT NULL, CHECK value lists, the free-form CHECKs such as releaser ≠ preparer or verifier ≠ requester, foreign
+keys) and the seed's rules (no duplicate keys; money with more than 2 decimals is an error, never rounded;
+booleans must be yes / no / true / false / n/a; each bill's tax rows must add up to its GST/HST + PST/QST). All
+violations are collected, not just the first. If there are any, nothing is written: the CLI prints them grouped by
+rule with row ids on stderr and exits with code 1; `seed_all` raises `SeedValidationError` (`.violations`,
+`.format()`).
+
+**Data-quality notes.** Facts about the data that are worth knowing but don't block the seed (for example: actor
+roles come from users.csv as of the seed date, FX rate-date matches, vendors without bank details, bills paid twice).
+They print on stdout after the per-table counts (rows / inserted / skipped) and are in `SeedReport.notes`.
+
+**Intentional findings, not seed bugs.** These are in the dataset on purpose and are loaded exactly as recorded:
+- 7 (vendor_id, norm_invoice_number) pairs repeat in history (5 exact repeats of the invoice number, 2 more after
+  normalization). No UNIQUE constraint stops them, so the duplicate checks can see them.
+- 3 self-approvals by U010 (AP-A-00101, AP-A-00193, AP-A-00259): kept as evidence for the audit view.
+- BC-009 (Cascadia, V004, requested by email, never called back) is `pending_verification`, yet V004's open bank
+  account is already the new one: the change was applied without verification, which controls must flag.
+
+Exit codes: 0 seeded, 1 pre-flight failed (nothing written), 2 `--reset` refused.
+
 ## Rules
 
 - **A migration is never edited after it is pushed.** Once a revision is on a shared branch, someone may have
@@ -74,7 +123,6 @@ misses triggers and CHECK changes), write a full `downgrade()`, run `alembic upg
 
 ## Not built yet
 
-- Seeding every CSV in `dataset/brim_ap_dataset/data/` (keep IDs, read as strings, idempotent).
 - A `DbReferenceRepository` implementing `app.reference.repository.ReferenceRepository` (see
   `app/reference/README.md`), and a `RefData` built from the database for `app.controls`.
 - Storage for `DraftBill` + `EmailTriage` to replace the TEMP dict in `api/routes_intake.py` (Person A's file).

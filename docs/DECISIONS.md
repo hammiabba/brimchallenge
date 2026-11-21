@@ -32,3 +32,9 @@ One line per decision: **what** and **why**. Add to this file when you make a ch
 | 26 | DB | Relative SQLite URLs resolve against the repo root | `.env.example`'s `./backend/ap.db` then works from any working directory. |
 | 27 | DB | `bills.draft_json` is the frozen extraction snapshot; the current bill state is rebuilt from columns and line tables | Corrections stay auditable as 'extracted vs corrected'; one source of truth for controls input. |
 | 28 | DB | `approval_decisions` stores both `actor_role` (user role) and `step_role` (route step) | The dataset uses step names as roles; one mixed column would make role queries ambiguous. |
+| 29 | DB | The seed is insert-only: ON CONFLICT DO NOTHING on the primary key, natural-key checks for autoincrement tables | A re-seed never overwrites app edits to vendors, users, policies or bills; a second run inserts 0 rows. |
+| 30 | DB | The seed pre-flight checks every row against rules read from the schema (NOT NULL, CHECKs, FKs) and writes nothing if any fails | Every violation is reported at once, and the Python rules can't drift from the migration. |
+| 31 | DB | Money with more than 2 decimals is rejected at seed time, never rounded | Silent rounding would change amounts that controls checks to the cent. |
+| 32 | DB | History `bill_taxes` built with controls' `_history_taxes`, and `norm_invoice_number` with `norm_invoice_no` | The database and the controls engine agree on tax codes and duplicate keys by construction. |
+| 33 | DB | History `actor_role` taken from users.csv at seed time | approvals.csv records only the step name; the user's role at the time isn't in the dataset. |
+| 34 | DB | BC-009 seeded as `pending_verification` while V004's open account is already the new one | That's what happened: the change was applied without a callback, which is exactly what controls must flag. |
