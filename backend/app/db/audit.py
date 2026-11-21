@@ -13,19 +13,27 @@ How the chain works:
 
 Transactions: log_event() never commits, rolls back the caller's work, or closes the session. It inserts inside a
 SAVEPOINT in the caller's transaction, so the event and the state change it describes commit (or roll back) together.
+On SQLite it must be given a write session (app.db.database.get_write_session: BEGIN IMMEDIATE), so the write lock is
+held from before the latest hash is read until the caller commits; a read session raises RuntimeError.
 
 Authorization is the caller's job. The read helpers return whatever matches the filters.
 
-Bank account numbers never enter the log: before/after payloads go through redact(), which keeps the last 4 digits
-and a short fingerprint so two events about the same account can still be matched.
+Bank account numbers never enter the log:
+- before/after values under account-number keys become {"last4", "fingerprint"}, where the fingerprint is
+  HMAC-SHA256 keyed by AUDIT_HMAC_KEY (app.db.settings), so two events about one account can still be matched but a
+  number can't be recovered by hashing every possible account.
+- runs of 7+ digits are masked to their last 4 in `comment`, and in before/after text under keys containing
+  "comment", "note" or "memo" (free text where someone might paste an account number).
 """
 from __future__ import annotations
 
 import csv
 import hashlib
+import hmac
 import io
 import json
 import math
+import re
 import uuid
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
@@ -41,6 +49,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import models
+from app.db.database import SQLITE_BEGIN_OPTION
+from app.db.settings import get_db_settings
 from app.db.types import dec_to_text, to_utc, utcnow
 from app.shared import schemas
 
@@ -55,6 +65,11 @@ CSV_BATCH = 500  # rows fetched per query while streaming the CSV export
 
 # Keys whose values are full bank account numbers and must never be stored as-is.
 ACCOUNT_KEYS = frozenset({"account", "new_account", "bank_account", "account_number"})
+# Payload keys holding free text (matched case-insensitively as substrings): their digit runs are masked.
+TEXT_KEY_WORDS = ("comment", "note", "memo")
+MIN_HMAC_KEY_LENGTH = 32  # characters of AUDIT_HMAC_KEY
+WRITE_SESSION_REQUIRED = "log_event requires a write session (get_write_session)"
+_DIGIT_RUN = re.compile(r"[0-9]{7,}")  # ASCII digits only, so the masking is predictable
 
 _table = models.AuditEvent.__table__
 
@@ -99,6 +114,10 @@ class AuditAction:
 
 class AuditChainConflict(RuntimeError):
     """log_event lost the prev_hash race MAX_ATTEMPTS times in a row; nothing was written."""
+
+
+class AuditKeyError(RuntimeError):
+    """AUDIT_HMAC_KEY is missing or too short, so bank account fingerprints can't be computed. Never shows the key."""
 
 
 class AuditRecord(schemas.AuditEvent):
@@ -178,19 +197,47 @@ def to_audit_json(value: Any) -> Any:
     raise TypeError(f"cannot store {type(value).__name__} in the audit log")
 
 
+def _hmac_key() -> bytes:
+    """AUDIT_HMAC_KEY as bytes. Raises AuditKeyError (which never includes the key) if it's missing or too short."""
+    secret = get_db_settings().AUDIT_HMAC_KEY
+    key = secret.get_secret_value() if secret is not None else ""
+    if len(key) < MIN_HMAC_KEY_LENGTH:
+        raise AuditKeyError(
+            f"AUDIT_HMAC_KEY is missing or shorter than {MIN_HMAC_KEY_LENGTH} characters, so bank account numbers "
+            "can't be fingerprinted for the audit log. Set it in .env to 32+ random characters, e.g. "
+            "python -c \"import secrets; print(secrets.token_hex(32))\"")
+    return key.encode("utf-8")
+
+
 def _fingerprint(account: str) -> str:
-    """First 12 hex characters of sha256(account): matches two mentions of one account without storing it."""
-    return hashlib.sha256(account.encode("utf-8")).hexdigest()[:12]
+    """First 12 hex characters of HMAC-SHA256(AUDIT_HMAC_KEY, account).
 
-
-def redact(value: Any) -> Any:
-    """Replace full bank account numbers with {"last4", "fingerprint"}, recursively, in a JSON-safe value.
-
-    Only values under the keys in ACCOUNT_KEYS are replaced. institution, transit and *_last4 keys are left alone, and
-    so is anything that is already redacted (a dict) or empty. Apply it to payloads (before / after), never to IDs.
+    Matches two mentions of one account without storing it. Keyed, so the number can't be recovered by hashing every
+    possible 7-12 digit account (an unsalted sha256 of a short number can be brute-forced).
     """
+    return hmac.new(_hmac_key(), account.encode("utf-8"), hashlib.sha256).hexdigest()[:12]
+
+
+def mask_digit_runs(text: str) -> str:
+    """Mask every run of 7+ digits to stars plus its last 4: "acct 593014216" -> "acct *****4216".
+
+    Shorter numbers (invoice numbers, amounts, dates written with separators) are left as they are.
+    """
+    return _DIGIT_RUN.sub(lambda m: "*" * (len(m.group()) - 4) + m.group()[-4:], text)
+
+
+def _is_text_key(key: str) -> bool:
+    """True for payload keys holding free text ("comment", "internal_notes", "memo", ...)."""
+    lowered = key.lower()
+    return any(word in lowered for word in TEXT_KEY_WORDS)
+
+
+def _redact(value: Any, in_text: bool) -> Any:
+    """redact() worker. `in_text` is True inside a free-text key's subtree, where strings get their digits masked."""
+    if isinstance(value, str):
+        return mask_digit_runs(value) if in_text else value
     if isinstance(value, list):
-        return [redact(item) for item in value]
+        return [_redact(item, in_text) for item in value]
     if not isinstance(value, dict):
         return value
     out = {}
@@ -199,8 +246,19 @@ def redact(value: Any) -> Any:
             number = str(item).strip()
             out[key] = {"last4": number[-4:], "fingerprint": _fingerprint(number)}
         else:
-            out[key] = redact(item)
+            out[key] = _redact(item, in_text or _is_text_key(key))
     return out
+
+
+def redact(value: Any) -> Any:
+    """Remove bank account numbers from a JSON-safe payload, recursively.
+
+    - Values under the keys in ACCOUNT_KEYS become {"last4", "fingerprint"} (HMAC; needs AUDIT_HMAC_KEY).
+    - Strings under keys containing "comment", "note" or "memo" get runs of 7+ digits masked to their last 4.
+    institution, transit and *_last4 keys are left alone, and so is anything already redacted (a dict) or empty.
+    Apply it to payloads (before / after), never to IDs.
+    """
+    return _redact(value, in_text=False)
 
 
 # ---------------------------------------------------------------- hashing
@@ -243,21 +301,18 @@ def _hash_fields(row: Mapping[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------- writing
 
 
-def _ensure_outer_transaction(session: Session) -> None:
-    """Make sure a real database transaction is open before log_event opens its SAVEPOINT.
+def _require_write_session(session: Session) -> None:
+    """On SQLite, refuse to log unless the session is a write session (its transaction began with BEGIN IMMEDIATE).
 
-    pysqlite's legacy transaction handling only sends BEGIN before an INSERT / UPDATE / DELETE. If log_event is the
-    first write in the caller's transaction, its SAVEPOINT would start the outermost transaction and its RELEASE
-    would COMMIT the event on its own, so a later rollback by the caller could not undo it. Sending BEGIN IMMEDIATE
-    first keeps the event inside the caller's transaction, and takes SQLite's write lock before the latest hash is
-    read, so no other writer can append between that read and the insert. Non-SQLite databases are left alone.
-    (The general fix is SQLAlchemy's pysqlite recipe in database.make_engine; see the db README.)
+    A write session holds SQLite's write lock from its first statement, so nobody can append to the chain between
+    log_event reading the latest hash and inserting the new event. Fetching the connection starts the session's
+    transaction (via the engine's begin listener) if it hasn't started yet. Other databases are not checked.
     """
     connection = session.connection()
     if connection.dialect.name != "sqlite":
         return
-    if getattr(connection.connection.dbapi_connection, "in_transaction", True) is False:
-        connection.exec_driver_sql("BEGIN IMMEDIATE")
+    if connection.get_execution_options().get(SQLITE_BEGIN_OPTION) != "IMMEDIATE":
+        raise RuntimeError(WRITE_SESSION_REQUIRED)
 
 
 def _latest_hash(session: Session) -> str:
@@ -302,7 +357,9 @@ def log_event(
 
     Never commits, never closes the session: the event commits or rolls back with the caller's own changes. Only
     structurally invalid input is refused (an empty actor, role, action, entity type or entity id -> ValueError);
-    any action string is accepted. before / after are converted with to_audit_json and redacted.
+    any action string is accepted. before / after are converted with to_audit_json and redacted; digit runs of 7+
+    in `comment` are masked. On SQLite the session must be a write session (RuntimeError otherwise). A payload with
+    an account number needs AUDIT_HMAC_KEY (AuditKeyError otherwise).
 
     The insert runs in a SAVEPOINT. If the prev_hash unique index rejects it (another writer extended the same
     event first), the savepoint is rolled back, the latest hash re-read, and the insert retried, up to MAX_ATTEMPTS
@@ -313,6 +370,7 @@ def log_event(
     for name, value in required.items():
         if not isinstance(value, str) or not value.strip():
             raise ValueError(f"log_event: {name} must be a non-empty string")
+    _require_write_session(session)
 
     values: dict[str, Any] = {
         "event_id": f"EV-{uuid.uuid4().hex}",
@@ -325,11 +383,10 @@ def log_event(
         "entity_id": entity_id,
         "before_json": redact(to_audit_json(before)) if before is not None else None,
         "after_json": redact(to_audit_json(after)) if after is not None else None,
-        "comment": comment,
+        "comment": mask_digit_runs(comment) if comment is not None else None,
         "request_id": request_id,
     }
 
-    _ensure_outer_transaction(session)
     for _attempt in range(MAX_ATTEMPTS):
         values["prev_hash"] = _latest_hash(session)
         values["hash"] = compute_hash(values["prev_hash"], _hash_fields(values))
@@ -348,12 +405,23 @@ def log_event(
 # ---------------------------------------------------------------- verifying
 
 
+def chain_head(session: Session) -> tuple[int, str] | None:
+    """(seq, hash) of the newest event, or None when the log is empty.
+
+    verify_chain can't tell if the newest events were deleted. Record the head when exporting (or periodically,
+    somewhere the database can't change), and compare it later: the recorded seq must still exist with that hash.
+    """
+    row = session.execute(select(_table.c.seq, _table.c.hash).order_by(_table.c.seq.desc()).limit(1)).first()
+    return (row.seq, row.hash) if row is not None else None
+
+
 def verify_chain(session: Session) -> ChainReport:
     """Walk every event in seq order, recompute each hash, and check each prev_hash links to the previous event.
 
     Reports the first bad row: a prev_hash that doesn't match the previous event's hash (a row was deleted,
     inserted or reordered), or a stored hash that doesn't match the row's contents (a row was edited). Rows are
-    streamed, not loaded all at once. Limitation: deleting the newest events can't be detected from the chain alone.
+    streamed, not loaded all at once. Limitation: deleting the newest events can't be detected from the chain alone;
+    compare against a head recorded earlier with chain_head().
     """
     expected_prev = GENESIS
     count = 0
