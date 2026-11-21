@@ -1,23 +1,15 @@
-import {
-  Badge,
-  Button,
-  Center,
-  Group,
-  Loader,
-  Paper,
-  Select,
-  Stack,
-  Text,
-  Title,
-} from '@mantine/core'
+import { Button, Center, Group, Loader, Paper, Select, Stack, Text, Title } from '@mantine/core'
 import { useMutation, useQuery } from '@tanstack/react-query'
+import { IconLogin2, IconSearch } from '@tabler/icons-react'
 import { useMemo, useState } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router'
+import { Navigate, useLocation } from 'react-router'
 
 import { api, unwrap } from '../api/client'
 import { ErrorAlert } from '../api/ErrorAlert'
 import type { PickerUser } from '../api/types'
 import { APP_NAME } from '../config'
+import { StatusBadge } from '../ui/Badges'
+import { Icon } from '../ui/Icon'
 import { useAuth } from './context'
 import { groupUsersByRole, makeUserFilter } from './pickerOptions'
 import type { LoginRedirectState } from './RequireAuth'
@@ -40,11 +32,7 @@ function UserOption({ user }: { user: PickerUser }) {
         <Text size="sm" fw={500}>
           {user.full_name}
         </Text>
-        {user.status === 'on_leave' && (
-          <Badge size="xs" color="gray" variant="outline">
-            On leave
-          </Badge>
-        )}
+        {user.status === 'on_leave' && <StatusBadge kind="user" status="on_leave" />}
       </Group>
       <Text size="xs" c="dimmed">
         {user.title}, {user.department_id} ({user.user_id})
@@ -61,7 +49,6 @@ function UserOption({ user }: { user: PickerUser }) {
 export function LoginPage() {
   const { user, login } = useAuth()
   const location = useLocation()
-  const navigate = useNavigate()
   const users = usePickerUsers()
   const [selected, setSelected] = useState<string | null>(null)
 
@@ -70,20 +57,20 @@ export function LoginPage() {
   const options = useMemo(() => groupUsersByRole(users.data ?? []), [users.data])
   const filter = useMemo(() => makeUserFilter(byId), [byId])
 
-  const signIn = useMutation({
-    mutationFn: (userId: string) => login(userId),
-    onSuccess: () => navigate(from, { replace: true }),
-  })
+  const signIn = useMutation({ mutationFn: (userId: string) => login(userId) })
 
-  if (user !== null && !signIn.isPending) {
+  // Leave the login page only once the auth context has the user (login() writes it into the cache). Navigating
+  // from the mutation's onSuccess instead would run before AuthProvider re-renders: RequireAuth would still see
+  // nobody signed in, bounce back to /login, and the shell would mount twice.
+  if (user !== null) {
     return <Navigate to={from} replace />
   }
 
   const selectedUser = selected ? byId.get(selected) : undefined
 
   return (
-    <Center mih="100vh" bg="gray.0" p="md">
-      <Paper withBorder shadow="xs" p="xl" w={440} radius="md">
+    <Center mih="100vh" bg="var(--app-page)" p="md">
+      <Paper withBorder p="xl" w={420} maw="100%">
         <form
           onSubmit={(event) => {
             event.preventDefault()
@@ -91,13 +78,12 @@ export function LoginPage() {
           }}
         >
           <Stack gap="md">
-            <div>
-              <Title order={2}>{APP_NAME}</Title>
+            <Stack gap={4}>
+              <Title order={1}>{APP_NAME}</Title>
               <Text size="sm" c="dimmed">
-                Demo sign-in: choose who you are. What you can see and do is decided by the server for that person's
-                role.
+                Demo sign-in: choose the person to act as. The server decides what their role can see and do.
               </Text>
-            </div>
+            </Stack>
 
             {users.isPending && (
               <Group gap="xs">
@@ -105,12 +91,15 @@ export function LoginPage() {
                 <Text size="sm">Loading people</Text>
               </Group>
             )}
-            {users.isError && <ErrorAlert error={users.error} title="Can't load the people list" onRetry={() => void users.refetch()} />}
+            {users.isError && (
+              <ErrorAlert error={users.error} title="Can't load the people list" onRetry={() => void users.refetch()} />
+            )}
 
             {users.isSuccess && (
               <Select
                 label="Sign in as"
                 placeholder="Search by name, title, department or role"
+                leftSection={<Icon icon={IconSearch} />}
                 data={options}
                 value={selected}
                 onChange={setSelected}
@@ -134,7 +123,12 @@ export function LoginPage() {
 
             {signIn.isError && <ErrorAlert error={signIn.error} title="Sign-in failed" />}
 
-            <Button type="submit" disabled={!selected} loading={signIn.isPending}>
+            <Button
+              type="submit"
+              disabled={!selected}
+              loading={signIn.isPending}
+              leftSection={<Icon icon={IconLogin2} />}
+            >
               Sign in
             </Button>
           </Stack>

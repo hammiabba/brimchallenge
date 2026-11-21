@@ -70,7 +70,7 @@ export const PICKER_USERS: PickerUser[] = [
   { user_id: 'U001', full_name: 'Morgan Lee', title: 'Operations Director', role: 'approver', department_id: 'D01', status: 'active' },
   { user_id: 'U003', full_name: 'Priya Natarajan', title: 'Finance Manager', role: 'finance_manager', department_id: 'D02', status: 'active' },
   { user_id: 'U002', full_name: 'Elena Duarte', title: 'Controller', role: 'controller_admin', department_id: 'D02', status: 'active' },
-  { user_id: 'U015', full_name: 'Kai Thompson', title: 'Internal Auditor', role: 'auditor', department_id: 'D02', status: 'active' },
+  { user_id: 'U015', full_name: 'Kai Thompson', title: 'Audit Lead', role: 'auditor', department_id: 'D02', status: 'active' },
 ]
 
 export const DEPARTMENTS = [
