@@ -15,6 +15,8 @@
 1. **text_layer**: pdfplumber (layout) → `pdftotext -layout` → tesseract OCR (`eng+fra`). Below 50 letters/digits counts as "no text".
 2. **llm_parser**: the prompt in `prompts/extract_invoice.md` plus structured outputs → `RawInvoice` (every value **as printed**).
    With no usable text, the image/PDF itself goes to the vision model.
+   The API is sent `WireInvoice` (plain strings, `""` = not printed) because structured outputs allow at most
+   16 union-typed fields; `to_raw()` converts it to `RawInvoice` (`None` = absent). Add new fields to both models.
 3. **cache**: `backend/.cache/llm/{sha256}_p{prompt_version}_{model}.json`. A cache hit works without an API key.
 4. **normalize**: money (`$1,234.56`, `-$1,042.76`, `4 362,67 $`) → `Decimal`; dates (ISO/EN/FR); tax labels
    (GST/TPS, HST/TVH, QST/TVQ, PST) → `TaxCode`; ship-to province from the bill-to address; OCR fixes on
