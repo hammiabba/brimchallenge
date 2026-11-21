@@ -91,11 +91,21 @@ class _Cand:
     period: frozenset[int] = frozenset()  # months named in the lines, see service_period()
 
 
+def _doc_key(vendor: str | None, number: str | None, invoice_date: date | None, total: Decimal) -> tuple:
+    """What identifies one invoice document across RefData rows and batch bills (they share no id)."""
+    return (vendor or "", (number or "").strip().upper(), invoice_date, total)
+
+
 def _candidates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill]) -> list[_Cand]:
     """History (minus rejected) plus the other bills in the batch.
 
     The bill itself may be in `batch`; it is skipped by identity, not by file_hash, so the same
     PDF submitted twice (two bills, one hash) still matches as a duplicate.
+
+    A batch bill that is already in the reference data (same vendor, invoice number, date and total) is skipped:
+    the API stores each bill of an inbox run before checking the next, so earlier bills are in both places, and
+    counting them twice inflates splits and repeats duplicate matches. Nothing is lost, because the reference row
+    still takes part in every check.
     """
     me = bill_id(bill)
     out = [
@@ -107,8 +117,9 @@ def _candidates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill]) -> li
         for i in ref.invoices.values()
         if i["invoice_id"] != me and i["status"] != "rejected"
     ]
+    known = {_doc_key(c.vendor_id, c.number, c.invoice_date, c.total) for c in out}
     for b in batch:
-        if b is not bill:
+        if b is not bill and _doc_key(vendor_id(b), b.invoice_number, b.invoice_date, b.total) not in known:
             out.append(_Cand(bill_id(b), vendor_id(b) or "", b.invoice_number, b.invoice_date,
                              b.total, to_cad(b, ref)[0], "in_batch", is_credit(b),
                              _norm_name(b.vendor.name_on_invoice), b.department_id or "", b.po_number or "",

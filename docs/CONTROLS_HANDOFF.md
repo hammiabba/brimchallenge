@@ -96,6 +96,28 @@ help_for("BANK_CHANGE_UNVERIFIED")
 
 A code that isn't in the map (shouldn't happen) gets a generic title from the code name.
 
+## Where the API calls the controls (for judge Q&A)
+
+Every rule that decides whether money moves runs on the server, inside the write that depends on it. The UI only
+shows what the server allows. File paths are under `backend/app/`.
+
+| Controls function | Called from | When | What it's given |
+|---|---|---|---|
+| `run_controls(bill, batch, ref=)` | `services/controls_runner.py` → `rerun()`, the single path every service uses | A new bill from an upload or inbox run (`services/intake.py` `store_outcome`, started by `services/jobs.py` for the inbox), a header edit or line recoding (`services/bills.py` `update_header`, `code_line`) and submit (`services/bills.py` `submit`) | `ref` is rebuilt from the database on every call by `db/refdata_db.py` `refdata_from_db(exclude_bill_id=<this bill>)` (which uses `build_refdata`), never cached. So admin edits to users, policies and vendors apply at once, and the bill isn't matched against itself. The result is saved as a new versioned run (`db/bills.py` `save_controls_run`), and flag resolutions carry over when a flag is unchanged. |
+| `can_approve(user, step, bill, ref, route=, amount_cad=)` | `services/approvals.py` `decision_check()`, used by `approve`, `reject` and the allowed-actions check in `services/actions.py` | Before an approval or rejection is recorded | The stored `route` (`db/bills.py` `route_for_bill`). A manually assigned approver replaces the step's user. `amount_cad` is the split's combined amount when controls saw a split (`controls_runner.routed_amount`). A delegate's decision is stored with `on_behalf_of`. |
+| `can_release(user, amount_cad, approver_ids, flags, approval_complete, ref, bill=)` | `services/payments.py` `release_check()`, used by `release` and the allowed-actions check | Before a scheduled payment is released (simulated EFT) | `approver_ids` = everyone who approved, plus everyone a delegate approved for (`db/bills.py` `approver_ids_for_bill`). `flags` = only the flags still open in the latest stored run (`controls_runner.open_flags`), so an overridden flag no longer holds the payment. `approval_complete` = the bill's status is `approved` or `scheduled` (a bill only reaches `approved` through its final step). `bill` = the current `DraftBill`. |
+| `flag_help.help_for(code)` | `api/routes_reference.py`: `GET /reference/flag-help`, every role | Loaded by the UI | Title, help and severity for every code in `FLAG_CODES`. |
+
+Checks the API adds around these: the payment's preparer can't release it, a bank change after scheduling blocks
+release, release needs an `Idempotency-Key`, and one person can't sign two steps of the same bill. Every write
+records one audit event.
+
+**Inbox runs and the batch.** The inbox job stores each bill and runs controls on it with the rest of the run as
+`batch`, so bills stored earlier in the run are in both the reference data and the batch. `run_controls` skips a
+batch bill whose vendor, invoice number, date and total match a reference row, so it counts once. Without this, two
+$4,000 bills looked like a $12,000 split, and a duplicate pair listed its match twice
+(`tests/controls/test_batch_overlap.py`).
+
 ## Each check in plain English
 
 ### Vendor (`validate.check_vendor`)
@@ -193,6 +215,9 @@ Layered, strongest first. Checked against history (minus rejected invoices) *and
   bill would match last month's.
   Update: the ≥ 60% number rule now applies to every vendor (it's part of `near` above). Two bills that name the
   same month still match with unrelated numbers, so a re-issued October rent bill is still caught.
+- **A bill in both the reference data and the batch counts once** (same vendor, invoice number, date and total):
+  the API's inbox job stores bills one at a time, so earlier bills are in both. See "Where the API calls the
+  controls".
 - **A credit note is never matched against an invoice.** It shares the invoice's number and amount by design.
 - **AP virtual-card payments are skipped** in the card check. They pay other invoices, which the invoice-to-invoice
   checks already compare.
