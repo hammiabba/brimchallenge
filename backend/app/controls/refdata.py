@@ -192,9 +192,9 @@ def history_taxes(ref: RefData, inv: dict, lines: list[dict]) -> list[TaxLine]:
     """History stores tax as two amounts; the line tax codes say which code each amount is."""
     out = []
     for amount, codes, fallback in (
-        (money(inv["gst_hst_amount"]), [l["gst_hst_code"] for l in lines],
+        (money(inv["gst_hst_amount"]), [ln["gst_hst_code"] for ln in lines],
          "HST13" if inv["ship_to_province"] == "ON" else "GST5"),
-        (money(inv["pst_qst_amount"]), [l["pst_qst_code"] for l in lines],
+        (money(inv["pst_qst_amount"]), [ln["pst_qst_code"] for ln in lines],
          "QST9975" if inv["ship_to_province"] == "QC" else "PST7_BC"),
     ):
         if not amount:
@@ -242,14 +242,14 @@ def bill_from_history(ref: RefData, invoice_id: str) -> DraftBill:
         department_id=i["department_id"] or None,
         lines=[
             InvoiceLine(
-                line_no=int(l["line_no"]),
-                description=l["description"],
-                quantity=money(l["quantity"]),
-                unit_price=money(l["unit_price"]),
-                amount=money(l["amount"]),
-                line_type=LineType(l["line_type"] or "services"),
+                line_no=int(ln["line_no"]),
+                description=ln["description"],
+                quantity=money(ln["quantity"]),
+                unit_price=money(ln["unit_price"]),
+                amount=money(ln["amount"]),
+                line_type=LineType(ln["line_type"] or "services"),
             )
-            for l in rows
+            for ln in rows
         ],
         subtotal=money(i["subtotal"]),
         taxes=history_taxes(ref, i, rows),

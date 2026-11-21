@@ -221,9 +221,11 @@ def _card_matches(bill: DraftBill, ref: RefData) -> list[DuplicateMatch]:
             continue
         sim = _similar(_norm_name(t["merchant_descriptor"]), name)
         if sim >= 0.6:
-            out.append(DuplicateMatch(kind="card_paid", score=round(0.5 + 0.4 * sim, 2), matched_card_txn_id=t["txn_id"],
-                                      reasons=[f"{t['source']} charge {t['merchant_descriptor']} {t['currency']} {t['amount']} "
-                                               f"on {t['posted_date']}", f"merchant name {sim:.0%} similar",
+            charge = (f"{t['source']} charge {t['merchant_descriptor']} {t['currency']} {t['amount']} "
+                      f"on {t['posted_date']}")
+            out.append(DuplicateMatch(kind="card_paid", score=round(0.5 + 0.4 * sim, 2),
+                                      matched_card_txn_id=t["txn_id"],
+                                      reasons=[charge, f"merchant name {sim:.0%} similar",
                                                f"cardholder {t['cardholder_user_id']}"]))
     return out
 
