@@ -208,3 +208,21 @@ def test_credit_note_with_positive_amounts(ref, make_bill):
     bill = make_bill()
     bill.is_credit_note = True
     assert "CREDIT_NOTE" in codes(validate(bill, ref))
+
+
+# ---- one-off work from a fixed-fee vendor (incoming batch false alarm: Lattice 557) ----
+def test_one_off_charge_is_not_compared_to_the_monthly_fee(ref, make_bill):
+    bill = make_bill(vendor_id="V019", amount="8200.00", description="Implementation and data migration")
+    flags = [f for f in validate(bill, ref) if f.code == "OVER_CONTRACT_RATE"]
+    assert [f.evidence["kind"] for f in flags] == ["one_off"]
+    assert flags[0].severity == Severity.WARN
+    assert "One-off charge of $8,200.00" in flags[0].message and "Fee billed" not in flags[0].message
+
+
+def test_fee_line_next_to_a_one_off_line_is_still_checked(ref, make_bill):
+    bill = make_bill(vendor_id="V019", amount="1500.00", description="Lattice Ledger accounting platform")
+    bill.lines.append(InvoiceLine(line_no=2, description="Onboarding and training", quantity=D("1"),
+                                  unit_price=D("900.00"), amount=D("900.00")))
+    bill.subtotal += D("900.00")
+    kinds = sorted(f.evidence["kind"] for f in validate(bill, ref) if f.code == "OVER_CONTRACT_RATE")
+    assert kinds == ["fee", "one_off"]  # $1,500 platform fee vs $1,320 contract, plus the one-off line

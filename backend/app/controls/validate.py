@@ -22,6 +22,9 @@ STALE_DAYS = 180
 NAME_LOOKALIKE = 0.85        # fuzzy name similarity for an unknown vendor to count as a lookalike
 HOURLY = re.compile(r"\b(hours?|hrs?|heures?)\b", re.IGNORECASE)
 OVERAGE = re.compile(r"\b(overage|usage|excess|d[ée]passement)\b", re.IGNORECASE)
+# One-off work billed by a fixed-fee vendor: not part of the monthly fee, so not compared to it.
+ONE_OFF = re.compile(r"\b(implementation|migration|set[- ]?up|installation|onboarding|training|one[- ]time|"
+                     r"mise en (?:place|œuvre)|formation)\b", re.IGNORECASE)
 
 
 def flag(code: str, message: str, *, evidence: dict | None = None, field: str | None = None,
@@ -357,7 +360,8 @@ def check_contract(bill: DraftBill, ref: RefData) -> list[Flag]:
     if c["billing_type"] == "fixed_monthly" and c["monthly_fee"]:
         fee = money(c["monthly_fee"])
         overage = [ln for ln in bill.lines if OVERAGE.search(ln.description)]
-        fee_lines = [ln for ln in bill.lines if ln not in overage]
+        one_off = [ln for ln in bill.lines if ln not in overage and ONE_OFF.search(ln.description)]
+        fee_lines = [ln for ln in bill.lines if ln not in overage and ln not in one_off]
         billed_fee = sum((ln.amount for ln in fee_lines), Decimal("0")) if bill.lines else bill.subtotal
         if billed_fee > fee + TOL:
             flags.append(flag("OVER_CONTRACT_RATE",
@@ -373,6 +377,15 @@ def check_contract(bill: DraftBill, ref: RefData) -> list[Flag]:
                               f"({c['contract_id']}). Not an overcharge by itself: confirm the usage.",
                               evidence={"kind": "overage", "contract": c["contract_id"], "overage": str(extra),
                                         "lines": [ln.line_no for ln in overage]},
+                              field="lines"))
+        if one_off:
+            extra = sum((ln.amount for ln in one_off), Decimal("0"))
+            what = "; ".join(ln.description for ln in one_off)
+            flags.append(flag("OVER_CONTRACT_RATE",
+                              f"One-off charge of {_amt(extra)} ({what}) is not part of the {_amt(fee)}/month fee in "
+                              f"{c['contract_id']}. Not an overcharge by itself: confirm it was ordered.",
+                              evidence={"kind": "one_off", "contract": c["contract_id"], "one_off": str(extra),
+                                        "lines": [ln.line_no for ln in one_off]},
                               field="lines"))
 
     if c["fuel_surcharge_cap_pct"]:

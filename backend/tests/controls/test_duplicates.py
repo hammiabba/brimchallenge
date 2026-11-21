@@ -87,3 +87,30 @@ def test_rent_is_not_a_split(ref):
     for iid, i in ref.invoices.items():
         if i["vendor_id"] == "V037":
             assert find_split(bill_from_history(ref, iid), ref) is None
+
+
+# ---- near duplicates need alike numbers or the same service period (incoming batch false alarm) ----
+def test_two_phases_billed_the_same_day_are_not_duplicates(ref, make_bill):
+    # Orion 279 and 281 (EM-029): same vendor and day, amounts 0.5% apart, but different numbers and work
+    a = make_bill(vendor_id="V029", number="279", amount="4300.00", when=date(2026, 10, 28), file_hash="o279",
+                  description="Consulting hours - Network audit phase 1")
+    b = make_bill(vendor_id="V029", number="281", amount="4320.00", when=date(2026, 10, 28), file_hash="o281",
+                  description="Consulting hours - Network audit phase 2")
+    assert [m for m in find_duplicates(a, ref, [a, b]) if m.kind == "near"] == []
+
+
+def test_same_service_period_still_matches_with_a_new_number(ref, make_bill):
+    a = make_bill(vendor_id="V029", number="279", when=date(2026, 10, 28), file_hash="p1",
+                  description="Advisory retainer - October")
+    b = make_bill(vendor_id="V029", number="9134", when=date(2026, 10, 30), file_hash="p2",
+                  description="Advisory retainer - October")
+    [m] = [m for m in find_duplicates(a, ref, [a, b]) if m.kind == "near"]
+    assert "same service period" in m.reasons
+
+
+def test_service_period_reads_months_in_english_french_and_dates():
+    from app.controls.duplicates import service_period
+    assert service_period(["Energy - October"]) == {10}
+    assert service_period(["Loyer de base - novembre"]) == {11}
+    assert service_period(["Hosting 2026-09-01 to 2026-09-30"]) == {9}
+    assert service_period(["Consulting hours - phase 1"]) == frozenset()

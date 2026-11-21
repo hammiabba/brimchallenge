@@ -127,6 +127,7 @@ Tolerance is 2 cents. Extraction never "fixes" printed numbers, so these catch b
 | Invoice dated after the contract ended | `CONTRACT_EXPIRED` (warn) | Work may not be authorized (Torque Industrial V044). |
 | Fixed-monthly bill whose **fee line(s)** exceed the contract fee | `OVER_CONTRACT_RATE` (warn, `kind: fee`) | Only the fee line is compared, not the whole subtotal. Billing *under* the fee isn't flagged (no code). |
 | Usage / overage lines on a fixed-monthly bill | `OVER_CONTRACT_RATE` (warn, `kind: overage`) | Billed on top of the fee by design (Redstone V021: $4,800 committed base + data-transfer overage), so it's a "confirm the usage" warning, not an overcharge. |
+| One-off lines on a fixed-monthly bill (implementation, migration, setup, installation, onboarding, training, one-time; French mise en place / formation) | `OVER_CONTRACT_RATE` (warn, `kind: one_off`) | Not part of the monthly fee, so not compared to it (Lattice 557: $8,200 implementation vs $1,320/month). The warning says "One-off charge … not part of the fee … confirm it was ordered". Uses the existing code because there is no separate one for it. |
 | Hourly line above the contract's hourly cap | `OVER_CONTRACT_RATE` (warn) | A line is hourly only if its description says hour / hr / hrs / heure. Quantity alone (5 pallets) isn't hours. |
 | Fuel surcharge above the contract's cap | `OVER_FUEL_SURCHARGE_CAP` (warn) | Checks both the % printed on the line and the actual % of freight, and uses the worse one (Invoice 000964: 22% vs a 12% cap). |
 | This month's billing would pass the contract's monthly not-to-exceed | `OVER_CONTRACT_NTE` (warn) | Sums this vendor's other bills in the same month from history (Orion C023). |
@@ -156,7 +157,7 @@ Layered, strongest first. Checked against history (minus rejected invoices) *and
 | --- | --- | --- |
 | `exact` | Same vendor, same invoice number | `DUPLICATE_EXACT` (block) |
 | `normalized` | Same vendor, same number after dropping prefixes, punctuation and leading zeros (`FA-000583` = `583`) | `DUPLICATE_EXACT` (block) |
-| `near` | Same vendor, amount within 1%, within 14 days | `DUPLICATE_LIKELY` (warn) |
+| `near` | Same vendor, amount within 1%, within 14 days, **and** invoice numbers ≥ 60% alike or both bills naming the same service month ("October", "octobre", 2026-10-…) | `DUPLICATE_LIKELY` (warn) |
 | `cross_vendor` | Different vendor record with the same bank account, amount within 1%, within 30 days | `DUPLICATE_LIKELY` (warn) |
 | `card_paid` | Employee card charge with a similar merchant name, same amount, within 45 days | `ALREADY_PAID_BY_CARD` (block) |
 
@@ -165,6 +166,8 @@ Layered, strongest first. Checked against history (minus rejected invoices) *and
 - **Why rent isn't a duplicate:** fixed-monthly contract vendors (rent, SaaS) bill the same amount every month.
   For them a "near" match also needs the invoice numbers to look alike (≥ 60% similar); otherwise every rent
   bill would match last month's.
+  Update: the ≥ 60% number rule now applies to every vendor (it's part of `near` above). Two bills that name the
+  same month still match with unrelated numbers, so a re-issued October rent bill is still caught.
 - **A credit note is never matched against an invoice.** It shares the invoice's number and amount by design.
 - **AP virtual-card payments are skipped** in the card check. They pay other invoices, which the invoice-to-invoice
   checks already compare.
@@ -273,18 +276,24 @@ mistakes.
 | USD: Sparkgrid, Tessera | ✅ Converted at the rate printed on the bill. No false Canadian-tax flags. "Preferred method = card" isn't shown; that belongs to payment, not controls. |
 | French: Laurentian, Place Mont-Royal | ✅ Comma decimals read correctly (5,015.98 and 6,990.48). No false flags. |
 | Scans `scan_8049.png`, `scan_8749.png` | ✅ Read by the vision model and checked against the images. No false GST or bank flags. |
-| EM-029 Orion 279 + 281 (+ 287) | ✅ Two bills from one email. C023's $25k NTE isn't breached (October total $14,543.10), so no NTE flag. ❌ False `DUPLICATE_LIKELY` between 279 and 281 (see below). |
+| EM-029 Orion 279 + 281 (+ 287) | ✅ Two bills from one email. C023's $25k NTE isn't breached (October total $14,543.10), so no NTE flag. ❌ False `DUPLICATE_LIKELY` between 279 and 281 (see below). Fixed on `b/controls-false-alarms`. |
 | EM-056 to EM-059 | ✅ Listed as statement, payment inquiry, missing attachment and marketing |
 
 ### False alarms
-1. **Orion 279 ↔ 281, `DUPLICATE_LIKELY` (warn).** Different invoice numbers, both attached to the same email,
+1. ✅ **Fixed.** **Orion 279 ↔ 281, `DUPLICATE_LIKELY` (warn).** Different invoice numbers, both attached to the same email,
    with amounts 0.5% apart. The near-match rule (same vendor, amount within 1%, within 14 days) uses
    invoice-number similarity only for the score, not as a condition. Possible fix: require some number
    similarity, or skip two bills from the same email. Not changed yet, because it also moves the history replay
    numbers.
-2. **Lattice 557, `OVER_CONTRACT_RATE` (warn).** The $8,200 is a one-off "Implementation and data migration",
+   Fix (`b/controls-false-alarms`): a near match now also needs invoice numbers ≥ 60% alike or the same service
+   month in the lines. 279 vs 281 are 33% alike, and their lines name phases, not months, so they no longer match.
+   The history replay didn't change, because no historical bill had a near match.
+2. ✅ **Fixed.** **Lattice 557, `OVER_CONTRACT_RATE` (warn).** The $8,200 is a one-off "Implementation and data migration",
    not the monthly fee. The check compares any bill from a fixed-monthly vendor to the $1,320 fee. The bill still
    deserves a question (it isn't covered by the contract), but the message is wrong.
+   Fix (`b/controls-false-alarms`): one-off lines are left out of the fee comparison and get their own warning
+   (`kind: one_off`): "One-off charge of $8,200.00 (Implementation and data migration) is not part of the
+   $1,320.00/month fee in C005. Not an overcharge by itself: confirm it was ordered."
 3. **Cloudbarn INV-01561, extra `DUPLICATE_LIKELY` vs AP-00411 (INV-01567, the October subscription).** On a
    fixed-monthly vendor, consecutive invoice numbers always look ≥ 60% alike, so the "recurring" guard doesn't
    help. This is harmless here, since the exact duplicate already blocks the bill. On a clean monthly bill it
@@ -300,6 +309,19 @@ mistakes.
    (open question 2).
 3. **Not checked, worth knowing:** Cascadia 1624 (`scan_8049.png`) is dated 2026-10-24 but already prints the new
    account (…9679), which was only changed on 2026-10-27 by an unverified email request. The bill is held anyway.
+
+### Cascadia: likely edited or forged invoice
+
+Cascadia's scanned invoice is dated 3 days before the Oct 27 bank change but already shows the new bank account. A
+real invoice from before the change would show the old account, so the invoice was likely edited or forged. The
+engine holds the bill, but it doesn't yet flag this specific date mismatch on its own.
+
+### Rerun after the false-alarm fixes (`b/controls-false-alarms`)
+
+Levels are unchanged: 19 hold, 14 review, 23 can proceed, $89,963.04 CAD on hold. Orion 279 and 281 stay under
+review because of `POSSIBLE_SPLIT`, and Lattice 557 because of the one-off warning. `DUPLICATE_LIKELY` drops from 3
+bills to 1 (only Cloudbarn INV-01561, false alarm 3), and "Duplicates inside this batch" no longer appears. The
+history replay output is identical.
 
 ### Caught beyond §4 (checked against the PDFs: real, not extraction errors)
 - Summit 000809 is printed with date 2026-11-27, in the future → `DATE_ANOMALY`.
@@ -344,7 +366,8 @@ the document (extraction); the rules are plain code.
 
 **How do you avoid false positives on duplicates?**
 Layers with scores, and known exceptions: recurring fixed-fee vendors need similar invoice numbers too, credit
-notes never match invoices, and AP card payments are skipped. Splits ignore duplicate pairs, bills on their own
+notes never match invoices, and AP card payments are skipped. A near match (same amount, new number) also needs
+alike invoice numbers or the same service month, so two phases of one job billed the same day don't match. Splits ignore duplicate pairs, bills on their own
 POs and other departments, which removed the Deskhive and Redline false positives. Replaying all 426 historical invoices
 (`cd backend && python scripts/replay_history.py`) shows what fires, judging each bill as of its own date.
 
@@ -362,6 +385,11 @@ each duplicate pair or split group is counted once. Lead with Cascadia:
   skipped the finance manager step (AP-00159, AP-00216). Nobody approved and released the same bill.
 - Also: 3 wrong-tax bills, 5 bills on lookalike vendor records, and Torque Industrial's likely split (3 bills,
   ~$14k in 2 days). 48 of the 426 bills have at least one warn or block flag.
+
+**Did you catch anything the dataset notes didn't mention?**
+Cascadia's scanned invoice is dated 3 days before the Oct 27 bank change but already shows the new bank account. A
+real invoice from before the change would show the old account, so the invoice was likely edited or forged. The
+engine holds the bill, but it doesn't yet flag this specific date mismatch on its own.
 
 **Why recompute tax instead of trusting the invoice?**
 The printed tax is what we're auditing. Expected tax comes from the place of supply, the vendor and the line type.
