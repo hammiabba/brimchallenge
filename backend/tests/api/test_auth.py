@@ -101,3 +101,16 @@ def test_session_round_trip_unit():
     assert data and data.user_id == "U004"
     assert signed_session.verify(token, now=200, secret=b"x" * 32) is None
     assert signed_session.verify(token, now=100 + 8 * 3600, secret=secret) is None
+
+
+def test_login_and_logout_are_audited(login, db_factory):
+    from sqlalchemy import select
+
+    from app.db import models
+
+    client = login("U005")
+    client.post("/auth/logout")
+    with db_factory() as s:
+        actions = s.scalars(select(models.AuditEvent.action).where(models.AuditEvent.actor_user_id == "U005")
+                            .order_by(models.AuditEvent.seq.desc()).limit(2)).all()
+    assert actions == ["auth.logout", "auth.login"]

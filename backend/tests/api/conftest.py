@@ -2,7 +2,8 @@
 Fixtures for API tests: one seeded SQLite database per test session (migrated with Alembic, then the full dataset
 seed), and TestClients signed in as a given user.
 
-Tests here only read, or write inside a transaction the fixture rolls back, so the shared database stays as seeded.
+Tests share the database, so a test that writes must not depend on another test's writes, and assertions about
+the audit log compare against the log as it was before the test.
 The repo-wide autouse fixtures (no network, no API key, temp cache dirs) still apply.
 """
 from __future__ import annotations
@@ -18,9 +19,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.auth import session as signed_session
 from app.auth.settings import get_auth_settings
 from app.config import get_settings
-from app.db.database import get_session, make_engine
+from app.db.database import as_write_engine, get_session, get_write_session, make_engine
 from app.db.seed import migrate_to_head, seed_all
+from app.db.settings import get_db_settings
 from app.main import app
+
+# Not a secret: a fixed key so audit fingerprints are reproducible in tests (same idea as tests/db).
+TEST_AUDIT_HMAC_KEY = "test-only-audit-hmac-key-0123456789abcdef"
 
 # One user per role, from the seeded users.csv.
 ROLE_USERS = {
@@ -37,6 +42,14 @@ ON_LEAVE_USER = "U012"
 # Bills used for scope checks: D01 is the employee's and approver's department, D05 is not.
 IN_SCOPE_BILL = "AP-00024"      # D01
 OUT_OF_SCOPE_BILL = "AP-00001"  # D05
+
+
+@pytest.fixture(autouse=True)
+def _audit_hmac_key(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    monkeypatch.setenv("AUDIT_HMAC_KEY", TEST_AUDIT_HMAC_KEY)
+    get_db_settings.cache_clear()
+    yield
+    get_db_settings.cache_clear()
 
 
 @pytest.fixture(scope="session")
@@ -57,9 +70,13 @@ def db_factory(seeded_engine: Engine) -> sessionmaker[Session]:
 
 
 @pytest.fixture
-def client(db_factory: sessionmaker[Session]) -> Iterator[TestClient]:
+def write_factory(seeded_engine: Engine) -> sessionmaker[Session]:
+    return sessionmaker(bind=as_write_engine(seeded_engine), expire_on_commit=False)
+
+
+def _scoped(factory: sessionmaker[Session]):
     def _session() -> Iterator[Session]:
-        s = db_factory()
+        s = factory()
         try:
             yield s
         except Exception:
@@ -67,11 +84,17 @@ def client(db_factory: sessionmaker[Session]) -> Iterator[TestClient]:
             raise
         finally:
             s.close()
+    return _session
 
-    app.dependency_overrides[get_session] = _session
+
+@pytest.fixture
+def client(db_factory: sessionmaker[Session], write_factory: sessionmaker[Session]) -> Iterator[TestClient]:
+    app.dependency_overrides[get_session] = _scoped(db_factory)
+    app.dependency_overrides[get_write_session] = _scoped(write_factory)
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.pop(get_session, None)
+    app.dependency_overrides.pop(get_write_session, None)
 
 
 @pytest.fixture

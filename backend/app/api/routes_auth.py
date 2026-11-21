@@ -13,7 +13,9 @@ from app.auth import session as signed_session
 from app.auth.deps import CurrentUser, current_user, load_current_user
 from app.auth.settings import get_auth_settings
 from app.db import models
-from app.db.database import get_session
+from app.db.audit import AuditAction
+from app.db.database import get_session, get_write_session
+from app.services.events import record
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -33,10 +35,13 @@ def picker_users(db: Session = Depends(get_session)) -> list[models.User]:
 
 
 @router.post("/login", response_model=Me, responses=READ_ERRORS)
-def login(body: LoginIn, response: Response, db: Session = Depends(get_session)) -> Me:
+def login(body: LoginIn, response: Response, db: Session = Depends(get_write_session)) -> Me:
     user = load_current_user(db, body.user_id)
     if user is None:
         raise ApiError(401, "auth.invalid_user", "This account can't sign in.")
+    record(db, actor_user_id=user.user_id, actor_role=user.role, action=AuditAction.AUTH_LOGIN, entity_type="user",
+           entity_id=user.user_id)
+    db.commit()
     s = get_auth_settings()
     response.set_cookie(s.session_cookie_name, signed_session.issue(user.user_id), max_age=s.session_ttl_hours * 3600,
                         httponly=True, samesite="lax", secure=s.secure_cookie, path="/")
@@ -44,7 +49,11 @@ def login(body: LoginIn, response: Response, db: Session = Depends(get_session))
 
 
 @router.post("/logout", status_code=204, responses=READ_ERRORS)
-def logout(response: Response, _: CurrentUser = Depends(current_user)) -> Response:
+def logout(response: Response, user: CurrentUser = Depends(current_user),
+           db: Session = Depends(get_write_session)) -> Response:
+    record(db, actor_user_id=user.user_id, actor_role=user.role, action=AuditAction.AUTH_LOGOUT, entity_type="user",
+           entity_id=user.user_id)
+    db.commit()
     response.status_code = 204
     response.delete_cookie(get_auth_settings().session_cookie_name, path="/")
     return response
