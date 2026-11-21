@@ -76,6 +76,7 @@ result.recommendation     # "Hold: This bill is on V052 Harlow and Stern LLP, ..
 | `can_release(user_id, amount_cad, approver_ids, flags, approval_complete, ref, *, bill)` | Call before releasing a payment. Pass `result.flags` so duplicates hold the payment, and the `bill` (requester and credit-note checks). |
 | `validate`, `find_duplicates`, `duplicate_flags`, `find_split`, `route` | The pieces `run_controls` calls, if you need one alone. |
 | `load_refdata()` / `bill_from_history(...)` | Load reference data; turn a historical invoice row into a `DraftBill` (tests, replay). |
+| `build_refdata(rows_by_file, as_of=None)` / `REFDATA_FILES` | **For the DB layer.** Builds `RefData` from rows instead of files: a dict keyed by the 12 CSV stems in `REFDATA_FILES` (`"vendors"`, `"users"`, …, `"approval_policies"`), each a list of `dict[str, str]` rows with the CSV's column names. `as_of` defaults to the settings date. `load_refdata()` is now just `build_refdata` over the CSVs, and a test checks both give identical `RefData`. |
 | `incoming.run_batch(items)` / `incoming.render_report(...)` | Runs the controls on the extracted incoming batch as one batch (so in-batch duplicates and splits are caught), sorts problem bills first and renders the report. Printed by `backend/scripts/run_incoming.py`. |
 | `history.replay(ref)` | Replays all historical invoices, each judged as of its own date, plus checks on `approvals.csv` and `payments.csv`. Printed by `backend/scripts/replay_history.py`. |
 | `flag_help.help_for(code)` / `flag_help.FLAG_HELP` | **For the UI team.** A short title and one plain-English help sentence (what it means, what to do) for every code in `FLAG_CODES`, plus its severity. Show the title as the badge, the flag's own `message` for this bill's details, and the help as a tooltip or help panel. A test fails if a code has no help. |
@@ -250,6 +251,8 @@ routing follows.
 - **`can_release` trusts its `approver_ids`.** The backend must pass who *actually* acted, including delegates.
 - **`RefData` is loaded once per process** (`default_refdata()` is cached). Data changes need a restart, or pass
   a fresh `ref`. When the DB lands, replace `refdata.load_refdata()`; nothing else needs to change.
+  Update: the DB layer can now call `build_refdata(rows_by_file)` with rows read from the database (same keys and
+  column names as the CSVs), so the CSV and DB paths share one builder. Pass the result as `ref`.
 - **Signatures differ from the old stubs:** functions take a `RefData`, not a `ReferenceRepository`.
 - **Not yet run on the real incoming batch.** `backend/scripts/run_incoming.py` is ready and tested on hand-built
   bills, but extraction currently fails on every file: the API rejects `RawInvoice` in
