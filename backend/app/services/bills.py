@@ -67,6 +67,23 @@ def _latest_run_out(db: Session, bill_id: str) -> s.ControlsRunOut | None:
                                         for d in (run.result_json or {}).get("duplicates", [])])
 
 
+def department_source(bill: models.Bill, events: list[s.AuditEventOut]) -> str | None:
+    """Where the bill's department came from, read from the bill and its own audit history: a person's edit wins,
+    then what intake recorded when it created the bill, then the document itself."""
+    if bill.origin == "history":
+        return "history"
+    if bill.department_id is None:
+        return None
+    if any(e.action == AuditAction.BILL_UPDATED and "department_id" in (e.after or {}) for e in events):
+        return "user"
+    created = next((e for e in events if e.action == AuditAction.BILL_CREATED), None)
+    if created and (created.after or {}).get("department_source"):
+        return created.after["department_source"]
+    if (bill.draft_json or {}).get("department_id") == bill.department_id:
+        return "invoice"
+    return None
+
+
 def bill_detail(db: Session, user: CurrentUser, bill_id: str) -> s.BillDetail:
     from app.services.actions import bill_actions  # actions builds on this module's rules
 
@@ -80,6 +97,7 @@ def bill_detail(db: Session, user: CurrentUser, bill_id: str) -> s.BillDetail:
                            .order_by(models.ApprovalDecision.acted_at, models.ApprovalDecision.step_no))
     payments = list(db.scalars(select(models.Payment).where(models.Payment.bill_id == bill.bill_id)
                                .order_by(models.Payment.scheduled_date)))
+    events = audit.entity_history(db, AUDIT_ENTITY, bill.bill_id)
     return s.BillDetail(
         **summary.model_dump(),
         subtotal=cents(bill.subtotal_cents), fx_rate_to_cad=bill.fx_rate_to_cad, fx_rate_date=bill.fx_rate_date,
@@ -88,8 +106,8 @@ def bill_detail(db: Session, user: CurrentUser, bill_id: str) -> s.BillDetail:
         created_by=bill.created_by, updated_at=bill.updated_at, extracted=views.extracted_for(user.role, bill),
         lines=[views.line_out(ln) for ln in lines], taxes=[views.tax_out(t) for t in taxes],
         latest_run=_latest_run_out(db, bill.bill_id), decisions=[views.decision_out(d) for d in decisions],
-        payments=views.payment_summaries(db, payments), audit=audit.entity_history(db, AUDIT_ENTITY, bill.bill_id),
-        allowed_actions=bill_actions(db, user, bill))
+        payments=views.payment_summaries(db, payments), audit=events,
+        department_source=department_source(bill, events), allowed_actions=bill_actions(db, user, bill))
 
 
 # ---------------------------------------------------------------- writes

@@ -297,6 +297,9 @@ class BillDetail(BillSummary):
     created_at: UtcDateTime
     created_by: str | None
     updated_at: UtcDateTime
+    department_source: Literal["invoice", "submitter", "coding", "user", "history"] | None = Field(
+        None, description="Where department_id came from. 'coding' means suggested from the line coding and not yet "
+                          "confirmed by a person; editing the department makes it 'user'.")
     extracted: dict[str, Any] | None = Field(
         None, description="Frozen extraction snapshot from intake, with bank details masked for the caller's role")
     lines: list[BillLineOut]

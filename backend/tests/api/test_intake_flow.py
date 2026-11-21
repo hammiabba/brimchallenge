@@ -7,6 +7,7 @@ from app.db import models
 from app.extraction.pipeline import ExtractionOutcome
 from app.services import intake as intake_service
 from app.services import jobs as jobs_service
+from app.shared.schemas import CodingSuggestion
 from tests.api.factories import draft
 
 PDF = ("invoice.pdf", b"%PDF-1.4 test", "application/pdf")
@@ -59,3 +60,37 @@ def test_inbox_run_is_a_background_job_and_does_not_repeat(act_as, monkeypatch, 
     assert triaged == 59 and bills == len([i for i in job["items"] if i["bill_id"]])
     again = clerk.post("/intake/inbox/jobs").json()
     assert clerk.get(f"/intake/inbox/jobs/{again['job_id']}").json()["processed_emails"] == 0
+
+
+def coded_extract(data, filename, **_):
+    """A draft with no department or requester, whose line coding suggests D03 (as the coding step would)."""
+    d = draft(number=f"DEP-{filename[:20]}", requester=None, dept=None)
+    line = d.lines[0].model_copy(update={"coding": CodingSuggestion(gl_account="6420", department_id="D03",
+                                                                    confidence=0.9, reason="test")})
+    return ExtractionOutcome(filename, f"sha256:{filename}", "ok", draft=d.model_copy(update={"lines": [line]}))
+
+
+def test_inbox_bill_without_department_gets_the_coding_suggestion(act_as, monkeypatch):
+    monkeypatch.setattr(jobs_service, "extract_outcome", coded_extract)
+    clerk = act_as("U004")
+    job_id = clerk.post("/intake/inbox/jobs").json()["job_id"]
+    bill_id = next(i["bill_id"] for i in clerk.get(f"/intake/inbox/jobs/{job_id}").json()["items"] if i["bill_id"])
+    bill = clerk.get(f"/bills/{bill_id}").json()
+    assert bill["department_id"] == "D03" and bill["department_source"] == "coding"
+    assert bill["extracted"]["department_id"] is None  # the document as read is untouched
+    assert bill["latest_run"]["route"][0]["user_id"] == "U009"  # D03's manager, so routing has someone
+    r = clerk.patch(f"/bills/{bill_id}", json={"row_version": bill["row_version"], "department_id": "D03"})
+    assert r.json()["department_source"] == "user"  # a person confirmed it
+
+
+def test_employee_submission_department_is_marked_submitter(act_as, monkeypatch):
+    monkeypatch.setattr(intake_service, "extract_outcome", coded_extract)
+    client = act_as("U013")
+    client.post("/submissions", files={"file": PDF})
+    [item] = client.get("/submissions").json()
+    bill = client.get(f"/bills/{item['bill_id']}").json()
+    assert bill["department_id"] == "D01" and bill["department_source"] == "submitter"
+
+
+def test_history_bills_are_marked_history(as_role):
+    assert as_role("ap_clerk").get("/bills/AP-00024").json()["department_source"] == "history"
