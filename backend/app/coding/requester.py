@@ -19,7 +19,7 @@ from app.db import models
 
 # Users in these states can't be made a requester (on_leave is fine: they still own their spend).
 BLOCKED_STATUSES = ("terminated", "inactive")
-_REQUESTER_SUFFIX = re.compile(r"; department \S+ from requester \S+$")
+_REQUESTER_SUFFIX = re.compile(r"; department \S+ from requester \S+(?: \(replaces \S+\))?$")
 
 
 def requester_problem(db: Session, user_id: str | None) -> str | None:
@@ -48,6 +48,7 @@ def recode_for_requester(db: Session, bill: models.Bill, changes: dict) -> None:
         base_reason = _REQUESTER_SUFFIX.sub("", first.get("reason") or line.suggestion_reason or "")
         if dept and dept != base_dept:
             line.suggested_department_id = dept
-            line.suggestion_reason = f"{base_reason}; department {dept} from requester {requester}"
+            line.suggestion_reason = (f"{base_reason}; department {dept} from requester {requester} "
+                                      f"(replaces {base_dept})")
         else:
             line.suggested_department_id, line.suggestion_reason = base_dept, base_reason

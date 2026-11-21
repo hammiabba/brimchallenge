@@ -56,7 +56,7 @@ def test_setting_the_requester_moves_suggested_departments(act_as, monkeypatch):
     assert r.status_code == 200, r.text
     line = r.json()["lines"][0]
     assert line["suggested_department_id"] == "D05"
-    assert line["suggestion_reason"].endswith("; department D05 from requester U033")
+    assert line["suggestion_reason"].endswith("; department D05 from requester U033 (replaces D01)")
 
     # Changing it again replaces the suffix instead of stacking a second one.
     r = clerk.patch(f"/bills/{bill['bill_id']}", json={"row_version": r.json()["row_version"],
