@@ -122,6 +122,7 @@ CASES: list[Case] = [
     Case("GET", "/reference/departments", ALL, ok=200),
     Case("GET", "/reference/gl-accounts", ALL, ok=200),
     Case("GET", "/intake/emails", "C F X Au", ok=200),
-    # intake lane's router, guarded at mount time in app/main.py
-    Case("GET", "/intake/drafts", "C F X", ok=200),
+    # intake lane's reads (routes_intake.py); same roles as the inbox list
+    Case("GET", "/intake/emails/EM-001", "C F X Au", ok=200),
+    Case("GET", "/intake/files/" + "0" * 64, "C F X Au", ok=404),  # no intake item has this hash
 ]
