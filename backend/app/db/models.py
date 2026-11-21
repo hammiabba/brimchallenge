@@ -741,6 +741,9 @@ class AuditEvent(Base):
         Index(None, "entity_type", "entity_id"),
         Index(None, "at"),
         Index(None, "actor_user_id"),
+        # Migration 0002: no two events may extend the same predecessor, so the hash chain can never fork. The first
+        # event uses prev_hash "GENESIS" (not NULL), so the start of the chain is covered too.
+        Index("uq_audit_events_prev_hash", "prev_hash", unique=True),
         {"sqlite_autoincrement": True},
     )
 
