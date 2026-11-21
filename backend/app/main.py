@@ -5,7 +5,7 @@ Owner: API lane. Wiring only, no logic: middleware, error handlers and routers.
 
 Middleware, outermost first: request id -> CORS -> origin check (CSRF) -> body size limit -> routes.
 """
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import (
@@ -22,8 +22,6 @@ from app.api import (
 from app.api.errors import install_error_handlers
 from app.api.middleware import BodySizeLimitMiddleware, OriginCheckMiddleware, RequestIdMiddleware
 from app.api.routes_intake import router as intake_router
-from app.auth.deps import require_role
-from app.auth.roles import AP_CLERK, CONTROLLER_ADMIN, FINANCE_MANAGER
 from app.auth.settings import get_auth_settings
 from app.coding.feedback import replay_on_startup
 from app.config import get_settings
@@ -48,8 +46,7 @@ app.add_middleware(RequestIdMiddleware)
 install_error_handlers(app)
 app.router.on_startup.append(lambda: replay_on_startup(app))
 
-# The intake router belongs to the intake lane; its role guard is applied here so that file stays untouched.
-app.include_router(intake_router, dependencies=[Depends(require_role(AP_CLERK, FINANCE_MANAGER, CONTROLLER_ADMIN))])
+app.include_router(intake_router)  # the intake lane's reads; each route has its own role guard
 app.include_router(routes_auth.router)
 app.include_router(routes_bills.router)
 app.include_router(routes_intake_jobs.router)
