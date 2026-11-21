@@ -77,35 +77,43 @@ def _next_decision_id(db: Session) -> str:
     return next_id(db, models.ApprovalDecision.decision_id, "AP-A-", 5)
 
 
-def _decide(db: Session, user: CurrentUser, bill_id: str, row_version: int, decision: str,
-            comment: str | None) -> tuple[models.Bill, models.ApprovalRouteStep, bool]:
-    """Shared checks for approve and reject. The permission itself is controls.can_approve (P07 self-approval,
-    assignee, step role, the final signer's limit, P08 delegation), fed only from stored data: the stored route,
-    the bill rebuilt from the database and RefData from the database."""
-    bill = get_bill_for(db, user, bill_id)
-    check_row_version(bill.row_version, row_version, "bill")
+def decision_check(db: Session, user: CurrentUser, bill: models.Bill):
+    """Everything that decides whether `user` may approve or reject `bill` right now, without writing anything.
+    Raises ApiError with the reason; returns (step_row, step, route). Used by the write and by allowed_actions.
+
+    The permission itself is controls.can_approve (P07 self-approval, assignee, step role, the final signer's limit,
+    P08 delegation), fed only from stored data: the stored route, the bill rebuilt from the database and RefData
+    from the database."""
     if bill.status != "pending_approval":
         raise invalid_state("bill", bill.status, "pending_approval")
-    step_row = current_step(db, bill_id)
+    step_row = current_step(db, bill.bill_id)
     if step_row is None:
         raise ApiError(409, "bill.no_pending_step", "This bill has no approval step waiting.")
-    route = route_for_bill(db, bill_id)
+    route = route_for_bill(db, bill.bill_id)
     step = next((st for st in route if st.step_no == step_row.step_no), None)
     if step is None:
         raise ApiError(409, "bill.route_mismatch", "The stored route doesn't match its steps. Re-run controls.")
     if step_row.user_id and step.user_id != step_row.user_id:
         step = step.model_copy(update={"user_id": step_row.user_id})  # a manually assigned approver
     already_signed = db.scalar(select(func.count()).select_from(models.ApprovalDecision).where(
-        models.ApprovalDecision.bill_id == bill_id, models.ApprovalDecision.decision == "approved",
+        models.ApprovalDecision.bill_id == bill.bill_id, models.ApprovalDecision.decision == "approved",
         models.ApprovalDecision.actor_user_id == user.user_id, models.ApprovalDecision.run_id == step_row.run_id))
     if already_signed:
         raise ApiError(403, "approval.already_signed", "You already approved an earlier step of this bill.")
-    stored = latest_controls_run(db, bill_id)
-    ref = controls_runner.refdata_for(db, bill_id)
-    permission = can_approve(user.user_id, step, load_draft_bill(db, bill_id), ref, route=route,
+    stored = latest_controls_run(db, bill.bill_id)
+    ref = controls_runner.refdata_for(db, bill.bill_id)
+    permission = can_approve(user.user_id, step, load_draft_bill(db, bill.bill_id), ref, route=route,
                              amount_cad=controls_runner.routed_amount(stored))
     if not permission.allowed:
         raise ApiError(403, "approval.not_allowed", permission.reason)
+    return step_row, step, route
+
+
+def _decide(db: Session, user: CurrentUser, bill_id: str, row_version: int, decision: str,
+            comment: str | None) -> tuple[models.Bill, models.ApprovalRouteStep, bool]:
+    bill = get_bill_for(db, user, bill_id)
+    check_row_version(bill.row_version, row_version, "bill")
+    step_row, step, route = decision_check(db, user, bill)
     db.add(models.ApprovalDecision(
         decision_id=_next_decision_id(db), bill_id=bill_id, step_no=step.step_no, run_id=step_row.run_id,
         actor_user_id=user.user_id, actor_role=user.role, step_role=step.role, on_behalf_of=step.delegated_from,
