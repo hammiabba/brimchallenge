@@ -190,7 +190,9 @@ _MEDIA_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"
 
 def _content(text: str | None, file_bytes: bytes | None, filename: str) -> list[dict]:
     if text:
-        return [{"type": "text", "text": f"Document text (file: {filename}):\n\n{text}"}]
+        # The tags mark where untrusted text starts and ends; a closing tag inside the text can't end it early.
+        body = re.sub(r"</?\s*document\s*>", "[tag removed]", text, flags=re.IGNORECASE)
+        return [{"type": "text", "text": f"Document text (file: {filename}):\n<document>\n{body}\n</document>"}]
     if file_bytes is None:
         raise ValueError("Need either text or file bytes")
     media = _MEDIA_TYPES.get(Path(filename).suffix.lower())
