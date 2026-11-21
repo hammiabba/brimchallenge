@@ -139,9 +139,9 @@ $4,000 bills looked like a $12,000 split, and a duplicate pair listed its match 
 
 | Catches | Flag | Why |
 | --- | --- | --- |
-| A tax that should be charged isn't | `TAX_MISSING` (warn) | e.g. QC bill with GST but no QST (AP-00098). |
+| A tax that should be charged isn't | `TAX_MISSING` (block) | e.g. QC bill with GST but no QST (AP-00098). |
 | BC PST charged on services | `PST_ON_SERVICES` (warn) | BC PST applies to goods only. |
-| Anything else wrong (wrong code, wrong amount) | `TAX_WRONG_FOR_PROVINCE` (warn) | e.g. HST charged on an Alberta delivery (AP-00253). |
+| Anything else wrong (wrong code, wrong amount) | `TAX_WRONG_FOR_PROVINCE` (block) | e.g. HST charged on an Alberta delivery (AP-00253). |
 
 **Why tax is recomputed, not trusted:** the vendor's printed tax is exactly what we're checking, so it can't be
 the reference. Expected tax comes from the place of supply (`ship_to_province`), the vendor's country and category,
@@ -154,9 +154,12 @@ treated as a taxable Canadian supplier and a foreign-currency bill as a foreign 
 
 | Catches | Flag |
 | --- | --- |
-| quantity × unit price ≠ line amount | `LINE_MATH_ERROR` (warn) |
-| lines don't add up to the subtotal | `SUBTOTAL_MISMATCH` (warn) |
-| subtotal + taxes ≠ total | `TOTAL_MISMATCH` (warn) |
+| quantity × unit price ≠ line amount | `LINE_MATH_ERROR` (block) |
+| lines don't add up to the subtotal | `SUBTOTAL_MISMATCH` (block) |
+| subtotal + taxes ≠ total | `TOTAL_MISMATCH` (block) |
+
+Tax and math flags block: a bill with wrong tax or wrong totals can't be submitted or paid until someone marks the
+flag resolved (e.g. a corrected invoice came in) or a finance manager or the controller overrides it with a reason.
 
 Tolerance is 2 cents. Extraction never "fixes" printed numbers, so these catch both vendor errors and misreads.
 
@@ -298,7 +301,8 @@ routing follows.
 ## Incoming batch results (2026-11-21)
 
 `cd backend && python scripts/run_incoming.py`, after Person A's extraction fix. All 56 files were read: 0
-unreadable, **19 hold**, **14 review**, **23 can proceed**, $89,963.04 CAD on hold. The 4 emails with no bill
+unreadable, **19 hold**, **14 review**, **23 can proceed**, $89,963.04 CAD on hold (before tax and math flags
+became block; now 23 / 10 / 23 and $108,303.23, see the last rerun below). The 4 emails with no bill
 (EM-056 to EM-059) were listed correctly. The two scans and the two French invoices were checked by hand against
 the files. Numbers, dates and totals were all read correctly, so none of the flags below come from extraction
 mistakes.
@@ -378,6 +382,14 @@ Riverbend 1739 now also gets `VENDOR_PENDING_REVIEW` and `GST_NUMBER_MISSING`. N
 an unexpected sender domain, none has an unknown PO number or a missing FX rate, and no requester is terminated.
 The history replay output is identical.
 
+### Rerun with tax and math flags as block (`b/tax-math-block`)
+
+**23 hold, 10 review, 23 can proceed, $108,303.23 CAD on hold.** Four bills moved from review to hold: Evergreen
+000850 (`TOTAL_MISMATCH`, $3,439.00), Beaumont FA-000557 (`TAX_MISSING`, $8,101.67), Northbound 000639
+(`TAX_WRONG_FOR_PROVINCE`, $2,505.52) and Northstar NO26-1773 (`LINE_MATH_ERROR`, $4,294.00). Riverbend and Ironwood
+have `TAX_MISSING` too but were already held for their missing PO. History replay: same counts; the 3 tax flags show
+as block instead of warn.
+
 ### Caught beyond §4 (checked against the PDFs: real, not extraction errors)
 - Summit 000809 is printed with date 2026-11-27, in the future → `DATE_ANOMALY`.
 - Lumen FA-001761 is printed with date 2026-04-06, 210 days old → `DATE_ANOMALY`.
@@ -401,10 +413,7 @@ split false positives and bank fields on `b/controls-fixes`; the history replay 
 
 ## Open questions for the team
 
-1. **Should tax and math flags be `block`?** `TAX_WRONG_FOR_PROVINCE`, `TAX_MISSING`, `LINE_MATH_ERROR`,
-   `SUBTOTAL_MISMATCH`, `TOTAL_MISMATCH` are `warn`, so a bill with wrong tax or bad totals can still be paid.
-   Needs schema agreement.
-2. **`RefData` vs `ReferenceRepository`:** API/DB team, let's agree on one.
+1. **`RefData` vs `ReferenceRepository`:** API/DB team, let's agree on one.
 
 ## Likely judge questions
 
@@ -438,6 +447,11 @@ each duplicate pair or split group is counted once. Lead with Cascadia:
 Cascadia's scanned invoice is dated 3 days before the Oct 27 bank change but already shows the new bank account. A
 real invoice from before the change would show the old account, so the invoice was likely edited or forged. The
 engine holds the bill, but it doesn't yet flag this specific date mismatch on its own.
+
+**Why do tax and math errors block payment?**
+Paying a wrong invoice means paying the wrong amount, or claiming input tax credits the CRA won't allow. So the bill
+waits for a corrected invoice, or for a finance manager or the controller to accept it with a written reason, which
+goes into the audit log.
 
 **Why recompute tax instead of trusting the invoice?**
 The printed tax is what we're auditing. Expected tax comes from the place of supply, the vendor and the line type.

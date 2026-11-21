@@ -60,25 +60,27 @@ FLAG_HELP: dict[str, FlagHelp] = {
     # tax / arithmetic
     "TAX_WRONG_FOR_PROVINCE": FlagHelp(
         "Wrong tax for province",
-        "The tax charged doesn't match the province the goods or services were delivered to, so ask the vendor "
-        "for a corrected invoice."),
+        "The tax charged doesn't match the province the goods or services were delivered to, so the bill is held "
+        "until the vendor sends a corrected invoice."),
     "TAX_MISSING": FlagHelp(
         "Tax missing",
-        "Tax that should apply for the delivery province isn't charged, so ask the vendor for a corrected invoice."),
+        "Tax that should apply for the delivery province isn't charged, so the bill is held until the vendor sends "
+        "a corrected invoice."),
     "PST_ON_SERVICES": FlagHelp(
         "PST on services",
         "BC PST was charged on services, but it only applies to goods, so ask the vendor for a corrected invoice."),
     "LINE_MATH_ERROR": FlagHelp(
         "Line math wrong",
-        "A line's quantity times unit price doesn't equal its amount, so check the invoice and ask the vendor to "
-        "correct it."),
+        "A line's quantity times unit price doesn't equal its amount, so the bill is held until the vendor corrects "
+        "it."),
     "SUBTOTAL_MISMATCH": FlagHelp(
         "Subtotal wrong",
-        "The lines don't add up to the subtotal printed on the invoice, so check for a missing line or a typo."),
+        "The lines don't add up to the subtotal printed on the invoice, so the bill is held until the missing line "
+        "or typo is fixed."),
     "TOTAL_MISMATCH": FlagHelp(
         "Total wrong",
-        "The subtotal plus taxes doesn't equal the total printed on the invoice, so pay only after the vendor "
-        "corrects it."),
+        "The subtotal plus taxes doesn't equal the total printed on the invoice, so the bill is held until the "
+        "vendor corrects it."),
     # contract / PO
     "OVER_CONTRACT_RATE": FlagHelp(
         "Above contract price",
