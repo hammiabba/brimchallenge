@@ -117,6 +117,11 @@ CASES: list[Case] = [
     Case("GET", "/audit", "X Au", ok=200),
     Case("GET", "/audit/bill/" + B, "X Au", ok=200),
     Case("GET", "/audit/export", "X Au", ok=200),
+    # reference data and the inbox
+    Case("GET", "/reference/flag-help", ALL, ok=200),
+    Case("GET", "/reference/departments", ALL, ok=200),
+    Case("GET", "/reference/gl-accounts", ALL, ok=200),
+    Case("GET", "/intake/emails", "C F X Au", ok=200),
     # intake lane's router, guarded at mount time in app/main.py
     Case("GET", "/intake/drafts", "C F X", ok=200),
 ]

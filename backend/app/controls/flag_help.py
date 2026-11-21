@@ -40,8 +40,8 @@ FLAG_HELP: dict[str, FlagHelp] = {
         "with the vendor."),
     "BANK_DETAILS_MISMATCH": FlagHelp(
         "Bank details differ",
-        "The bank account on the invoice isn't the one on file, so don't pay until the vendor confirms the change "
-        "by phone on a known number."),
+        "The bank account on the invoice isn't the one on file, or didn't exist yet on the invoice's date, so don't "
+        "pay until the vendor confirms it by phone on a known number."),
     "BANK_CHANGE_UNVERIFIED": FlagHelp(
         "Bank change not verified",
         "The vendor's bank account was changed recently without a callback check, so hold payment until someone "

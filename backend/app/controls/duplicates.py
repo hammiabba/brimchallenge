@@ -91,11 +91,21 @@ class _Cand:
     period: frozenset[int] = frozenset()  # months named in the lines, see service_period()
 
 
+def _doc_key(vendor: str | None, number: str | None, invoice_date: date | None, total: Decimal) -> tuple:
+    """What identifies one invoice document across RefData rows and batch bills (they share no id)."""
+    return (vendor or "", (number or "").strip().upper(), invoice_date, total)
+
+
 def _candidates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill]) -> list[_Cand]:
     """History (minus rejected) plus the other bills in the batch.
 
     The bill itself may be in `batch`; it is skipped by identity, not by file_hash, so the same
     PDF submitted twice (two bills, one hash) still matches as a duplicate.
+
+    A batch bill that is already in the reference data (same vendor, invoice number, date and total) is skipped:
+    the API stores each bill of an inbox run before checking the next, so earlier bills are in both places, and
+    counting them twice inflates splits and repeats duplicate matches. Nothing is lost, because the reference row
+    still takes part in every check.
     """
     me = bill_id(bill)
     out = [
@@ -107,8 +117,9 @@ def _candidates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill]) -> li
         for i in ref.invoices.values()
         if i["invoice_id"] != me and i["status"] != "rejected"
     ]
+    known = {_doc_key(c.vendor_id, c.number, c.invoice_date, c.total) for c in out}
     for b in batch:
-        if b is not bill:
+        if b is not bill and _doc_key(vendor_id(b), b.invoice_number, b.invoice_date, b.total) not in known:
             out.append(_Cand(bill_id(b), vendor_id(b) or "", b.invoice_number, b.invoice_date,
                              b.total, to_cad(b, ref)[0], "in_batch", is_credit(b),
                              _norm_name(b.vendor.name_on_invoice), b.department_id or "", b.po_number or "",
@@ -141,6 +152,7 @@ def find_duplicates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill] = 
         ((vendor["bank_transit"], vendor["bank_account"]) if vendor and vendor["bank_account"] else None)
     credit = is_credit(bill)
     my_period = service_period(ln.description for ln in bill.lines)
+    recurring = _is_recurring_vendor(ref, vid or "")
 
     for c in _candidates(bill, ref, batch):
         if c.credit != credit:
@@ -165,7 +177,11 @@ def find_duplicates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill] = 
             same_period = bool(my_period) and my_period == c.period
             # Same vendor and amount alone isn't enough: Orion 279 and 281 are two phases billed the same day.
             # The numbers must look alike, or both bills must name the same months (two "October" bills from one
-            # vendor). This also keeps fixed-monthly vendors (rent, SaaS) from matching every month's bill.
+            # vendor). Fixed-monthly vendors (rent, SaaS) bill the same amount every month with consecutive numbers
+            # (Cloudbarn INV-01561 / INV-01567 are 75% alike), so for them only the same service month counts. A
+            # re-sent copy is still caught by the exact and normalized number checks above.
+            if recurring and not same_period:
+                continue
             if sim < NEAR_NUMBER_SIM and not same_period:
                 continue
             why = ["same vendor", f"amount {c.total} vs {bill.total}", f"{days} days apart",
@@ -210,9 +226,11 @@ def _card_matches(bill: DraftBill, ref: RefData) -> list[DuplicateMatch]:
             continue
         sim = _similar(_norm_name(t["merchant_descriptor"]), name)
         if sim >= 0.6:
-            out.append(DuplicateMatch(kind="card_paid", score=round(0.5 + 0.4 * sim, 2), matched_card_txn_id=t["txn_id"],
-                                      reasons=[f"{t['source']} charge {t['merchant_descriptor']} {t['currency']} {t['amount']} "
-                                               f"on {t['posted_date']}", f"merchant name {sim:.0%} similar",
+            charge = (f"{t['source']} charge {t['merchant_descriptor']} {t['currency']} {t['amount']} "
+                      f"on {t['posted_date']}")
+            out.append(DuplicateMatch(kind="card_paid", score=round(0.5 + 0.4 * sim, 2),
+                                      matched_card_txn_id=t["txn_id"],
+                                      reasons=[charge, f"merchant name {sim:.0%} similar",
                                                f"cardholder {t['cardholder_user_id']}"]))
     return out
 

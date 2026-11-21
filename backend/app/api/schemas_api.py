@@ -13,7 +13,7 @@ Bank account numbers in responses are already masked for roles that may not see 
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated, Any, Generic, Literal, TypeVar
 
@@ -28,6 +28,18 @@ Money = Annotated[
 ]
 MoneyIn = Annotated[str, StringConstraints(strip_whitespace=True, pattern=MONEY_PATTERN),
                     WithJsonSchema({"type": "string", "pattern": MONEY_PATTERN, "examples": ["742.30"]})]
+def _iso_utc(value: datetime) -> str:
+    """DB timestamps are naive UTC; send every timestamp as ISO 8601 UTC with an explicit Z."""
+    if value.tzinfo is not None:
+        value = value.astimezone(UTC).replace(tzinfo=None)
+    return value.isoformat(timespec="seconds") + "Z"
+
+
+UtcDateTime = Annotated[
+    datetime,
+    PlainSerializer(_iso_utc, return_type=str, when_used="always"),
+    WithJsonSchema({"type": "string", "format": "date-time", "examples": ["2026-11-02T15:00:00Z"]}),
+]
 DecimalText = Annotated[str, Field(description="Exact decimal as a string, e.g. '0.09975'")]
 UserId = Annotated[str, StringConstraints(pattern=r"^U\d{3,}$")]
 Comment = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
@@ -102,10 +114,31 @@ class Me(ApiModel):
     role: Role
     department_id: str
     status: UserStatus
+    approval_limit_cad: Money | None = None
+    release_limit_cad: Money | None = Field(
+        None, description="Largest payment this user may release; '0.00' if they can't release, null if unlimited")
     acting_for: list[ActingForOut] = []
 
 
 # ---------------------------------------------------------------- bills
+
+class OpenFlagCounts(ApiModel):
+    block: int = 0
+    warn: int = 0
+    info: int = 0
+
+
+class CurrentStepOut(ApiModel):
+    step_no: int
+    role: str
+    user_id: str | None
+    delegated_from: str | None = None
+
+
+class ActionState(ApiModel):
+    allowed: bool
+    reason: str | None = Field(None, description="Why not, in words the UI can show; or what allows it")
+
 
 class BillSummary(ApiModel):
     bill_id: str
@@ -124,6 +157,9 @@ class BillSummary(ApiModel):
     department_id: str | None
     requester_user_id: str | None
     row_version: int
+    open_flags: OpenFlagCounts = OpenFlagCounts()
+    top_flag_code: str | None = None
+    current_step: CurrentStepOut | None = None
 
 
 class BillLineOut(ApiModel):
@@ -143,7 +179,7 @@ class BillLineOut(ApiModel):
     suggestion_reason: str | None
     coding_status: Literal["none", "suggested", "accepted", "overridden"]
     coded_by: str | None
-    coded_at: datetime | None
+    coded_at: UtcDateTime | None
 
 
 class BillTaxOut(ApiModel):
@@ -161,7 +197,7 @@ class FlagOut(ApiModel):
     evidence: dict[str, Any]
     resolution: Literal["open", "overridden", "resolved"]
     resolved_by: str | None
-    resolved_at: datetime | None
+    resolved_at: UtcDateTime | None
     resolution_comment: str | None
 
 
@@ -175,17 +211,26 @@ class RouteStepOut(ApiModel):
     escalated_from: str | None
     decision: Literal["approved", "rejected"] | None = None
     decided_by: str | None = None
-    decided_at: datetime | None = None
+    decided_at: UtcDateTime | None = None
+
+
+class DuplicateOut(ApiModel):
+    kind: str
+    score: float
+    matched_invoice_id: str | None = None
+    matched_card_txn_id: str | None = None
+    reasons: list[str] = []
 
 
 class ControlsRunOut(ApiModel):
     run_id: int
     version: int
-    evaluated_at: datetime
+    evaluated_at: UtcDateTime
     can_auto_proceed: bool
     recommendation: str | None
     flags: list[FlagOut]
     route: list[RouteStepOut]
+    duplicates: list[DuplicateOut] = []
 
 
 class DecisionOut(ApiModel):
@@ -197,7 +242,7 @@ class DecisionOut(ApiModel):
     on_behalf_of: str | None
     decision: Literal["approved", "rejected"]
     comment: str | None
-    acted_at: datetime
+    acted_at: UtcDateTime
     origin: Literal["history", "app"]
 
 
@@ -216,13 +261,13 @@ class PaymentSummary(ApiModel):
     reference: str | None
     prepared_by: str | None
     released_by: str | None
-    released_at: datetime | None
+    released_at: UtcDateTime | None
 
 
 class AuditEventOut(ApiModel):
     seq: int
     event_id: str
-    at: datetime
+    at: UtcDateTime
     actor_user_id: str
     actor_role: str
     on_behalf_of: str | None
@@ -249,9 +294,12 @@ class BillDetail(BillSummary):
     contract_id: str | None
     source_email_id: str | None
     file_hash: str | None
-    created_at: datetime
+    created_at: UtcDateTime
     created_by: str | None
-    updated_at: datetime
+    updated_at: UtcDateTime
+    department_source: Literal["invoice", "submitter", "coding", "user", "history"] | None = Field(
+        None, description="Where department_id came from. 'coding' means suggested from the line coding and not yet "
+                          "confirmed by a person; editing the department makes it 'user'.")
     extracted: dict[str, Any] | None = Field(
         None, description="Frozen extraction snapshot from intake, with bank details masked for the caller's role")
     lines: list[BillLineOut]
@@ -260,6 +308,8 @@ class BillDetail(BillSummary):
     decisions: list[DecisionOut]
     payments: list[PaymentSummary]
     audit: list[AuditEventOut]
+    allowed_actions: dict[str, ActionState] = Field(
+        default_factory=dict, description="What the signed-in user can do to this bill now, with the reason if not")
 
 
 class BillHeaderPatch(InModel):
@@ -322,7 +372,7 @@ class IntakeItemOut(ApiModel):
     error: str | None
     warnings: list[str]
     bill_id: str | None
-    created_at: datetime
+    created_at: UtcDateTime
     created_by: str | None
 
 
@@ -330,8 +380,8 @@ class JobOut(ApiModel):
     job_id: str
     status: Literal["queued", "running", "done", "failed"]
     started_by: str
-    started_at: datetime
-    finished_at: datetime | None = None
+    started_at: UtcDateTime
+    finished_at: UtcDateTime | None = None
     total_emails: int = 0
     processed_emails: int = 0
     items: list[IntakeItemOut] = []
@@ -360,6 +410,7 @@ class PaymentDetail(PaymentSummary):
     lines: list[BillLineOut]
     decisions: list[DecisionOut]
     audit: list[AuditEventOut]
+    allowed_actions: dict[str, ActionState] = Field(default_factory=dict)
 
 
 class ScheduleIn(InModel):
@@ -403,7 +454,7 @@ class VendorSummary(ApiModel):
 class BankChangeOut(ApiModel):
     change_id: str
     vendor_id: str
-    requested_at: datetime
+    requested_at: UtcDateTime
     requested_by: str | None
     request_channel: Literal["phone_callback_verified", "vendor_portal", "email_request"]
     old_account_last4: str | None
@@ -414,7 +465,7 @@ class BankChangeOut(ApiModel):
     verified_by_callback: bool
     status: Literal["pending_verification", "verified", "rejected"]
     verified_by: str | None
-    verified_at: datetime | None
+    verified_at: UtcDateTime | None
     origin: Literal["history", "app"]
 
 
@@ -486,7 +537,7 @@ class PolicyOut(ApiModel):
     condition: str
     required: str
     notes: str | None
-    updated_at: datetime
+    updated_at: UtcDateTime
     updated_by: str | None
 
 
@@ -534,3 +585,37 @@ class AbsenceIn(InModel):
     delegate_user_id: UserId
     starts_on: date
     ends_on: date | None = None
+
+
+# ---------------------------------------------------------------- reference data and inbox
+
+class FlagHelpOut(ApiModel):
+    title: str
+    help: str
+    severity: Literal["block", "warn", "info"]
+
+
+class DepartmentOut(ApiModel):
+    department_id: str
+    name: str
+    cost_centre: str
+    manager_user_id: str
+
+
+class GlAccountOut(ApiModel):
+    account_number: str
+    name: str
+    account_type: str
+
+
+class EmailOut(ApiModel):
+    email_id: str
+    from_name: str | None
+    from_address: str
+    subject: str
+    received_at: UtcDateTime
+    attachments: list[str]
+    email_class: str | None
+    triage_reason: str | None
+    triaged_at: UtcDateTime | None
+    items: list[IntakeItemOut] = []

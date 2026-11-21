@@ -123,7 +123,8 @@ def lookalike_vendors(ref: RefData, vid: str) -> list[tuple[str, str]]:
             continue
         if _norm_name(other["legal_name"]) == _norm_name(v["legal_name"]):
             out.append((other["vendor_id"], "same name once 'Ltd/Inc/&' are ignored"))
-        elif v["bank_account"] and (other["bank_transit"], other["bank_account"]) == (v["bank_transit"], v["bank_account"]):
+        elif v["bank_account"] and \
+                (other["bank_transit"], other["bank_account"]) == (v["bank_transit"], v["bank_account"]):
             out.append((other["vendor_id"], "same bank transit and account"))
     return out
 
@@ -161,6 +162,40 @@ def _unknown_vendor_lookalike(bill: DraftBill, ref: RefData) -> list[Flag]:
                  f"'{bill.vendor.name_on_invoice}' isn't in the vendor master but looks like {other_id} "
                  f"{o['legal_name']} (name {sim:.0%} similar). Verify by phone before approving.",
                  evidence=ev, field="vendor")]
+
+
+def _last4(account: str | None) -> str:
+    return re.sub(r"\D", "", account or "")[-4:]
+
+
+def _account_from_after_the_invoice(bill: DraftBill, ref: RefData, vid: str) -> list[Flag]:
+    """An invoice dated before a bank change that already shows the account the change set up.
+
+    A genuine invoice prints the account in use on its date, which is the old one. Showing the new one means the
+    document was made or edited after the change (Cascadia's scan 1624: dated Oct 24, new account from Oct 27).
+    The master already holds the new account, so the plain invoice-vs-master comparison can't see this.
+    """
+    printed = _last4(bill.vendor.bank.account)
+    if not printed:
+        return []
+    later = sorted((c for c in ref.bank_changes
+                    if c["vendor_id"] == vid and (d(c["changed_at"]) or bill.invoice_date) > bill.invoice_date),
+                   key=lambda c: c["changed_at"])
+    if not later or printed == later[0]["old_account_last4"]:
+        return []
+    change = next((c for c in later if c["new_account_last4"] == printed), None)
+    if change is None:
+        return []
+    return [flag("BANK_DETAILS_MISMATCH",
+                 f"Invoice dated {bill.invoice_date} shows bank account …{printed}, but that account was only set up "
+                 f"on {change['changed_at']} ({change['change_id']}, via {change['request_channel']}). On the invoice "
+                 f"date the account was …{later[0]['old_account_last4']}, so the invoice was likely edited or forged. "
+                 f"Verify by calling the vendor on a known number before paying.",
+                 evidence={"kind": "account_before_change", "invoice_date": str(bill.invoice_date),
+                           "printed_last4": printed, "change_id": change["change_id"],
+                           "changed_at": change["changed_at"],
+                           "account_on_invoice_date": later[0]["old_account_last4"]},
+                 field="vendor.bank")]
 
 
 def check_vendor(bill: DraftBill, ref: RefData) -> list[Flag]:
@@ -227,6 +262,7 @@ def check_vendor(bill: DraftBill, ref: RefData) -> list[Flag]:
                                     "invoice": {k: bank.model_dump()[k] for k in pairs},
                                     "master": {k: v[f"bank_{k}"] for k in pairs}},
                           field="vendor.bank"))
+    flags += _account_from_after_the_invoice(bill, ref, vid)
 
     # Most recent bank change in the history
     changes = sorted((c for c in ref.bank_changes if c["vendor_id"] == vid), key=lambda c: c["changed_at"])
@@ -234,7 +270,8 @@ def check_vendor(bill: DraftBill, ref: RefData) -> list[Flag]:
         last = changes[-1]
         flags.append(flag("BANK_CHANGE_UNVERIFIED",
                           f"Bank account changed on {last['changed_at']} via {last['request_channel']} "
-                          f"(…{last['old_account_last4']} → …{last['new_account_last4']}) and was never verified by callback.",
+                          f"(…{last['old_account_last4']} → …{last['new_account_last4']}) "
+                          f"and was never verified by callback.",
                           evidence=last, field="vendor.bank"))
 
     # Lookalike records: only flag the bill when it sits on the suspicious copy, never on the real vendor.
@@ -337,13 +374,14 @@ def check_tax(bill: DraftBill, ref: RefData) -> list[Flag]:
 # ---------------------------------------------------------------------------
 def check_arithmetic(bill: DraftBill, ref: RefData) -> list[Flag]:
     flags = []
-    for l in bill.lines:
-        if abs(l.quantity * l.unit_price - l.amount) > TOL:
+    for ln in bill.lines:
+        if abs(ln.quantity * ln.unit_price - ln.amount) > TOL:
             flags.append(flag("LINE_MATH_ERROR",
-                              f"Line {l.line_no}: {l.quantity} × {_amt(l.unit_price)} = {_amt(l.quantity * l.unit_price)}, "
-                              f"not {_amt(l.amount)}.", evidence={"line": l.line_no}, field="lines"))
+                              f"Line {ln.line_no}: {ln.quantity} × {_amt(ln.unit_price)} = "
+                              f"{_amt(ln.quantity * ln.unit_price)}, not {_amt(ln.amount)}.",
+                              evidence={"line": ln.line_no}, field="lines"))
     if bill.lines:
-        s = sum((l.amount for l in bill.lines), Decimal("0"))
+        s = sum((ln.amount for ln in bill.lines), Decimal("0"))
         if abs(s - bill.subtotal) > TOL:
             flags.append(flag("SUBTOTAL_MISMATCH",
                               f"Lines add up to {_amt(s)} but the subtotal says {_amt(bill.subtotal)}.",
@@ -367,6 +405,11 @@ def _billed_same_month(bill: DraftBill, ref: RefData) -> Decimal:
                 and i["status"] != "rejected" and i["invoice_date"][:7] == ym), Decimal("0"))
 
 
+def _is_fuel(line) -> bool:
+    text = line.description.lower()
+    return "fuel surcharge" in text or "surcharge carburant" in text
+
+
 def check_contract(bill: DraftBill, ref: RefData) -> list[Flag]:
     c = ref.contract_for(bill)
     if not c or is_credit(bill):
@@ -374,7 +417,8 @@ def check_contract(bill: DraftBill, ref: RefData) -> list[Flag]:
     flags = []
     if c["status"] == "expired" or (c["end_date"] and bill.invoice_date > d(c["end_date"])):
         flags.append(flag("CONTRACT_EXPIRED",
-                          f"Contract {c['contract_id']} ended {c['end_date']}. Renew it or confirm the work was authorized.",
+                          f"Contract {c['contract_id']} ended {c['end_date']}. "
+                          f"Renew it or confirm the work was authorized.",
                           evidence={"contract": c["contract_id"], "end_date": c["end_date"]}, field="contract_id"))
 
     # Fixed fee: only the fee line(s) are compared to the contract fee. Usage/overage lines are billed on top
@@ -413,27 +457,29 @@ def check_contract(bill: DraftBill, ref: RefData) -> list[Flag]:
 
     if c["fuel_surcharge_cap_pct"]:
         cap = Decimal(c["fuel_surcharge_cap_pct"])
-        is_fuel = lambda l: "fuel surcharge" in l.description.lower() or "surcharge carburant" in l.description.lower()
-        base = sum((l.amount for l in bill.lines if not is_fuel(l)), Decimal("0"))
-        for l in (l for l in bill.lines if is_fuel(l)):
-            m = re.search(r"([\d.,]+)\s*%", l.description)
+        base = sum((ln.amount for ln in bill.lines if not _is_fuel(ln)), Decimal("0"))
+        for ln in (x for x in bill.lines if _is_fuel(x)):
+            m = re.search(r"([\d.,]+)\s*%", ln.description)
             stated = Decimal(m.group(1).replace(",", ".")) if m else None
-            actual = (l.amount / base * 100).quantize(Decimal("0.01")) if base else None
+            actual = (ln.amount / base * 100).quantize(Decimal("0.01")) if base else None
             worst = max(x for x in (stated, actual) if x is not None) if (stated or actual) else None
             if worst is not None and worst > cap:
                 flags.append(flag("OVER_FUEL_SURCHARGE_CAP",
-                                  f"Fuel surcharge is {worst}% of freight; contract {c['contract_id']} caps it at {cap}%.",
-                                  evidence={"line": l.line_no, "stated_pct": str(stated), "actual_pct": str(actual),
+                                  f"Fuel surcharge is {worst}% of freight; "
+                                  f"contract {c['contract_id']} caps it at {cap}%.",
+                                  evidence={"line": ln.line_no, "stated_pct": str(stated), "actual_pct": str(actual),
                                             "cap": str(cap)}, field="lines"))
 
     if c["hourly_rate_cap"]:
         cap = money(c["hourly_rate_cap"])
-        for l in bill.lines:
+        for ln in bill.lines:
             # Hourly only when the description says so; quantity alone (e.g. 5 pallets) isn't hours.
-            if HOURLY.search(l.description) and l.unit_price > cap + TOL:
+            if HOURLY.search(ln.description) and ln.unit_price > cap + TOL:
                 flags.append(flag("OVER_CONTRACT_RATE",
-                                  f"Line {l.line_no} bills {_amt(l.unit_price)}/hr; contract {c['contract_id']} caps the rate at {_amt(cap)}.",
-                                  evidence={"line": l.line_no, "rate": str(l.unit_price), "cap": str(cap)}, field="lines"))
+                                  f"Line {ln.line_no} bills {_amt(ln.unit_price)}/hr; "
+                                  f"contract {c['contract_id']} caps the rate at {_amt(cap)}.",
+                                  evidence={"line": ln.line_no, "rate": str(ln.unit_price), "cap": str(cap)},
+                                  field="lines"))
 
     if c["not_to_exceed_monthly"]:
         nte = money(c["not_to_exceed_monthly"])
@@ -483,7 +529,8 @@ def check_po(bill: DraftBill, ref: RefData) -> list[Flag]:
                           evidence={"po": bill.po_number, "po_status": "closed"}, field="po_number"))
     elif not is_credit(bill) and bill.subtotal > remaining + TOL:
         flags.append(flag("PO_OVER_BALANCE",
-                          f"Invoice is {_amt(bill.subtotal)} before tax but PO {bill.po_number} only has {_amt(remaining)} left. "
+                          f"Invoice is {_amt(bill.subtotal)} before tax but PO {bill.po_number} "
+                          f"only has {_amt(remaining)} left. "
                           f"A finance manager approval is added.",
                           policy="P12", evidence={"po_remaining": str(remaining)}, field="po_number"))
     return flags
@@ -497,7 +544,8 @@ def check_dates(bill: DraftBill, ref: RefData) -> list[Flag]:
     today = ref.as_of
     flags = []
     if bill.invoice_date > today:
-        flags.append(flag("DATE_ANOMALY", f"Invoice is dated {bill.invoice_date}, which is in the future (today is {today}).",
+        flags.append(flag("DATE_ANOMALY",
+                          f"Invoice is dated {bill.invoice_date}, which is in the future (today is {today}).",
                           evidence={"kind": "future", "invoice_date": str(bill.invoice_date)}, field="invoice_date"))
     if bill.due_date and bill.due_date < bill.invoice_date:
         flags.append(flag("DATE_ANOMALY", f"Due date {bill.due_date} is before the invoice date {bill.invoice_date}.",
@@ -505,7 +553,8 @@ def check_dates(bill: DraftBill, ref: RefData) -> list[Flag]:
     if (today - bill.invoice_date) > timedelta(days=STALE_DAYS):
         flags.append(flag("DATE_ANOMALY",
                           f"Invoice is {(today - bill.invoice_date).days} days old. Check it wasn't already paid.",
-                          evidence={"kind": "stale", "days_old": (today - bill.invoice_date).days}, field="invoice_date"))
+                          evidence={"kind": "stale", "days_old": (today - bill.invoice_date).days},
+                          field="invoice_date"))
     return flags
 
 
