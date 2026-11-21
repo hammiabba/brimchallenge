@@ -6,6 +6,9 @@ Input: DraftBill (vendor already resolved) + repository.
 Output: a copy of the DraftBill with `line.coding = CodingSuggestion(...)` on each line.
 
 Tiers, best evidence first:
+  0. A clerk's recent decision on a line like this one from the same vendor (learned while the app
+     runs): an accepted or overridden coding on a near-identical description wins outright, because
+     it is the company's newest word on how that line is coded.
   1. Same vendor's history: vote over past (gl, dept) pairs, each vote weighted by how
      similar the past description is to this line. Frequency still counts, so a vendor
      that always codes to 5010 stays at 5010 even for a new description.
@@ -23,11 +26,13 @@ from collections import defaultdict
 
 from rapidfuzz import fuzz, process
 
-from app.coding.history_index import HistoryIndex, PastLine, index_for
+from app.coding.history_index import Correction, HistoryIndex, PastLine, corrections_for, index_for
 from app.reference.repository import ReferenceRepository
 from app.shared.schemas import CodingSuggestion, DraftBill, InvoiceLine
 
 GLOBAL_TOP_K = 10
+# A clerk decision applies to a new line only when the descriptions are this similar (0..1).
+CORRECTION_MATCH = 0.85
 
 
 def _sim(a: str, b: str) -> float:
@@ -53,6 +58,22 @@ def _from_vendor(desc: str, past: list[PastLine], idx: HistoryIndex, vendor_name
     reason = (f"{idx.label(*key)}: {counts[key]} of {len(past)} past lines from {vendor_name} coded this way; "
               f"closest match '{closest}'")
     return CodingSuggestion(gl_account=key[0], department_id=key[1], confidence=confidence, reason=reason)
+
+
+def _from_correction(desc: str, past: list[Correction], idx: HistoryIndex, vendor_name: str,
+                     history: CodingSuggestion | None) -> CodingSuggestion | None:
+    scored = [(_sim(desc, c.description), i, c) for i, c in enumerate(past)]
+    close = [(s, i, c) for s, i, c in scored if s >= CORRECTION_MATCH]
+    if not close:
+        return None
+    sim, _, c = max(close)  # most similar; the newest wins a tie
+    verb = "changed the coding of" if c.overridden else "confirmed the coding of"
+    reason = f"{idx.label(c.gl_account, c.department_id)}: a clerk {verb} '{c.description}' from {vendor_name} " \
+             f"to this on bill {c.bill_id}"
+    if history and (history.gl_account, history.department_id) != (c.gl_account, c.department_id):
+        reason += f" (history alone would suggest {history.gl_account} · {history.department_id})"
+    return CodingSuggestion(gl_account=c.gl_account, department_id=c.department_id,
+                            confidence=round(min(0.95, 0.75 + 0.2 * sim), 2), reason=reason)
 
 
 def _from_global(desc: str, idx: HistoryIndex) -> CodingSuggestion | None:
@@ -94,6 +115,8 @@ def suggest_line(line: InvoiceLine, draft: DraftBill, repo: ReferenceRepository,
         )
     else:
         suggestion = _from_global(line.description, idx)
+    if vid and (past := corrections_for(vid)):
+        suggestion = _from_correction(line.description, past, idx, vendor_name, suggestion) or suggestion
 
     if suggestion and draft.requester_user_id:
         users = repo.users()

@@ -55,3 +55,13 @@ def _isolated_dirs(tmp_path, monkeypatch):
     monkeypatch.setattr(s, "cache_dir", tmp_path / "cache")
     monkeypatch.setattr(s, "output_dir", tmp_path / "output")
     monkeypatch.setattr(s, "anthropic_api_key", None)
+
+
+@pytest.fixture(autouse=True)
+def _no_learned_codings():
+    # Clerk corrections live in process memory; one test's PATCH must not change another's suggestions.
+    from app.coding.history_index import forget_corrections
+
+    forget_corrections()
+    yield
+    forget_corrections()
