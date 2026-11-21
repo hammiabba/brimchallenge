@@ -76,6 +76,7 @@ result.recommendation     # "Hold: This bill is on V052 Harlow and Stern LLP, ..
 | `can_release(user_id, amount_cad, approver_ids, flags, approval_complete, ref, *, bill)` | Call before releasing a payment. Pass `result.flags` so duplicates hold the payment, and the `bill` (requester and credit-note checks). |
 | `validate`, `find_duplicates`, `duplicate_flags`, `find_split`, `route` | The pieces `run_controls` calls, if you need one alone. |
 | `load_refdata()` / `bill_from_history(...)` | Load reference data; turn a historical invoice row into a `DraftBill` (tests, replay). |
+| `incoming.run_batch(items)` / `incoming.render_report(...)` | Runs the controls on the extracted incoming batch as one batch (so in-batch duplicates and splits are caught), sorts problem bills first and renders the report. Printed by `backend/scripts/run_incoming.py`. |
 | `history.replay(ref)` | Replays all historical invoices, each judged as of its own date, plus checks on `approvals.csv` and `payments.csv`. Printed by `backend/scripts/replay_history.py`. |
 
 `controls.permissions` re-exports `can_approve` / `can_release` (the API guide refers to that module).
@@ -223,7 +224,15 @@ routing follows.
 - **`RefData` is loaded once per process** (`default_refdata()` is cached). Data changes need a restart, or pass
   a fresh `ref`. When the DB lands, replace `refdata.load_refdata()`; nothing else needs to change.
 - **Signatures differ from the old stubs:** functions take a `RefData`, not a `ReferenceRepository`.
-- **Not yet run on the incoming batch:** needs Person A's `DraftBill` output end to end.
+- **Not yet run on the real incoming batch.** `backend/scripts/run_incoming.py` is ready and tested on hand-built
+  bills, but extraction currently fails on every file: the API rejects `RawInvoice` in
+  `backend/app/extraction/llm_parser.py` ("19 parameters with union types", limit 16). Person A is fixing it.
+  Email triage works: 55 emails with 56 attachments, plus a statement, a payment inquiry, a missing attachment
+  and a marketing email.
+- **Invoices don't print a department**, so routing would have no department manager. `run_incoming.py` uses the
+  department the line coding suggestions give the most money to, and the report marks it "suggested by coding".
+- **Very short invoice numbers can collide.** The normalized-number duplicate check keeps digits only, so `A-1`
+  and `B-1` from the same vendor match as `DUPLICATE_EXACT`. Real numbers are longer; watch for it in the batch.
 - **`field_confidence`, `extraction_warnings` and `was_ocr` are ignored.** `LOW_EXTRACTION_CONFIDENCE` exists
   in `FLAG_CODES` but is never raised.
 - **No received date in the schema**, so "stale" and "future" use the as-of date.
