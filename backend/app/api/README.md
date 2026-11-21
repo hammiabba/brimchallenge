@@ -1,37 +1,28 @@
 # api/
 
-**Owner:** DB team. Exception: `routes_intake.py` is Person A's.
+**Owner:** API lane. Exception: `routes_intake.py` belongs to the intake lane.
 
-Every router is a thin wrapper: parse the request, check the role, call a feature module, write an audit event, return a schema from `shared/schemas.py`. No business logic in routes.
+Every router is a thin wrapper: check the role with `require_role`, call one function in `app/services`, return a
+model from `schemas_api.py`. No business logic in routes.
 
-## Current routes
-| Method | Path | Owner | Notes |
-|---|---|---|---|
-| GET | `/health` | DB team | as-of date + whether the LLM is configured |
-| POST | `/intake/upload` | A | multipart file → `DraftBill` (503 without API key, 422 if unreadable) |
-| POST | `/intake/inbox/run` | A | runs the dataset inbox → triage + per-file status |
-| GET | `/intake/drafts` | A | **TEMP** in-memory store until the DB exists |
+## Files
+| File | What |
+|---|---|
+| `schemas_api.py` | Request/response models (the frontend contract). `Money` serializes as `"742.30"`; `MoneyIn` accepts only strings. Request models forbid unknown fields. |
+| `errors.py` | `ApiError` and the handlers that give every error the shape `{"error": {"code", "message", "details"}, "request_id"}`. HTTPException-based errors also keep a top-level `detail`. Stale rows → 409 `conflict.stale`; constraint violations → 409 `conflict.constraint`. |
+| `middleware.py` | Request id (`X-Request-ID`), body size limit (413), origin check for writes (CSRF). |
+| `common.py` | Documented error responses and pagination params. |
+| `routes_*.py` | One router per area: auth, bills, intake jobs/submissions, payments, vendors, spend, admin, audit. |
 
-## Role-dependency pattern (to implement in `auth/`)
-Roles are enforced **server-side** on every route:
+## Status
+All endpoints exist with typed models so `/openapi.json` is complete. Auth endpoints are live; the rest return
+**501** until their service lands. The permission matrix (`tests/api/matrix.py`) lists every endpoint × role.
 
-```python
-from fastapi import Depends
-from app.auth.deps import current_user, require_role   # DB team
+## Adding an endpoint
+1. Add the route with `Depends(require_role(...))` and typed request/response models.
+2. Add a row to `tests/api/matrix.py`; `test_matrix_covers_every_operation` fails until you do.
+3. Put the logic in `app/services/`, including the audit event for writes.
 
-@router.post("/invoices/{invoice_id}/approve")
-def approve(invoice_id: str, user = Depends(require_role("approver", "finance_manager", "controller_admin"))):
-    decision = controls.permissions.can_approve(user.user_id, ...)   # Person B, pure function
-    if not decision.allowed:
-        raise HTTPException(403, decision.reason)
-    ...
-    log_event(actor=user, action="invoice.approved", entity_type="invoice", entity_id=invoice_id, ...)
-```
-
-- `require_role(*roles)` raises 403 when the user's role isn't listed.
-- Object-level rules (self-approval P07, approver ≠ releaser P11, limits) come from `controls.permissions`.
-- Every state change writes an `AuditEvent` through one `log_event()` helper.
-
-## To do for the DB team
-- Replace `_DRAFTS` in `routes_intake.py` with persistence, and add `Depends(require_role("ap_clerk", ...))`.
-- Run controls on each stored draft, then store the `ControlsResult`.
+## Intake routes
+The intake router is mounted in `app/main.py` behind `require_role("ap_clerk", "finance_manager", "controller_admin")`,
+so `routes_intake.py` itself is unchanged. Employees submit through `POST /submissions` instead.
