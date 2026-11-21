@@ -40,7 +40,7 @@ testpaths = ["tests"]
 addopts = "-q"
 
 [tool.ruff]
-line-length = 110
+line-length = 120
 target-version = "py311"
 # The shared contract is changed only by team agreement, so lint style rules don't apply to it.
 extend-exclude = ["app/shared/schemas.py"]
