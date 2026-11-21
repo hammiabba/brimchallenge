@@ -78,13 +78,22 @@ src/
   auth/     AuthProvider (GET /auth/me), LoginPage, RequireAuth, role labels
   shell/    AppLayout (header, sidebar, delegate banner), navigation.ts, placeholder and 404 pages
   lib/      money.ts, dates.ts (with tests)
+  ui/       shared pieces: badges, Id / MoneyText / DateText, Icon, contrast check
+  styles/   self-hosted fonts and the few global CSS rules
   test/     test setup, fake API, render helper
-  theme.ts  Mantine theme and severity colours
+  theme.ts  colours (Brim palette), type scale and Mantine component defaults
   config.ts APP_NAME
 ```
 
 The sidebar for each role is one config file, `src/shell/navigation.ts`. To add a screen, add an item there, list it
 under the roles that use it, and replace its placeholder route in `App.tsx`.
+
+## Design
+
+[`DESIGN.md`](DESIGN.md) is the source of design rules for every chunk: colours and their contrast, type, layout,
+tables, icons, motion, copy and the "Never" list. Fonts (IBM Plex) are self-hosted through Fontsource; icons are
+Tabler only, through `<Icon>`. `src/ui/contrast.test.ts` checks every colour pair in the theme and
+`src/design.test.ts` checks the sources against the "Never" list.
 
 ## Rules
 
