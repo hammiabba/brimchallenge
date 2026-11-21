@@ -1,0 +1,61 @@
+{
+  "file_name": "polarfreightline_000963.pdf",
+  "file_hash": "c4444540a30a02e983118011bac60d9bc1a7eb78a25f1d1c7c8df9172ae3b262",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "4",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Polar Freight Lines Ltd.",
+    "vendor_address": "5379 Industrial Pkwy, Hamilton ON K6S 2G2",
+    "vendor_gst_number": "995133220RT0001",
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "000963",
+    "invoice_date": "2026-10-31",
+    "due_date": "2026-11-30",
+    "payment_terms": "Net 30",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "88 Queens Quay W, Suite 1400, Toronto ON M5J 0B8",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "LTL shipment Saskatoon-Calgary",
+        "quantity": "1",
+        "unit_price": "$1,289.93",
+        "amount": "$1,289.93",
+        "line_type": "services"
+      },
+      {
+        "description": "LTL shipment Regina-Saskatoon",
+        "quantity": "1",
+        "unit_price": "$817.24",
+        "amount": "$817.24",
+        "line_type": "services"
+      },
+      {
+        "description": "Fuel surcharge (9.68%)",
+        "quantity": "1",
+        "unit_price": "$203.97",
+        "amount": "$203.97",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "$2,311.14",
+    "taxes": [
+      {
+        "label": "HST (13%)",
+        "rate": "13%",
+        "amount": "$300.45"
+      }
+    ],
+    "total": "$2,611.59",
+    "bank_institution": "004",
+    "bank_transit": "95688",
+    "bank_account": "410652201"
+  }
+}

@@ -8,6 +8,10 @@ for readable reasons.
 
 Built once per repository and cached. History is small (~800 lines), so plain lists
 plus rapidfuzz are fast enough. No vector store needed.
+
+Clerk decisions (accept/override on an app bill) are added with `learn()` and kept in memory for
+the life of the process. They are also stored on the bill lines, so they can be replayed into a
+fresh index after a restart.
 """
 from __future__ import annotations
 
@@ -24,6 +28,17 @@ class PastLine:
     description: str
     gl_account: str
     department_id: str
+
+
+@dataclass(frozen=True)
+class Correction:
+    """A coding a clerk accepted or overrode on an app bill; learned while the app runs."""
+    vendor_id: str
+    description: str
+    gl_account: str
+    department_id: str
+    bill_id: str
+    overridden: bool                # False: the clerk accepted our suggestion
 
 
 @dataclass
@@ -62,3 +77,25 @@ def build_index(repo: ReferenceRepository) -> HistoryIndex:
 @lru_cache(maxsize=4)
 def index_for(repo: ReferenceRepository) -> HistoryIndex:
     return build_index(repo)
+
+
+# ---------------------------------------------------------------- clerk corrections
+
+# Per vendor, newest last. Company-wide decisions, so they don't depend on which repository built the index.
+_corrections: dict[str, list[Correction]] = {}
+
+
+def learn(c: Correction) -> None:
+    """Remember a clerk's coding so the next bill from this vendor reflects it. A later decision on the same
+    bill line replaces the earlier one."""
+    mine = [x for x in _corrections.get(c.vendor_id, []) if (x.bill_id, x.description) != (c.bill_id, c.description)]
+    _corrections[c.vendor_id] = [*mine, c]
+
+
+def corrections_for(vendor_id: str | None) -> list[Correction]:
+    return list(_corrections.get(vendor_id or "", []))
+
+
+def forget_corrections() -> None:
+    """Drop every learned correction (tests; a restart does the same)."""
+    _corrections.clear()

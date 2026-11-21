@@ -1,0 +1,47 @@
+{
+  "file_name": "voyageurcorporat-inv-017.pdf",
+  "file_hash": "d506ddbda65069a5f2ee8fa005a81eb0007d6009212d8c6ce706c66946af869c",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "4",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Voyageur Corporate Travel",
+    "vendor_address": "1548 King St W, Toronto ON P8Y 9M2",
+    "vendor_gst_number": "338192319RT0001",
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "000903-A",
+    "invoice_date": "2026-07-06",
+    "due_date": "2026-07-21",
+    "payment_terms": "Net 15",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "250 6 Ave SW, Suite 700, Calgary AB T2P 3H7",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "Airfare - Montreal-Montreal",
+        "quantity": "6",
+        "unit_price": "$884.82",
+        "amount": "$5,308.92",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "$5,308.92",
+    "taxes": [
+      {
+        "label": "GST (5%)",
+        "rate": "5%",
+        "amount": "$265.45"
+      }
+    ],
+    "total": "$5,574.37",
+    "bank_institution": null,
+    "bank_transit": null,
+    "bank_account": null
+  }
+}

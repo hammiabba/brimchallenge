@@ -1,0 +1,47 @@
+{
+  "file_name": "redlinefleetcard-inv-044.pdf",
+  "file_hash": "30dbf9c9adf620b4ac47a6c9dfe6d2973a345f95b703bd37f8ae93126eb72bd9",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "4",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Redline Fleet Cards Inc.",
+    "vendor_address": "1685 Granville St, Edmonton AB T9Y 6K3",
+    "vendor_gst_number": "902831173RT0001",
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "FA-001687",
+    "invoice_date": "2026-10-31",
+    "due_date": "2026-11-15",
+    "payment_terms": "Net 15",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "88 Queens Quay W, Suite 1400, Toronto ON M5J 0B8",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "Fleet fuel card charges - October",
+        "quantity": "1",
+        "unit_price": "$5,440.49",
+        "amount": "$5,440.49",
+        "line_type": "goods"
+      }
+    ],
+    "subtotal": "$5,440.49",
+    "taxes": [
+      {
+        "label": "HST (13%)",
+        "rate": "13%",
+        "amount": "$707.26"
+      }
+    ],
+    "total": "$6,147.75",
+    "bank_institution": "002",
+    "bank_transit": "76299",
+    "bank_account": "859382597"
+  }
+}

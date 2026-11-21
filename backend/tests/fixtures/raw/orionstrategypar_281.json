@@ -1,0 +1,47 @@
+{
+  "file_name": "orionstrategypar_281.pdf",
+  "file_hash": "50eaa5351a6d59b8fb944233316893964a5bdcc5c1ca33791aea9f21ae8b6128",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "4",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Orion Strategy Partners",
+    "vendor_address": "470 Rue Sainte-Catherine, Hamilton ON L1B 6B6",
+    "vendor_gst_number": "483236076RT0001",
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "281",
+    "invoice_date": "2026-10-28",
+    "due_date": "2026-11-27",
+    "payment_terms": "Net 30",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "88 Queens Quay W, Suite 1400, Toronto ON M5J 0B8",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "Consulting hours - Network audit phase 2",
+        "quantity": "18",
+        "unit_price": "$240.00",
+        "amount": "$4,320.00",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "$4,320.00",
+    "taxes": [
+      {
+        "label": "HST (13%)",
+        "rate": "13%",
+        "amount": "$561.60"
+      }
+    ],
+    "total": "$4,881.60",
+    "bank_institution": "001",
+    "bank_transit": "51498",
+    "bank_account": "740226188"
+  }
+}

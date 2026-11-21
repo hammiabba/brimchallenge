@@ -1,0 +1,80 @@
+{
+  "file_name": "scan_8049.png",
+  "file_hash": "8f40f197445be9934353c33e3f1e3ecc04016368f9965a9a6cd7605ea558aa17",
+  "input": "vision",
+  "model": "claude-opus-5-5",
+  "prompt_version": "4",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Cascadia Cartage Ltd.",
+    "vendor_address": "7313 Rue Sainte-Catherine, Surrey BC V5K 5N1",
+    "vendor_gst_number": "669086667RT0001",
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "1624",
+    "invoice_date": "2026-10-24",
+    "due_date": "2026-11-23",
+    "payment_terms": "Net 30",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "1250 Rene-Levesque O, Bureau 2200, Montreal QC H3B 4W8",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "LTL shipment Calgary-Edmonton",
+        "quantity": "1",
+        "unit_price": "$1,682.26",
+        "amount": "$1,682.26",
+        "line_type": "services"
+      },
+      {
+        "description": "LTL shipment Calgary-Edmonton",
+        "quantity": "1",
+        "unit_price": "$1,551.94",
+        "amount": "$1,551.94",
+        "line_type": "services"
+      },
+      {
+        "description": "LTL shipment Regina-Ottawa",
+        "quantity": "1",
+        "unit_price": "$969.77",
+        "amount": "$969.77",
+        "line_type": "services"
+      },
+      {
+        "description": "LTL shipment Calgary-Regina",
+        "quantity": "1",
+        "unit_price": "$1,233.47",
+        "amount": "$1,233.47",
+        "line_type": "services"
+      },
+      {
+        "description": "Fuel surcharge (7.07%)",
+        "quantity": "1",
+        "unit_price": "$384.43",
+        "amount": "$384.43",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "$5,821.87",
+    "taxes": [
+      {
+        "label": "GST (5%)",
+        "rate": "5%",
+        "amount": "$291.09"
+      },
+      {
+        "label": "QST (9.975%)",
+        "rate": "9.975%",
+        "amount": "$580.73"
+      }
+    ],
+    "total": "$6,693.69",
+    "bank_institution": "003",
+    "bank_transit": "92968",
+    "bank_account": "953389679"
+  }
+}

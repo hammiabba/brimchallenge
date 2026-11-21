@@ -1,0 +1,47 @@
+{
+  "file_name": "papertrailoffice_2217.pdf",
+  "file_hash": "c89e6b2dd30ac8a34a92b96cf07dc84be6924e041477faee5502e03f870cce68",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "4",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Paper Trail Office Supply",
+    "vendor_address": "4694 Centre St, Toronto ON M2E 5M7",
+    "vendor_gst_number": "807091741RT0001",
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "2217",
+    "invoice_date": "2026-10-26",
+    "due_date": "2026-11-25",
+    "payment_terms": "2/10 Net 30",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "88 Queens Quay W, Suite 1400, Toronto ON M5J 0B8",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "Printer paper cartons",
+        "quantity": "12",
+        "unit_price": "$45.18",
+        "amount": "$542.16",
+        "line_type": "goods"
+      }
+    ],
+    "subtotal": "$542.16",
+    "taxes": [
+      {
+        "label": "HST (13%)",
+        "rate": "13%",
+        "amount": "$70.48"
+      }
+    ],
+    "total": "$612.64",
+    "bank_institution": "003",
+    "bank_transit": "19916",
+    "bank_account": "935395864"
+  }
+}

@@ -1,61 +1,50 @@
 """
-Intake endpoints: thin HTTP wrappers around intake/ and extraction/.
+Intake reads owned by Person A: one inbox email in full, and the original file behind a bill.
 
-Owner: Person A. All other routes belong to the DB team (see api/README.md).
+Owner: Person A. Thin wrappers around app/intake/review.py and app/intake/files.py. The inbox list
+(GET /intake/emails), submissions and the inbox job are the API lane's (routes_intake_jobs.py).
 
-TEMP: drafts are kept in an in-memory dict until the DB exists. They're lost on restart
-and not shared between workers. The DB team replaces `_DRAFTS` with a repository call,
-and adds role dependencies (ap_clerk for upload/run, AP roles for reading).
+Roles: the back office that reads intake (ap_clerk, finance_manager, controller_admin, auditor), the same as
+GET /intake/emails and /intake/items. Employees and approvers are refused (403); an unknown id is 404.
 """
 from __future__ import annotations
 
-from pathlib import Path
+from fastapi import APIRouter, Depends, Response
+from sqlalchemy.orm import Session
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
-
-from app.extraction.llm_parser import LLMUnavailableError
-from app.extraction.pipeline import ExtractionIncomplete
-from app.intake.inbox import load_emails, process_inbox
-from app.intake.upload import ALLOWED_EXTS, process_upload
-from app.shared.schemas import DraftBill
+from app.api.common import READ_ERRORS
+from app.api.errors import not_found
+from app.auth.deps import CurrentUser, require_role
+from app.auth.roles import BACK_OFFICE_READ
+from app.db.database import get_session
+from app.intake import files
+from app.intake.review import EmailDetail, email_detail
 
 router = APIRouter(prefix="/intake", tags=["intake"])
 
-# TEMP (until DB): file_hash -> DraftBill
-_DRAFTS: dict[str, DraftBill] = {}
+
+@router.get("/emails/{email_id}", response_model=EmailDetail, responses=READ_ERRORS)
+def get_email(email_id: str, user: CurrentUser = Depends(require_role(*BACK_OFFICE_READ)),
+              db: Session = Depends(get_session)) -> EmailDetail:
+    """One inbox email: body, triage (class, reason), the suggested next step (with a ready reply or the payment
+    answer where useful), and the intake items and bills made from it."""
+    detail = email_detail(db, email_id)
+    if detail is None:
+        raise not_found("email", email_id)
+    return detail
 
 
-@router.post("/upload", response_model=DraftBill)
-def upload(file: UploadFile = File(...)) -> DraftBill:
-    name = file.filename or "upload"
-    if Path(name).suffix.lower() not in ALLOWED_EXTS:
-        raise HTTPException(415, f"Unsupported file type; allowed: {', '.join(sorted(ALLOWED_EXTS))}")
-    try:
-        draft = process_upload(file.file.read(), name)
-    except LLMUnavailableError as exc:
-        raise HTTPException(503, str(exc)) from exc
-    except ExtractionIncomplete as exc:
-        raise HTTPException(422, str(exc)) from exc
-    _DRAFTS[draft.source.file_hash] = draft
-    return draft
-
-
-@router.post("/inbox/run")
-def run_inbox() -> list[dict]:
-    """Process the dataset inbox. Returns one entry per email with its triage and per-file status."""
-    summary = []
-    for triage, outcomes in process_inbox(load_emails()):
-        for o in outcomes:
-            if o.draft:
-                _DRAFTS[o.file_hash] = o.draft
-        summary.append({
-            "triage": triage.model_dump(mode="json"),
-            "files": [{"file_name": o.file_name, "file_hash": o.file_hash, "status": o.status, "error": o.error}
-                      for o in outcomes],
-        })
-    return summary
-
-
-@router.get("/drafts", response_model=list[DraftBill])
-def list_drafts() -> list[DraftBill]:
-    return list(_DRAFTS.values())
+@router.get("/files/{file_hash}", responses={**READ_ERRORS, 200: {"content": {"application/pdf": {},
+                                                                           "image/png": {}, "image/jpeg": {}}}})
+def get_file(file_hash: str, user: CurrentUser = Depends(require_role(*BACK_OFFICE_READ)),
+             db: Session = Depends(get_session)) -> Response:
+    """The original invoice file (PDF or image), by the sha256 shown on the bill and the intake item."""
+    found = files.load(db, file_hash)
+    if found is None:
+        raise not_found("file", file_hash)
+    data, ctype, name = found
+    inline = ctype != "application/octet-stream"
+    safe = "".join(c for c in name if c.isalnum() or c in " ._-") or "file"
+    return Response(data, media_type=ctype, headers={
+        "Content-Disposition": f'{"inline" if inline else "attachment"}; filename="{safe}"',
+        "X-Content-Type-Options": "nosniff", "Cache-Control": "private, max-age=3600"})

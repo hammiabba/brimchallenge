@@ -12,6 +12,7 @@ To change safely: add a case to tests/extraction/test_normalize.py first.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -102,7 +103,7 @@ def parse_date(raw: str | None) -> date | None:
     """Parse ISO, d/m/y, y/m/d, 'Oct 27, 2026', '27 octobre 2026', '1er novembre 2026'.
 
     Slash dates with both parts ≤ 12 are read day-first (the Canadian/French
-    convention). That case is ambiguous, so callers should lower confidence.
+    convention). That case is ambiguous: use date_readings() to see both readings.
     """
     if not raw:
         return None
@@ -127,6 +128,103 @@ def parse_date(raw: str | None) -> date | None:
     if month and year and day:
         return _safe_date(year, month, day)
     return None
+
+
+def _tagged_readings(raw: str | None) -> list[tuple[date, str | None]]:
+    """Readings of a printed date, each tagged with the slash convention it implies ("dmy"/"mdy"/None)."""
+    first = parse_date(raw)
+    if first is None:
+        return []
+    s = raw.strip()
+    if re.search(r"\b\d{4}[-/ ]\d{1,2}[-/ ]\d{1,2}\b", s):
+        return [(first, None)]
+    m = re.search(r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b", s)
+    if not m:
+        return [(first, None)]
+    a, b = int(m[1]), int(m[2])
+    if a > 12:
+        return [(first, "dmy")]
+    if b > 12:
+        return [(first, "mdy")]
+    other = _safe_date(int(m[3]), a, b)
+    if a == b or other is None:
+        return [(first, None)]
+    return [(first, "dmy"), (other, "mdy")]
+
+
+def date_readings(raw: str | None) -> list[date]:
+    """Every plausible reading of a printed date, preferred reading first.
+
+    One reading for unambiguous dates. Two for a slash date whose day and month are both ≤ 12 and
+    differ ("03/04/2026"): day-first (what parse_date returns), then month-first.
+    """
+    return [d for d, _ in _tagged_readings(raw)]
+
+
+@dataclass
+class DateResolution:
+    invoice_date: date | None
+    due_date: date | None
+    resolved: set[str] = field(default_factory=set)    # was ambiguous, settled by evidence
+    ambiguous: set[str] = field(default_factory=set)   # still a guess (day-first)
+    warnings: list[str] = field(default_factory=list)
+
+
+# Days of slack when checking due − invoice against the payment terms (weekends, month ends).
+TERMS_SLACK_DAYS = 3
+
+
+def resolve_dates(invoice_raw: str | None, due_raw: str | None, terms_days: int | None,
+                  as_of: date) -> DateResolution:
+    """Read the invoice and due dates together so an ambiguous "03/04/2026" can be settled.
+
+    Evidence, applied in order and only when it narrows the choice:
+      1. one convention per document: an unambiguous date ("18/04/2026") fixes the other's reading
+      2. due − invoice ≈ payment terms
+      3. the due date is not before the invoice date
+      4. the invoice date is not after the as-of date
+    Still ambiguous after that → the day-first reading (Canadian convention) and a warning.
+    """
+    inv = _tagged_readings(invoice_raw)
+    due = _tagged_readings(due_raw) or [(None, None)]
+    if not inv:
+        return DateResolution(None, due[0][0])
+    if len(inv) == 1 and len(due) == 1:
+        return DateResolution(inv[0][0], due[0][0])
+
+    all_pairs = [(i, d, {ti, td} - {None}) for i, ti in inv for d, td in due]
+    pairs = [(i, d) for i, d, conv in all_pairs if len(conv) <= 1]
+    used = ["the other date's format"] if len(pairs) < len(all_pairs) else []
+    rules = [
+        ("payment terms", lambda i, d: terms_days is not None and d is not None
+         and abs((d - i).days - terms_days) <= TERMS_SLACK_DAYS),
+        ("due date not before invoice date", lambda i, d: d is None or d >= i),
+        (f"invoice date not after {as_of}", lambda i, d: i <= as_of),
+    ]
+    for name, ok in rules:
+        if len({p for p in pairs}) <= 1:
+            break
+        kept = [p for p in pairs if ok(*p)]
+        if kept and len(kept) < len(pairs):
+            pairs, used = kept, [*used, name]
+    chosen_inv, chosen_due = pairs[0]
+
+    res = DateResolution(chosen_inv, chosen_due)
+    for field_name, label, raw, readings, chosen, idx in (
+        ("invoice_date", "invoice date", invoice_raw, inv, chosen_inv, 0),
+        ("due_date", "due date", due_raw, due, chosen_due, 1),
+    ):
+        if len(readings) < 2:
+            continue
+        options = " or ".join(str(d) for d, _ in readings)
+        if len({p[idx] for p in pairs}) == 1:
+            res.resolved.add(field_name)
+            res.warnings.append(f"{label} {raw!r} could be {options}; read as {chosen} from {', '.join(used)}")
+        else:
+            res.ambiguous.add(field_name)
+            res.warnings.append(f"{label} {raw!r} is ambiguous ({options}); read day-first as {chosen}, "
+                                f"please confirm")
+    return res
 
 
 def _safe_date(y: int, m: int, d: int) -> date | None:

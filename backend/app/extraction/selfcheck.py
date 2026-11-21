@@ -26,12 +26,43 @@ FIELDS = ("vendor", "invoice_number", "invoice_date", "due_date", "currency", "s
           "po_number", "lines", "subtotal", "taxes", "total")
 
 
+# Every warning check() writes contains one of these; used to replace them on a re-check.
+_CHECK_MARKERS = (" but the line amount says ", " but the invoice subtotal says ", " but the invoice total says ",
+                  " but the invoice says ", "looks like a credit note but its total is positive")
+
+
+def is_check_warning(warning: str) -> bool:
+    return any(m in warning for m in _CHECK_MARKERS)
+
+
+def arithmetic_problems(bill: DraftBill) -> int:
+    """How many arithmetic checks the bill fails (0 = everything adds up)."""
+    return sum(1 for w in check(bill)[1] if is_check_warning(w))
+
+
+def badly_inconsistent(bill: DraftBill) -> bool:
+    """The total doesn't match subtotal + taxes, or the lines miss the subtotal by more than 1%.
+
+    Used to decide whether OCR text is worth a second read by the vision model: small per-line slips are
+    normal vendor errors, a broken total usually means the OCR misread a digit.
+    """
+    tax_sum = sum((t.amount for t in bill.taxes), Decimal("0"))
+    if abs(bill.subtotal + tax_sum - bill.total) > TOLERANCE:
+        return True
+    if not bill.lines:
+        return False
+    lines_sum = sum((ln.amount for ln in bill.lines), Decimal("0"))
+    return abs(lines_sum - bill.subtotal) > max(abs(bill.subtotal) * Decimal("0.01"), TOLERANCE)
+
+
 def _fmt(d: Decimal) -> str:
     return f"{d.quantize(CENT)}"
 
 
 def check(bill: DraftBill, *, was_ocr: bool = False, ocr_fixed_fields: set[str] | None = None,
-          missing_fields: set[str] | None = None) -> tuple[dict[str, float], list[str]]:
+          missing_fields: set[str] | None = None,
+          penalties: dict[str, float] | None = None) -> tuple[dict[str, float], list[str]]:
+    """`penalties` lowers named fields by a fixed amount (e.g. an ambiguous date that was read, not checked)."""
     base = 0.75 if was_ocr else 0.95
     conf = {f: base for f in FIELDS}
     warnings: list[str] = []
@@ -42,6 +73,9 @@ def check(bill: DraftBill, *, was_ocr: bool = False, ocr_fixed_fields: set[str] 
     for f in ocr_fixed_fields or ():
         if f in conf:
             lower(f, 0.15)
+    for f, by in (penalties or {}).items():
+        if f in conf:
+            lower(f, by)
     for f in missing_fields or ():
         if f in conf:
             conf[f] = 0.0

@@ -36,6 +36,42 @@ class TextResult:
     was_ocr: bool = False
     method: str = "none"           # "pdfplumber" | "pdftotext" | "ocr" | "none"
     warnings: list[str] = field(default_factory=list)
+    pages: list[str] = field(default_factory=list)
+    # Distinct invoice numbers found at the top of separate pages; more than one = several invoices in one file.
+    invoice_numbers: list[str] = field(default_factory=list)
+
+
+# "Invoice No: 000961", "INV NO : 853", "Facture n° FA-002399", "Credit note # CN-FA-000413".
+_INVOICE_LABEL = re.compile(
+    r"\b(?:invoice|inv|facture|credit\s+note|note\s+de\s+cr[ée]dit)\s*(?:no\b\.?|number|num[ée]ro|n[°º]|#)"
+    r"\s*[:.]?\s*([A-Z0-9][A-Z0-9/-]*\d[A-Z0-9/-]*)",
+    re.IGNORECASE,
+)
+
+
+def invoice_numbers_by_page(pages: list[str]) -> list[str]:
+    """The first labelled invoice number on each page, de-duplicated in page order.
+
+    Only the first label per page counts: a credit note's "original invoice no." further down the page
+    must not look like a second invoice. A continuation page that repeats the header adds nothing.
+    """
+    found = []
+    for page in pages:
+        if m := _INVOICE_LABEL.search(page):
+            number = m[1].upper()
+            if number not in found:
+                found.append(number)
+    return found
+
+
+def _with_invoice_check(result: TextResult) -> TextResult:
+    result.invoice_numbers = invoice_numbers_by_page(result.pages)
+    if len(result.invoice_numbers) > 1:
+        result.warnings.append(
+            f"document appears to contain {len(result.invoice_numbers)} invoices "
+            f"({', '.join(result.invoice_numbers)}) on separate pages; only one draft is created from it, "
+            f"so split the file and submit each invoice separately")
+    return result
 
 
 def meaningful_chars(text: str) -> int:
@@ -54,41 +90,46 @@ def is_image(filename: str) -> bool:
 
 
 def get_text(data: bytes, filename: str) -> TextResult:
+    return _with_invoice_check(_get_text(data, filename))
+
+
+def _get_text(data: bytes, filename: str) -> TextResult:
     if is_image(filename):
         return _ocr_image_bytes(data)
     if Path(filename).suffix.lower() != ".pdf" and not data.startswith(b"%PDF"):
         return TextResult("", warnings=[f"Unsupported file type: {filename}"])
 
     warnings: list[str] = []
-    text = _pdfplumber_text(data, warnings)
+    pages = _pdfplumber_pages(data, warnings)
+    text = _clean("\n\n".join(pages))
     if meaningful_chars(text) >= MIN_MEANINGFUL_CHARS:
-        return TextResult(text, method="pdfplumber", warnings=warnings)
+        return TextResult(text, method="pdfplumber", warnings=warnings, pages=pages)
 
-    text = _pdftotext(data, warnings)
+    pages = _pdftotext_pages(data, warnings)
+    text = _clean("\n\n".join(pages))
     if meaningful_chars(text) >= MIN_MEANINGFUL_CHARS:
-        return TextResult(text, method="pdftotext", warnings=warnings)
+        return TextResult(text, method="pdftotext", warnings=warnings, pages=pages)
 
     ocr = _ocr_pdf(data)
     ocr.warnings[:0] = warnings
     return ocr
 
 
-def _pdfplumber_text(data: bytes, warnings: list[str]) -> str:
+def _pdfplumber_pages(data: bytes, warnings: list[str]) -> list[str]:
     try:
         import pdfplumber
 
         with pdfplumber.open(io.BytesIO(data)) as pdf:
-            pages = [p.extract_text(layout=True) or "" for p in pdf.pages]
-        return _clean("\n\n".join(pages))
+            return [_clean(p.extract_text(layout=True) or "") for p in pdf.pages]
     except Exception as exc:  # corrupt PDFs must not crash the batch
         warnings.append(f"pdfplumber failed: {exc}")
-        return ""
+        return []
 
 
-def _pdftotext(data: bytes, warnings: list[str]) -> str:
+def _pdftotext_pages(data: bytes, warnings: list[str]) -> list[str]:
     exe = shutil.which("pdftotext")
     if not exe:
-        return ""
+        return []
     with tempfile.NamedTemporaryFile(suffix=".pdf") as tmp:
         tmp.write(data)
         tmp.flush()
@@ -96,8 +137,9 @@ def _pdftotext(data: bytes, warnings: list[str]) -> str:
             out = subprocess.run([exe, "-layout", tmp.name, "-"], capture_output=True, timeout=60, check=True)
         except (subprocess.SubprocessError, OSError) as exc:
             warnings.append(f"pdftotext failed: {exc}")
-            return ""
-    return _clean(out.stdout.decode("utf-8", errors="replace"))
+            return []
+    # pdftotext separates pages with a form feed.
+    return [_clean(p) for p in out.stdout.decode("utf-8", errors="replace").split("\f") if p.strip()]
 
 
 # ---------------------------------------------------------------- OCR
@@ -130,9 +172,9 @@ def _ocr_images(images) -> TextResult:
 
     lang = _ocr_lang()
     # psm 6 = "uniform block of text"; keeps table rows on one line better than the default.
-    text = "\n\n".join(pytesseract.image_to_string(img, lang=lang, config="--psm 6") for img in images)
+    pages = [_clean(pytesseract.image_to_string(img, lang=lang, config="--psm 6")) for img in images]
     warnings = [] if lang == "eng+fra" else ["French OCR data not installed; using English only"]
-    return TextResult(_clean(text), was_ocr=True, method="ocr", warnings=warnings)
+    return TextResult(_clean("\n\n".join(pages)), was_ocr=True, method="ocr", warnings=warnings, pages=pages)
 
 
 def _ocr_image_bytes(data: bytes) -> TextResult:

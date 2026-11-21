@@ -1,0 +1,47 @@
+{
+  "file_name": "scan_8749.png",
+  "file_hash": "b887277804657d9b44a5877e45f734725ab18c386b65b96f4bd7196aa3cb87e6",
+  "input": "vision",
+  "model": "claude-opus-5-5",
+  "prompt_version": "4",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Prairie Natural Gas Utility",
+    "vendor_address": "4251 Granville St, Calgary AB T9K 7B4",
+    "vendor_gst_number": "862863208RT0001",
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "PR26-1012",
+    "invoice_date": "2026-10-22",
+    "due_date": "2026-11-12",
+    "payment_terms": "Net 21",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "250 6 Ave SW, Suite 700, Calgary AB T2P 3H7",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "Energy - October",
+        "quantity": "1",
+        "unit_price": "$4,494.55",
+        "amount": "$4,494.55",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "$4,494.55",
+    "taxes": [
+      {
+        "label": "GST (5%)",
+        "rate": "5%",
+        "amount": "$224.73"
+      }
+    ],
+    "total": "$4,719.28",
+    "bank_institution": "006",
+    "bank_transit": "55541",
+    "bank_account": "704593075"
+  }
+}

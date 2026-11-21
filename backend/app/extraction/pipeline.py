@@ -25,7 +25,7 @@ from typing import Literal
 
 from app.coding import suggest as coding
 from app.config import get_settings
-from app.extraction import cache, llm_parser, normalize, selfcheck, text_layer, vendor_match
+from app.extraction import cache, filecheck, llm_parser, normalize, selfcheck, text_layer, vendor_match
 from app.extraction.llm_parser import LLMUnavailableError, RawInvoice
 from app.reference.csv_repository import default_repository
 from app.reference.repository import ReferenceRepository
@@ -41,6 +41,10 @@ from app.shared.schemas import (
 )
 
 CENT = Decimal("0.01")
+# Confidence taken off a date that was ambiguous: settled by evidence, or still a day-first guess.
+DATE_RESOLVED_PENALTY = 0.15
+DATE_AMBIGUOUS_PENALTY = 0.45
+MULTI_INVOICE_PENALTY = 0.5
 
 
 class ExtractionIncomplete(ValueError):
@@ -58,6 +62,7 @@ class ExtractionOutcome:
     was_ocr: bool = False
     warnings: list[str] = field(default_factory=list)
     error: str | None = None
+    usage: dict = field(default_factory=dict)   # LLM tokens spent on this file in this run ({} on a cache hit)
 
     def to_dict(self) -> dict:
         return {
@@ -83,34 +88,26 @@ def extract(data: bytes, filename: str, *, email_id: str | None = None, sender: 
 
 def extract_outcome(data: bytes, filename: str, *, email_id: str | None = None, sender: str | None = None,
                     repo: ReferenceRepository | None = None, client=None) -> ExtractionOutcome:
-    s = get_settings()
     repo = repo or default_repository()
     file_hash = cache.file_sha256(data)
-    tr = text_layer.get_text(data, filename)
+    from app.intake.files import keep  # here, not at the top: intake.files reads the DB, extraction doesn't
+
+    keep(data)  # the original, for side-by-side review (GET /intake/files/{file_hash})
+    if problem := filecheck.problem(data, filename):
+        return ExtractionOutcome(filename, file_hash, "failed", error=problem)
+    read_as, renamed = filecheck.real_name(data, filename)
+    try:
+        tr = text_layer.get_text(data, read_as)
+    except Exception as exc:  # a file that passed the checks but still breaks the reader
+        msg = f"The file couldn't be read ({type(exc).__name__}); ask the sender to resend it."
+        return ExtractionOutcome(filename, file_hash, "failed", error=msg)
     out = ExtractionOutcome(filename, file_hash, "failed", text=tr.text, text_method=tr.method,
-                            was_ocr=tr.was_ocr, warnings=list(tr.warnings))
+                            was_ocr=tr.was_ocr, warnings=[*([renamed] if renamed else []), *tr.warnings])
 
     # LLM step, cached. A cache hit works even without an API key, which keeps demos offline-friendly.
-    use_vision = not tr.text
-    pv = llm_parser.prompt_version()
-    cached = cache.get(file_hash, pv, s.llm_model)
-    if cached:
-        raw = RawInvoice.model_validate(cached["raw"])
-        use_vision = cached.get("input") == "vision"
-    elif client is None and not s.llm_enabled:
-        out.status = "llm_skipped"
-        out.error = "LLM skipped: ANTHROPIC_API_KEY not set"
+    raw, use_vision = _model_output(data, tr.text, read_as, file_hash, not tr.text, client, out)
+    if raw is None:
         return out
-    else:
-        try:
-            raw = llm_parser.parse_invoice(tr.text or None, file_bytes=data if use_vision else None,
-                                           filename=filename, client=client)
-        except Exception as exc:  # one bad file must not stop the batch
-            out.error = f"{type(exc).__name__}: {exc}"
-            return out
-        cache.put(file_hash, pv, s.llm_model, {"input": "vision" if use_vision else "text",
-                                               "model": s.llm_model, "prompt_version": pv,
-                                               "raw": raw.model_dump()})
     if use_vision:
         out.warnings.append("no usable text layer; extracted from the image by the vision model")
 
@@ -120,16 +117,72 @@ def extract_outcome(data: bytes, filename: str, *, email_id: str | None = None, 
         was_ocr=tr.was_ocr or use_vision,
     )
     try:
-        out.draft = build_draft(raw, source, repo, extra_warnings=out.warnings)
+        # Several invoices in one file: whichever one the model read, number and total are suspect.
+        multi = {"invoice_number": MULTI_INVOICE_PENALTY, "total": MULTI_INVOICE_PENALTY} \
+            if len(tr.invoice_numbers) > 1 else {}
+        out.draft = build_draft(raw, source, repo, extra_warnings=out.warnings, extra_penalties=multi)
     except ExtractionIncomplete as exc:
         out.error = str(exc)
         return out
+    if tr.was_ocr and not use_vision and selfcheck.badly_inconsistent(out.draft):
+        out.draft = _vision_second_opinion(out.draft, data, read_as, file_hash, client, out, source, repo, multi)
     try:
         out.draft = coding.suggest(out.draft, repo)
     except Exception as exc:  # a coding bug must not lose an otherwise good extraction
         out.draft.extraction_warnings.append(f"coding suggestions unavailable: {exc}")
     out.status = "ok"
     return out
+
+
+def _model_output(data: bytes, text: str, read_as: str, cache_key: str, vision: bool, client,
+                  out: ExtractionOutcome) -> tuple[RawInvoice | None, bool]:
+    """(RawInvoice, read from the image?) from the cache or the model. On failure: (None, vision) with
+    out.status / out.error set."""
+    s = get_settings()
+    pv = llm_parser.prompt_version()
+    cached = cache.get(cache_key, pv, s.llm_model)
+    if cached:
+        return RawInvoice.model_validate(cached["raw"]), cached.get("input") == "vision"
+    if client is None and not s.llm_enabled:
+        out.status, out.error = "llm_skipped", "LLM skipped: ANTHROPIC_API_KEY not set"
+        return None, vision
+    try:
+        raw = llm_parser.parse_invoice(None if vision else text, file_bytes=data if vision else None,
+                                       filename=read_as, client=client, usage=out.usage)
+    except Exception as exc:  # one bad file must not stop the batch
+        out.error = f"{type(exc).__name__}: {exc}"
+        return None, vision
+    cache.put(cache_key, pv, s.llm_model, {"input": "vision" if vision else "text", "model": s.llm_model,
+                                           "prompt_version": pv, "usage": out.usage, "raw": raw.model_dump()})
+    return raw, vision
+
+
+def _vision_second_opinion(first: DraftBill, data: bytes, read_as: str, file_hash: str, client,
+                           out: ExtractionOutcome, source: SourceInfo, repo: ReferenceRepository,
+                           penalties: dict[str, float]) -> DraftBill:
+    """OCR text whose totals don't add up gets one re-read of the image by the vision model. The result with
+    fewer arithmetic problems wins (OCR on a tie); either way a warning says which was used."""
+    scratch = ExtractionOutcome(out.file_name, file_hash, "failed", usage=out.usage)
+    raw, _ = _model_output(data, "", read_as, f"{file_hash}-vision", True, client, scratch)
+    try:
+        second = build_draft(raw, source, repo, extra_warnings=out.warnings, extra_penalties=penalties) \
+            if raw is not None else None
+    except ExtractionIncomplete:
+        second = None
+    if second is None:
+        why = scratch.error or "the vision read was incomplete"
+        first.extraction_warnings.append(f"OCR text doesn't add up; a vision re-read wasn't possible ({why})")
+        return first
+    n_ocr, n_vision = selfcheck.arithmetic_problems(first), selfcheck.arithmetic_problems(second)
+    if n_vision < n_ocr:
+        second.extraction_warnings.append(
+            f"OCR text didn't add up ({n_ocr} arithmetic problems); re-read the image with the vision model "
+            f"and used that result ({n_vision})")
+        return second
+    first.extraction_warnings.append(
+        f"OCR text didn't add up ({n_ocr} arithmetic problems); a vision re-read was no better ({n_vision}), "
+        f"so the OCR result is kept")
+    return first
 
 
 # ---------------------------------------------------------------- RawInvoice → DraftBill
@@ -145,7 +198,8 @@ def _terms_days(terms: str | None) -> int | None:
 
 
 def build_draft(raw: RawInvoice, source: SourceInfo, repo: ReferenceRepository,
-                extra_warnings: list[str] | None = None) -> DraftBill:
+                extra_warnings: list[str] | None = None,
+                extra_penalties: dict[str, float] | None = None) -> DraftBill:
     warnings = list(extra_warnings or [])
     ocr_fixed: set[str] = set()
     missing: set[str] = set()
@@ -154,12 +208,8 @@ def build_draft(raw: RawInvoice, source: SourceInfo, repo: ReferenceRepository,
         raise ExtractionIncomplete("document is a statement of account, not an invoice")
     if not raw.invoice_number:
         raise ExtractionIncomplete("no invoice number found on the document")
-    invoice_date = normalize.parse_date(raw.invoice_date)
-    if invoice_date is None:
+    if normalize.parse_date(raw.invoice_date) is None:
         raise ExtractionIncomplete(f"could not read the invoice date ({raw.invoice_date!r})")
-    due_date = normalize.parse_date(raw.due_date)
-    if due_date is None:
-        missing.add("due_date")
 
     # --- vendor identity, with OCR fixes on structured IDs only
     gst, w1 = normalize.fix_tax_number(raw.vendor_gst_number, "gst")
@@ -177,6 +227,18 @@ def build_draft(raw: RawInvoice, source: SourceInfo, repo: ReferenceRepository,
     vendor, vm_warnings = vendor_match.resolve(vendor, source.sender_address, repo)
     warnings += vm_warnings
     master = repo.vendor(vendor.vendor_id) if vendor.vendor_id else None
+
+    # --- dates: read together, so the due date and payment terms can settle a "03/04/2026"
+    terms_days = _terms_days(raw.payment_terms)
+    expected_terms = terms_days if terms_days is not None else _terms_days((master or {}).get("payment_terms_days"))
+    dates = normalize.resolve_dates(raw.invoice_date, raw.due_date, expected_terms, get_settings().as_of_date)
+    invoice_date, due_date = dates.invoice_date, dates.due_date
+    warnings += dates.warnings
+    penalties = dict(extra_penalties or {})
+    penalties |= {f: DATE_RESOLVED_PENALTY for f in dates.resolved}
+    penalties |= {f: DATE_AMBIGUOUS_PENALTY for f in dates.ambiguous}
+    if due_date is None:
+        missing.add("due_date")
     foreign = (master is not None and master.get("country", "CA") != "CA") or normalize.looks_foreign(
         raw.vendor_address)
 
@@ -213,6 +275,8 @@ def build_draft(raw: RawInvoice, source: SourceInfo, repo: ReferenceRepository,
         rate = normalize.parse_rate(rt.rate) or normalize.parse_rate(
             m[0] if (m := re.search(r"\d+(?:[.,]\d+)?\s*%", rt.label)) else None)
         code = normalize.map_tax_label(rt.label, rate)
+        if code is None and amount is not None and amount == 0:
+            continue  # "Sales tax $0.00" on a foreign invoice: no tax charged, nothing to map
         if amount is None or code is None:
             warnings.append(f"unrecognised tax line {rt.label!r} {rt.amount!r}; not mapped to a tax code")
             continue
@@ -258,14 +322,14 @@ def build_draft(raw: RawInvoice, source: SourceInfo, repo: ReferenceRepository,
     bill = DraftBill(
         source=source, vendor=vendor,
         invoice_number=raw.invoice_number.strip(), invoice_date=invoice_date, due_date=due_date,
-        payment_terms_days=_terms_days(raw.payment_terms), currency=currency,
+        payment_terms_days=terms_days, currency=currency,
         is_credit_note=raw.document_type == "credit_note" or total < 0,
         ship_to_province=ship_to, po_number=po, contract_id=contract_id,
         lines=lines, subtotal=subtotal, taxes=taxes, total=total,
         fx_rate_to_cad=fx, total_cad=(total * fx).quantize(CENT),
     )
     conf, check_warnings = selfcheck.check(bill, was_ocr=source.was_ocr, ocr_fixed_fields=ocr_fixed,
-                                           missing_fields=missing)
+                                           missing_fields=missing, penalties=penalties)
     conf["vendor"] = round(min(conf["vendor"], max(vendor.match_score, 0.3)), 2)
     return bill.model_copy(update={"field_confidence": conf,
                                    "extraction_warnings": warnings + check_warnings})

@@ -190,7 +190,9 @@ _MEDIA_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"
 
 def _content(text: str | None, file_bytes: bytes | None, filename: str) -> list[dict]:
     if text:
-        return [{"type": "text", "text": f"Document text (file: {filename}):\n\n{text}"}]
+        # The tags mark where untrusted text starts and ends; a closing tag inside the text can't end it early.
+        body = re.sub(r"</?\s*document\s*>", "[tag removed]", text, flags=re.IGNORECASE)
+        return [{"type": "text", "text": f"Document text (file: {filename}):\n<document>\n{body}\n</document>"}]
     if file_bytes is None:
         raise ValueError("Need either text or file bytes")
     media = _MEDIA_TYPES.get(Path(filename).suffix.lower())
@@ -204,12 +206,21 @@ def _content(text: str | None, file_bytes: bytes | None, filename: str) -> list[
     ]
 
 
+def _add_usage(usage: dict | None, resp) -> None:
+    u = getattr(resp, "usage", None)
+    if usage is None or u is None:
+        return
+    for k in ("input_tokens", "output_tokens"):
+        usage[k] = usage.get(k, 0) + (getattr(u, k, 0) or 0)
+
+
 def parse_invoice(text: str | None, *, file_bytes: bytes | None = None, filename: str = "",
-                  client=None) -> RawInvoice:
+                  client=None, usage: dict | None = None) -> RawInvoice:
     """Call the LLM and return a validated RawInvoice.
 
     Pass `text` when the text layer worked, otherwise `file_bytes` for vision.
     `client` is injectable for tests; by default one is built from settings.
+    `usage`, when given, is filled with the input/output tokens of every attempt (for cost reporting).
     """
     import anthropic
 
@@ -233,6 +244,7 @@ def parse_invoice(text: str | None, *, file_bytes: bytes | None = None, filename
             # The SDK already retries these with backoff; one more round here covers longer blips.
             last_error = exc
             continue
+        _add_usage(usage, resp)
         if resp.stop_reason == "refusal":
             raise LLMExtractionError(f"Model declined to extract {filename}")
         if resp.stop_reason == "max_tokens":

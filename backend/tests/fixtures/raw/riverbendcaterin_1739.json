@@ -1,0 +1,41 @@
+{
+  "file_name": "riverbendcaterin_1739.pdf",
+  "file_hash": "be10faef4f0584d14a99c2993c36f622893692b6351713889687b280fdcb1baa",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "4",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Riverbend Catering Co.",
+    "vendor_address": "5962 Industrial Pkwy, Vancouver BC V1P 7L6",
+    "vendor_gst_number": null,
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "1739",
+    "invoice_date": "2026-10-26",
+    "due_date": "2026-11-25",
+    "payment_terms": "Net 30",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "1055 W Hastings St, Suite 900, Vancouver BC V6E 2E9",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": true,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "Team event catering",
+        "quantity": "1",
+        "unit_price": "$2,860.00",
+        "amount": "$2,860.00",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "$2,860.00",
+    "taxes": [],
+    "total": "$2,860.00",
+    "bank_institution": "003",
+    "bank_transit": "87673",
+    "bank_account": "718563779"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "file_name": "fixwellfacilitys_CNFA000413.pdf",
+  "file_hash": "cc2efaf8344ef9daa22f0d045c29977fa015558a5ddbf8a4f7f78e25b80ec7e8",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "4",
+  "raw": {
+    "document_type": "credit_note",
+    "vendor_name": "Fixwell Facility Services",
+    "vendor_address": "3315 Granville St, Toronto ON P4R 6V4",
+    "vendor_gst_number": "880851885RT0001",
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "CN-FA-000413",
+    "invoice_date": "2026-10-29",
+    "due_date": "2026-11-28",
+    "payment_terms": "Net 30",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "88 Queens Quay W, Suite 1400, Toronto ON M5J 0B8",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "Credit - Dock door repair",
+        "quantity": "1",
+        "unit_price": "-$1,042.76",
+        "amount": "-$1,042.76",
+        "line_type": "services"
+      },
+      {
+        "description": "Credit - HVAC service call",
+        "quantity": "1",
+        "unit_price": "-$385.74",
+        "amount": "-$385.74",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "-$1,428.50",
+    "taxes": [
+      {
+        "label": "HST (13%)",
+        "rate": "13%",
+        "amount": "-$185.71"
+      }
+    ],
+    "total": "-$1,614.21",
+    "bank_institution": "016",
+    "bank_transit": "96555",
+    "bank_account": "937345964"
+  }
+}

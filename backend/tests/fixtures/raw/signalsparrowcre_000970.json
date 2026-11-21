@@ -1,0 +1,59 @@
+{
+  "file_name": "signalsparrowcre_000970.pdf",
+  "file_hash": "bfcf919f251f4e5db26e2f6ce2179868b64aec955bb0800121bd3adbe584a93a",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "4",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Signal & Sparrow Creative",
+    "vendor_address": "6333 Commerce Dr, Vancouver BC V1K 8J2",
+    "vendor_gst_number": "559384775RT0001",
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "000970",
+    "invoice_date": "2026-10-28",
+    "due_date": "2026-11-27",
+    "payment_terms": "Net 30",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "1055 W Hastings St, Suite 900, Vancouver BC V6E 2E9",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "Creative design services",
+        "quantity": "30",
+        "unit_price": "$140.00",
+        "amount": "$4,200.00",
+        "line_type": "services"
+      },
+      {
+        "description": "Digital ad campaign - Winter promo",
+        "quantity": "1",
+        "unit_price": "$4,200.00",
+        "amount": "$4,200.00",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "$8,400.00",
+    "taxes": [
+      {
+        "label": "GST (5%)",
+        "rate": "5%",
+        "amount": "$420.00"
+      },
+      {
+        "label": "PST (7%)",
+        "rate": "7%",
+        "amount": "$588.00"
+      }
+    ],
+    "total": "$9,408.00",
+    "bank_institution": "006",
+    "bank_transit": "69425",
+    "bank_account": "886069428"
+  }
+}

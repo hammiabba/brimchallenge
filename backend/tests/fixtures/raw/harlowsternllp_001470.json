@@ -1,0 +1,47 @@
+{
+  "file_name": "harlowsternllp_001470.pdf",
+  "file_hash": "7456185ffe846c9a7ad26634d1b815bdde85ceea5a4d1da87e57915d85bf28d4",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "4",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Harlow & Stern LLP",
+    "vendor_address": "8817 Harbour Rd, Toronto ON N7S 1L9",
+    "vendor_gst_number": "134920677RT0001",
+    "vendor_qst_number": null,
+    "vendor_email": null,
+    "invoice_number": "001470",
+    "invoice_date": "2026-10-21",
+    "due_date": "2026-11-20",
+    "payment_terms": "Net 30",
+    "currency": "CAD",
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "1055 W Hastings St, Suite 900, Vancouver BC V6E 2E9",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "Disbursements and filing fees",
+        "quantity": "1",
+        "unit_price": "$323.35",
+        "amount": "$323.35",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "$323.35",
+    "taxes": [
+      {
+        "label": "GST (5%)",
+        "rate": "5%",
+        "amount": "$16.17"
+      }
+    ],
+    "total": "$339.52",
+    "bank_institution": "004",
+    "bank_transit": "18643",
+    "bank_account": "736063279"
+  }
+}

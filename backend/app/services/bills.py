@@ -10,11 +10,14 @@ from app.api import schemas_api as s
 from app.api.errors import ApiError, not_found
 from app.auth.deps import CurrentUser
 from app.auth.roles import CONTROLLER_ADMIN, FINANCE_MANAGER
+from app.coding.feedback import learn_from_line
+from app.coding.requester import recode_for_requester, requester_problem
 from app.controls.duplicates import norm_invoice_no
 from app.db import models
 from app.db.audit import AuditAction
 from app.db.bills import latest_controls_run
 from app.db.types import utcnow
+from app.extraction.recheck import recheck_bill
 from app.services import approvals, audit, controls_runner, views
 from app.services.events import record
 from app.services.guards import check_row_version, invalid_state
@@ -143,6 +146,8 @@ def update_header(db: Session, user: CurrentUser, bill_id: str, patch: s.BillHea
         value = changes.get(field)
         if value is not None and db.get(model, value) is None:
             raise ApiError(422, f"bill.unknown_{field}", f"{value} doesn't exist.", {"field": field})
+    if problem := requester_problem(db, changes.get("requester_user_id")):
+        raise ApiError(422, "bill.requester_not_allowed", problem, {"field": "requester_user_id"})
     if "ship_to_province" in changes and changes["ship_to_province"] not in (None, *models.PROVINCES):
         raise ApiError(422, "bill.bad_province", "ship_to_province must be a Canadian province or territory code.")
     before = {k: getattr(bill, k) for k in changes}
@@ -150,7 +155,9 @@ def update_header(db: Session, user: CurrentUser, bill_id: str, patch: s.BillHea
         setattr(bill, key, value)
     if "vendor_invoice_number" in changes:
         bill.norm_invoice_number = norm_invoice_no(changes["vendor_invoice_number"])
+    recode_for_requester(db, bill, changes)
     bill.updated_at = utcnow()
+    recheck_bill(db, bill, changes)
     controls_runner.rerun(db, bill_id)
     record(db, actor_user_id=user.user_id, actor_role=user.role, action=AuditAction.BILL_UPDATED,
            entity_type=AUDIT_ENTITY, entity_id=bill_id, before=before, after=changes)
@@ -172,6 +179,7 @@ def code_line(db: Session, user: CurrentUser, bill_id: str, line_no: int, patch:
     line.gl_account, line.department_id = patch.gl_account, patch.department_id
     line.coding_status = "accepted" if accepted else "overridden"
     line.coded_by, line.coded_at = user.user_id, utcnow()
+    learn_from_line(bill, line)
     bill.updated_at = utcnow()  # bumps row_version: the bill as a whole changed
     controls_runner.rerun(db, bill_id)
     record(db, actor_user_id=user.user_id, actor_role=user.role, action=AuditAction.BILL_CODING_CHANGED,

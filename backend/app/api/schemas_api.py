@@ -19,6 +19,8 @@ from typing import Annotated, Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer, StringConstraints, WithJsonSchema
 
+from app.intake.actions import SuggestedAction
+
 MONEY_PATTERN = r"^-?\d{1,12}(\.\d{1,2})?$"
 
 Money = Annotated[
@@ -619,3 +621,4 @@ class EmailOut(ApiModel):
     triage_reason: str | None
     triaged_at: UtcDateTime | None
     items: list[IntakeItemOut] = []
+    suggested_action: SuggestedAction | None = None  # intake lane: app.intake.review.action_for

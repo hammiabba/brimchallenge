@@ -1,0 +1,66 @@
+{
+  "file_name": "synthetic_french.pdf",
+  "file_hash": "5fa048a990412b7a19728b8aff08b460e1a6ffc401e4ebcd4472b670fac380c8",
+  "input": "text",
+  "model": "claude-opus-5-5",
+  "prompt_version": "4",
+  "raw": {
+    "document_type": "invoice",
+    "vendor_name": "Laurentian Logistics Inc.",
+    "vendor_address": "1502 Centre St, Montreal QC G9V 5B6",
+    "vendor_gst_number": "790628686RT0001",
+    "vendor_qst_number": "1745206219TQ0001",
+    "vendor_email": null,
+    "invoice_number": "LL-77031",
+    "invoice_date": "14 octobre 2026",
+    "due_date": "13 novembre 2026",
+    "payment_terms": "30 jours net",
+    "currency": null,
+    "bill_to_name": "Harborline Logistics Inc.",
+    "bill_to_address": "1250 Rene-Levesque O, Bureau 2200, Montreal QC H3B 4W8",
+    "ship_to_address": null,
+    "po_number": null,
+    "po_field_present": false,
+    "contract_reference": null,
+    "lines": [
+      {
+        "description": "LTL shipment Montreal-Quebec",
+        "quantity": "2",
+        "unit_price": "612,50 $",
+        "amount": "1 225,00 $",
+        "line_type": "services"
+      },
+      {
+        "description": "Pallet storage - October",
+        "quantity": "10",
+        "unit_price": "18,75 $",
+        "amount": "187,50 $",
+        "line_type": "services"
+      },
+      {
+        "description": "Fuel surcharge",
+        "quantity": "1",
+        "unit_price": "98,83 $",
+        "amount": "98,83 $",
+        "line_type": "services"
+      }
+    ],
+    "subtotal": "1 511,33 $",
+    "taxes": [
+      {
+        "label": "TPS (5 %)",
+        "rate": "5 %",
+        "amount": "75,57 $"
+      },
+      {
+        "label": "TVQ (9,975 %)",
+        "rate": "9,975 %",
+        "amount": "150,76 $"
+      }
+    ],
+    "total": "1 737,66 $",
+    "bank_institution": "001",
+    "bank_transit": "85308",
+    "bank_account": "177982930"
+  }
+}

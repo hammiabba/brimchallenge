@@ -36,9 +36,10 @@ class Settings(BaseSettings):
 
     cache_dir: Path = BACKEND_DIR / ".cache"
     output_dir: Path = BACKEND_DIR / "output"
+    files_dir: Path = BACKEND_DIR / "files"  # original invoice files by sha256 (intake/files.py)
 
     # An empty value in .env (DATASET_DIR=) should mean "use the default", not "current directory".
-    @field_validator("dataset_dir", "cache_dir", "output_dir", mode="before")
+    @field_validator("dataset_dir", "cache_dir", "output_dir", "files_dir", mode="before")
     @classmethod
     def _empty_path_means_default(cls, v, info):
         if v in (None, ""):

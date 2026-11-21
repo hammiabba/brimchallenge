@@ -43,6 +43,9 @@ class CsvReferenceRepository:
     def invoice_lines(self) -> pd.DataFrame:
         return self._load("invoice_lines")
 
+    def payments(self) -> pd.DataFrame:
+        return self._load("payments")
+
     def tax_codes(self) -> pd.DataFrame:
         return self._load("tax_codes")
 

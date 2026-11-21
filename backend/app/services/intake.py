@@ -35,6 +35,8 @@ from app.db.database import as_write_engine
 from app.db.types import to_utc, utcnow
 from app.extraction.pipeline import ExtractionOutcome, extract_outcome
 from app.intake.classifier import classify
+from app.intake.received import link_to_existing_bill
+from app.intake.review import action_for
 from app.intake.upload import ALLOWED_EXTS
 from app.services import controls_runner
 from app.services.events import record
@@ -79,7 +81,7 @@ def list_emails(db: Session, *, email_class: str | None, triaged: bool | None, l
             items.setdefault(item.email_id, []).append(item)
     out = [s.EmailOut(email_id=e.email_id, from_name=e.from_name, from_address=e.from_address, subject=e.subject,
                       received_at=e.received_at, attachments=list(e.attachments or []), email_class=e.email_class,
-                      triage_reason=e.triage_reason, triaged_at=e.triaged_at,
+                      triage_reason=e.triage_reason, triaged_at=e.triaged_at, suggested_action=action_for(e),
                       items=[s.IntakeItemOut.model_validate(i) for i in items.get(e.email_id, [])]) for e in rows]
     return s.Page[s.EmailOut](items=out, total=total, limit=limit, offset=offset)
 
@@ -120,8 +122,8 @@ def store_outcome(bind: Engine, job: Extracted, *, started_by: str, batch: list[
         out = job.outcome
         item.status, item.file_hash = out.status, out.file_hash or None
         item.error, item.warnings = out.error, list(out.warnings)
-        bill_id = None
-        if out.draft is not None:
+        bill_id = link_to_existing_bill(db, item, out, started_by)
+        if out.draft is not None and bill_id is None:
             received = item.created_at.date()
             created = create_bill_from_draft(db, out.draft, created_by=started_by, received_date=received,
                                              source_email_id=job.email_id)
@@ -145,7 +147,7 @@ def store_outcome(bind: Engine, job: Extracted, *, started_by: str, batch: list[
                    after={"intake_item_id": item.item_id, "file_name": item.file_name, "email_id": job.email_id,
                           "started_by": started_by, "status": "needs_review", "department_id": bill.department_id,
                           "department_source": source, "warnings": item.warnings})
-        else:
+        elif bill_id is None:
             record(db, actor_user_id=SYSTEM_ACTOR, actor_role=SYSTEM_ACTOR, action="intake.item_failed",
                    entity_type="intake_item", entity_id=str(item.item_id),
                    after={"status": out.status, "error": out.error, "file_name": item.file_name,
