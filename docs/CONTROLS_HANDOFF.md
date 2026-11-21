@@ -1,7 +1,8 @@
 # Controls engine: handoff
 
 For teammates wiring the engine in, and for judge Q&A prep. Owner: Person B.
-Keep this file accurate: any change in `controls/` updates it (see `CLAUDE.md` in this folder).
+Keep this file accurate: any change in [`backend/app/controls/`](../backend/app/controls/) updates it
+(see [`backend/app/controls/CLAUDE.md`](../backend/app/controls/CLAUDE.md)).
 
 ## What it does
 
@@ -48,7 +49,7 @@ result = run_controls(bill, batch)   # -> ControlsResult
 | `can_auto_proceed` | `False` if any `block` flag is open |
 | `recommendation` | `"Hold: <first block message>"` when blocked, else `None` |
 
-Severity comes from `FLAG_CODES` in `app/shared/schemas.py`; the engine defines no codes of its own.
+Severity comes from `FLAG_CODES` in [`backend/app/shared/schemas.py`](../backend/app/shared/schemas.py); the engine defines no codes of its own.
 `block` holds payment until someone resolves it, `warn` needs a human look, `info` is context.
 
 ### Example (real output)
@@ -189,7 +190,8 @@ routing follows.
    manager. On a Facilities bill over $10k, step 1 is U003 (as U012's delegate) and step 2 would be U003 again.
    The "one person, one step" rule sends step 2 to U003's manager, the controller (U002): chain U003 → U002.
    If U003 is the *requester* of a Facilities bill, the delegated step escalates to U002 and `delegated_from` is
-   cleared, because U002 isn't acting for U012. All three cases are tested in `tests/controls/test_approvals.py`.
+   cleared, because U002 isn't acting for U012. All three cases are tested in
+   [`backend/tests/controls/test_approvals.py`](../backend/tests/controls/test_approvals.py).
 
 ### Permissions (`approvals.can_approve`, `approvals.can_release`)
 
@@ -241,7 +243,7 @@ Items marked *Fix in progress* are being fixed on branch `b/controls-fixes`.
   and Redline's monthly fuel bills. *Fix in progress (b/controls-fixes).*
 - **Split detection misses small splits** where each bill is under 40% of the limit. *Fix in progress (b/controls-fixes).*
 
-### History replay (`scripts/replay_history.py`)
+### History replay ([`backend/scripts/replay_history.py`](../backend/scripts/replay_history.py))
 - **Applies today's state to past bills** (current bank-change status, terminated requesters), so old bills get flags
   that didn't apply at the time.
 - **Counts each duplicate pair twice.**
@@ -276,7 +278,7 @@ the document (extraction); the rules are plain code.
 Layers with scores, and known exceptions: recurring fixed-fee vendors need similar invoice numbers too, credit
 notes never match invoices, and AP card payments are skipped. Split detection still has known false positives
 (Deskhive, Redline); see Bugs. Replaying all 426 historical invoices
-(`python scripts/replay_history.py`) shows what fires.
+(`cd backend && python scripts/replay_history.py`) shows what fires.
 
 **What did it find in the history?**
 4 invoices paid twice (AP-00023/34, AP-00073/77, AP-00136/155, AP-00215/224) and 2 scheduled twice (AP-00394/407);
