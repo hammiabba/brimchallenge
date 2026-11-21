@@ -1,0 +1,121 @@
+"""
+Fixtures for API tests: one seeded SQLite database per test session (migrated with Alembic, then the full dataset
+seed), and TestClients signed in as a given user.
+
+Tests share the database, so a test that writes must not depend on another test's writes, and assertions about
+the audit log compare against the log as it was before the test.
+The repo-wide autouse fixtures (no network, no API key, temp cache dirs) still apply.
+"""
+from __future__ import annotations
+
+from collections.abc import Callable, Iterator
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.auth import session as signed_session
+from app.auth.settings import get_auth_settings
+from app.config import get_settings
+from app.db.database import as_write_engine, get_session, get_write_session, make_engine
+from app.db.seed import migrate_to_head, seed_all
+from app.db.settings import get_db_settings
+from app.main import app
+
+# Not a secret: a fixed key so audit fingerprints are reproducible in tests (same idea as tests/db).
+TEST_AUDIT_HMAC_KEY = "test-only-audit-hmac-key-0123456789abcdef"
+
+# One user per role, from the seeded users.csv.
+ROLE_USERS = {
+    "employee": "U013",          # D01 dispatcher
+    "ap_clerk": "U004",
+    "approver": "U007",          # D01 manager
+    "finance_manager": "U003",   # also U012's delegate (P08)
+    "controller_admin": "U002",
+    "auditor": "U006",
+}
+TERMINATED_USER = "U015"
+ON_LEAVE_USER = "U012"
+
+# Bills used for scope checks: D01 is the employee's and approver's department, D05 is not.
+IN_SCOPE_BILL = "AP-00024"      # D01
+OUT_OF_SCOPE_BILL = "AP-00001"  # D05
+
+
+@pytest.fixture(autouse=True)
+def _audit_hmac_key(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    monkeypatch.setenv("AUDIT_HMAC_KEY", TEST_AUDIT_HMAC_KEY)
+    get_db_settings.cache_clear()
+    yield
+    get_db_settings.cache_clear()
+
+
+@pytest.fixture(scope="session")
+def seeded_engine(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Engine]:
+    path: Path = tmp_path_factory.mktemp("api-db") / "ap.db"
+    url = f"sqlite:///{path}"
+    migrate_to_head(url)
+    engine = make_engine(url)
+    with Session(engine) as s:
+        seed_all(s, get_settings().dataset_dir)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def db_factory(seeded_engine: Engine) -> sessionmaker[Session]:
+    return sessionmaker(bind=seeded_engine, expire_on_commit=False)
+
+
+@pytest.fixture
+def write_factory(seeded_engine: Engine) -> sessionmaker[Session]:
+    return sessionmaker(bind=as_write_engine(seeded_engine), expire_on_commit=False)
+
+
+def _scoped(factory: sessionmaker[Session]):
+    def _session() -> Iterator[Session]:
+        s = factory()
+        try:
+            yield s
+        except Exception:
+            s.rollback()
+            raise
+        finally:
+            s.close()
+    return _session
+
+
+@pytest.fixture
+def client(db_factory: sessionmaker[Session], write_factory: sessionmaker[Session]) -> Iterator[TestClient]:
+    app.dependency_overrides[get_session] = _scoped(db_factory)
+    app.dependency_overrides[get_write_session] = _scoped(write_factory)
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.pop(get_session, None)
+    app.dependency_overrides.pop(get_write_session, None)
+
+
+@pytest.fixture
+def login(client: TestClient) -> Callable[[str], TestClient]:
+    """login("U004") signs the shared client in as that user (replacing any earlier session)."""
+
+    def _login(user_id: str) -> TestClient:
+        client.cookies.clear()
+        r = client.post("/auth/login", json={"user_id": user_id})
+        assert r.status_code == 200, r.text
+        return client
+
+    return _login
+
+
+@pytest.fixture
+def as_role(login: Callable[[str], TestClient]) -> Callable[[str], TestClient]:
+    return lambda role: login(ROLE_USERS[role])
+
+
+def forge_cookie(client: TestClient, user_id: str) -> None:
+    """Set a validly signed cookie for any user id, bypassing /auth/login (used to test terminated users)."""
+    client.cookies.clear()
+    client.cookies.set(get_auth_settings().session_cookie_name, signed_session.issue(user_id))
