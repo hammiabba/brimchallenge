@@ -229,16 +229,21 @@ def check_vendor(bill: DraftBill, ref: RefData) -> list[Flag]:
         flags.append(flag("VENDOR_NOT_ACTIVE", f"{v['legal_name']} is '{v['status']}' in the vendor master.",
                           field="vendor"))
 
-    # A small supplier (no GST/HST number on file or on the invoice) shouldn't charge GST/HST. Charging it anyway
-    # means the tax can't be claimed back, and it's a common fake-invoice signal. No tax charged is fine.
+    # No GST/HST number on file or on the invoice: always a warning. With no tax charged, confirm they really are a
+    # small supplier. With tax charged, the tax can't be claimed back and it's a common fake-invoice signal.
+    # (The tax check expects no tax from them either way, so TAX_MISSING never fires for them.)
     gst_charged = tax_amounts(bill)[0]
-    if is_small_supplier(bill, v) and gst_charged > 0:
-        flags.append(flag("GST_NUMBER_MISSING",
-                          f"{v['legal_name'].rstrip('.')} charged GST/HST of {_amt(gst_charged)} but has no GST/HST "
-                          f"registration number on the invoice or on file. Without one the tax can't be claimed back, "
-                          f"and charging tax with no number is a common sign of a fake invoice. Get the vendor's "
-                          f"number before paying.",
-                          evidence={"charged_gst_hst": str(gst_charged)}, field="vendor.gst_number"))
+    if is_small_supplier(bill, v):
+        if gst_charged > 0:
+            msg = (f"{v['legal_name'].rstrip('.')} charged GST/HST of {_amt(gst_charged)} but has no GST/HST "
+                   f"registration number on the invoice or on file. Without one the tax can't be claimed back, "
+                   f"and charging tax with no number is a common sign of a fake invoice. Get the vendor's "
+                   f"number before paying.")
+        else:
+            msg = "No GST/HST number on file. Confirm the vendor is a small supplier (under $30k/year) before paying."
+        flags.append(flag("GST_NUMBER_MISSING", msg,
+                          evidence={"kind": "tax_charged" if gst_charged > 0 else "no_tax",
+                                    "charged_gst_hst": str(gst_charged)}, field="vendor.gst_number"))
 
     # Email came from a domain other than the vendor's AP contact on file
     sender = (bill.source.sender_address or "").strip().lower()

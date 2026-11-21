@@ -79,15 +79,20 @@ def small_supplier_bill(make_bill, charge_gst):
     return bill
 
 
-def test_small_supplier_charging_no_tax_is_clean(ref, make_bill):
-    codes = {f.code for f in validate(small_supplier_bill(make_bill, charge_gst=False), ref)}
-    assert not codes & {"TAX_MISSING", "TAX_WRONG_FOR_PROVINCE", "GST_NUMBER_MISSING"}
+def test_small_supplier_charging_no_tax_gets_a_confirm_warning_not_a_tax_flag(ref, make_bill):
+    flags = validate(small_supplier_bill(make_bill, charge_gst=False), ref)
+    [f] = [x for x in flags if x.code == "GST_NUMBER_MISSING"]
+    assert f.severity == Severity.WARN and f.evidence["kind"] == "no_tax"
+    assert f.message == ("No GST/HST number on file. Confirm the vendor is a small supplier (under $30k/year) "
+                         "before paying.")
+    assert not {x.code for x in flags} & {"TAX_MISSING", "TAX_WRONG_FOR_PROVINCE"}
 
 
 def test_small_supplier_charging_gst_gets_a_warning_not_a_tax_block(ref, make_bill):
     flags = validate(small_supplier_bill(make_bill, charge_gst=True), ref)
     [f] = [x for x in flags if x.code == "GST_NUMBER_MISSING"]
-    assert f.severity == Severity.WARN and "can't be claimed back" in f.message and "fake invoice" in f.message
+    assert f.severity == Severity.WARN and f.evidence["kind"] == "tax_charged"
+    assert "can't be claimed back" in f.message and "fake invoice" in f.message
     assert not {x.code for x in flags} & {"TAX_MISSING", "TAX_WRONG_FOR_PROVINCE"}
 
 

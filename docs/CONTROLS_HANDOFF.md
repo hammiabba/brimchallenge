@@ -128,7 +128,7 @@ $4,000 bills looked like a $12,000 split, and a duplicate pair listed its match 
 | Vendor not in the master, but `name_on_invoice` is ≥ 85% similar to a master vendor's name | `VENDOR_LOOKALIKE` (block) | An unknown sender using a real vendor's name is the impersonation case. Names are compared after removing Ltd/Inc/&/punctuation. |
 | Vendor on hold / inactive | `VENDOR_NOT_ACTIVE` (block) | The master says don't pay them. |
 | Vendor is `pending_review` | `VENDOR_PENDING_REVIEW` (warn) | Not blocked: routing adds the P05 finance manager step, and the flag says why it's there (Riverbend V054). |
-| A small supplier (Canadian vendor with no GST/HST number in the master or on the invoice) **charges GST/HST** | `GST_NUMBER_MISSING` (warn) | The tax can't be claimed back without a registration number, and charging tax with no number is a common fake-invoice signal. A small supplier that charges no tax is clean: no flag (Riverbend 1739). Foreign and unknown vendors are skipped. |
+| Canadian vendor with no GST/HST number in the master or on the invoice | `GST_NUMBER_MISSING` (warn), always | Two messages. **No tax charged** (`kind: no_tax`): "No GST/HST number on file. Confirm the vendor is a small supplier (under $30k/year) before paying." (Riverbend 1739.) **Tax charged** (`kind: tax_charged`): the tax can't be claimed back without a registration number, and charging tax with no number is a common fake-invoice signal. Either way, no tax flag: the tax check expects no tax from them. Foreign and unknown vendors are skipped. |
 | Email sent from a domain other than the vendor's AP contact on file | `SENDER_DOMAIN_MISMATCH` (warn) | Someone else billing in the vendor's name. Domains are compared case-insensitively. Only for known vendors, and only when the bill came by email. |
 | Bill sits on a lookalike vendor record (same name after removing Ltd/Inc/&, or same bank account as another vendor) | `VENDOR_LOOKALIKE` (block) | Classic impersonation fraud (V051/V053/V052). Only flags the *suspicious* copy (fewer past invoices, or not active), never the real vendor. |
 | GST/HST number differs from master | `GST_NUMBER_MISMATCH` (warn) | Could be OCR or a fake invoice. OCR confusions (1/I/!, 0/O) are folded first, so OCR noise doesn't fire it. |
@@ -149,8 +149,8 @@ the reference. Expected tax comes from the place of supply (`ship_to_province`),
 and each line's type: ON = HST 13%; QC = GST 5% + QST 9.975%; BC = GST 5% + PST 7% on goods only;
 AB/SK/MB/territories = GST 5%; insurance = exempt; foreign vendors = no Canadian tax; **small suppliers** (a
 Canadian vendor in the master with no GST/HST number there or on the invoice) = no tax expected, so `TAX_MISSING`
-never fires for them, and GST/HST they do charge is reported as `GST_NUMBER_MISSING` instead of a tax error (PST/QST
-they charge is still checked). A GST number printed on the invoice counts as registered. Tolerance is 5 cents
+never fires for them. They always get a `GST_NUMBER_MISSING` warning instead (a "confirm small supplier" message,
+or the can't-claim-it-back message if they charged GST/HST). PST/QST they charge is still checked. A GST number printed on the invoice counts as registered. Tolerance is 5 cents
 because some vendors round tax per line. **Unknown vendors are checked too:** with no master record, a CAD bill is
 treated as a taxable Canadian supplier and a foreign-currency bill as a foreign vendor.
 
@@ -323,7 +323,7 @@ mistakes.
 | Voyageur "000903-A" | ✅ Caught, and stricter than §4: `DUPLICATE_EXACT` (normalized, score 0.95) rather than a near match. AP-00277 is already paid, so blocking is right. |
 | Queen St rent $18,758 | ✅ Not flagged as a duplicate. Routed P02: department manager (U003, delegate for U012), then finance step (U002) |
 | Blue Heron, Zephyr | ✅ `VENDOR_NOT_FOUND` |
-| Riverbend 1739 | ✅ `PO_REQUIRED_MISSING` (block) and `VENDOR_PENDING_REVIEW` (with the P05 finance step). No tax flag: Riverbend has no GST number, so it's treated as a small supplier that shouldn't charge tax, and it charged none. (Earlier runs showed `TAX_MISSING` and `GST_NUMBER_MISSING` here; see the tax-and-math rerun.) |
+| Riverbend 1739 | ✅ `PO_REQUIRED_MISSING` (block), `VENDOR_PENDING_REVIEW` (with the P05 finance step) and `GST_NUMBER_MISSING` (warn: "Confirm the vendor is a small supplier (under $30k/year) before paying"). No tax flag: with no GST number, it's treated as a small supplier that shouldn't charge tax, and it charged none. (Earlier runs also showed `TAX_MISSING`; see the tax-and-math rerun.) |
 | Harlow **and** Stern (EM-026) | ✅ `VENDOR_LOOKALIKE` of V026, plus the P06 finance step |
 | V053 Great Lakes Incorporated | n/a: both Great Lakes files matched V002 |
 | Cascadia 1625 and `scan_8049.png` | ✅ `BANK_CHANGE_UNVERIFIED` on both |
@@ -419,8 +419,8 @@ NO26-1773 (`LINE_MATH_ERROR`, $4,294.00). Ironwood has `TAX_MISSING` too but was
 
 Small-supplier rule (from review): Riverbend 1739 has no GST number anywhere, so it's treated as a small supplier
 that shouldn't charge tax. It charged none, so it no longer gets `TAX_MISSING`, which would now block a legitimate
-invoice, nor `GST_NUMBER_MISSING`. It stays held for its missing PO, with `VENDOR_PENDING_REVIEW`. No other incoming
-bill changed. History replay: same counts; the 3 tax flags show as block instead of warn.
+invoice. It keeps `GST_NUMBER_MISSING` as a warning ("Confirm the vendor is a small supplier (under $30k/year)
+before paying") and stays held for its missing PO, with `VENDOR_PENDING_REVIEW`. No other incoming bill changed. History replay: same counts; the 3 tax flags show as block instead of warn.
 
 ### Caught beyond §4 (checked against the PDFs: real, not extraction errors)
 - Summit 000809 is printed with date 2026-11-27, in the future → `DATE_ANOMALY`.
