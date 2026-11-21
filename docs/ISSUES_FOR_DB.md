@@ -24,6 +24,7 @@ They use your fixtures (`act_as`, `fresh_db`, `factories.draft`), so they have t
 |---|---|
 | `tests/api/test_intake_received.py` | Same file twice → same bill, one audit event; different file → new bill; voided bill doesn't block a resend. |
 | `tests/api/test_clerk_loop.py` | Override → next bill's suggestion cites it; requester change moves suggested departments (and doesn't stack reasons); U015 refused with 422; editing a date rechecks its confidence and warning. |
+| `tests/api/test_flags_end_to_end.py` | The whole inbox through `POST /intake/inbox/jobs` with the model replayed from `tests/fixtures/raw`: every §4 trap raises its flag, 18 clean invoices have no `block` flag. One run per module; reuses `_client_on`, `_copy`, `_engine_on` from your conftest. |
 | `tests/api/test_intake_end_to_end.py` | A real PDF through `POST /submissions` → real pipeline (model output faked) → bill → controls flags (`VENDOR_LOOKALIKE` on HA26-2766); an unreadable file becomes a clean failed item. |
 
 ## Open points for you to decide
