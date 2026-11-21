@@ -1,3 +1,5 @@
+import pytest
+
 from app.extraction import text_layer
 from tests.conftest import INCOMING
 from tests.pdfs import invoice_page, make_pdf
@@ -65,3 +67,95 @@ def test_no_sample_pdf_is_flagged_as_multi_invoice():
     for f in sorted(INCOMING.glob("*.pdf")):
         res = text_layer.get_text(f.read_bytes(), f.name)
         assert len(res.invoice_numbers) <= 1, (f.name, res.invoice_numbers)
+
+
+# ---------------------------------------------------------------- OCR and pdftotext, without the binaries
+
+class _FakeTesseract:
+    def __init__(self, langs=("eng", "fra"), text="Invoice No: OCR-1\nTotal CAD $10.00"):
+        self.langs, self.text, self.calls = list(langs), text, []
+
+    def get_tesseract_version(self):
+        return "5.0"
+
+    def get_languages(self, config=""):
+        return self.langs
+
+    def image_to_string(self, img, lang, config):
+        self.calls.append((lang, config))
+        return self.text
+
+
+@pytest.fixture
+def tesseract(monkeypatch):
+    import sys
+
+    fake = _FakeTesseract()
+    monkeypatch.setitem(sys.modules, "pytesseract", fake)
+    return fake
+
+
+def _png() -> bytes:
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", (40, 20), "white").save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_image_is_ocrd_in_english_and_french(tesseract):
+    tr = text_layer.get_text(_png(), "scan.png")
+    assert tr.was_ocr and tr.method == "ocr" and "OCR-1" in tr.text and tr.warnings == []
+    assert tesseract.calls == [("eng+fra", "--psm 6")]
+
+
+def test_missing_french_data_is_noted(tesseract):
+    tesseract.langs = ["eng"]
+    tr = text_layer.get_text(_png(), "scan.png")
+    assert tr.warnings == ["French OCR data not installed; using English only"]
+
+
+def test_languages_query_failing_means_english(tesseract, monkeypatch):
+    def boom(config=""):
+        raise RuntimeError("no tessdata")
+
+    monkeypatch.setattr(tesseract, "get_languages", boom)
+    assert text_layer.get_text(_png(), "scan.png").warnings == ["French OCR data not installed; using English only"]
+
+
+def test_unreadable_image_is_a_warning_not_a_crash(tesseract):
+    tr = text_layer.get_text(b"\x89PNG\r\n\x1a\nbroken", "scan.png")
+    assert tr.text == "" and tr.warnings[0].startswith("Could not open image")
+
+
+def test_pdf_without_text_is_ocrd_page_by_page(tesseract):
+    tr = text_layer.get_text(make_pdf([[]]), "blank.pdf")
+    assert tr.was_ocr and "OCR-1" in tr.text and len(tesseract.calls) == 1
+
+
+def test_pdftotext_is_used_when_pdfplumber_finds_nothing(monkeypatch):
+    import subprocess
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(text_layer.shutil, "which", lambda name: "/usr/bin/pdftotext")
+    monkeypatch.setattr(text_layer, "_pdfplumber_pages", lambda data, warnings: [])
+    page = "Invoice No: PT-1\nSubtotal $100.00\nTotal CAD $105.00 " + "x" * 80
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(stdout=(page + "\f").encode()))
+    tr = text_layer.get_text(b"%PDF-1.4 whatever", "x.pdf")
+    assert tr.method == "pdftotext" and "PT-1" in tr.text
+
+
+def test_pdftotext_failure_is_a_warning(monkeypatch):
+    import subprocess
+
+    def fail(*a, **k):
+        raise subprocess.TimeoutExpired("pdftotext", 60)
+
+    monkeypatch.setattr(text_layer.shutil, "which", lambda name: "/usr/bin/pdftotext")
+    monkeypatch.setattr(text_layer, "_pdfplumber_pages", lambda data, warnings: [])
+    monkeypatch.setattr(subprocess, "run", fail)
+    monkeypatch.setattr(text_layer, "ocr_available", lambda: False)
+    tr = text_layer.get_text(b"%PDF-1.4 whatever", "x.pdf")
+    assert any(w.startswith("pdftotext failed") for w in tr.warnings) and tr.text == ""

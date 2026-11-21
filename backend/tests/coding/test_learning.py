@@ -55,3 +55,33 @@ def test_forget(repo):
     polar_override()
     forget_corrections()
     assert corrections_for("V001") == []
+
+
+def test_lines_that_teach_nothing_are_skipped():
+    from types import SimpleNamespace as NS
+
+    from app.coding.feedback import learn_from_line
+    from app.coding.history_index import corrections_for
+
+    line = NS(coding_status="overridden", gl_account="6630", department_id="D04", description="x")
+    assert not learn_from_line(NS(vendor_id=None, bill_id="AP-1"), line)                       # unknown vendor
+    assert not learn_from_line(NS(vendor_id="V001", bill_id="AP-1"), NS(**{**vars(line), "coding_status": "suggested"}))
+    assert not learn_from_line(NS(vendor_id="V001", bill_id="AP-1"), NS(**{**vars(line), "gl_account": None}))
+    assert corrections_for("V001") == []
+
+
+def test_start_up_replay_survives_a_database_without_tables(caplog):
+    from types import SimpleNamespace as NS
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.coding.feedback import replay_on_startup
+    from app.db.database import get_session
+
+    def empty_db():
+        with Session(create_engine("sqlite://")) as s:
+            yield s
+
+    replay_on_startup(NS(dependency_overrides={get_session: empty_db}))
+    assert "learned codings not replayed" in caplog.text

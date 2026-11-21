@@ -91,3 +91,54 @@ def test_process_inbox_one_outcome_per_attachment(emails):
     results = process_inbox([emails["EM-029"], emails["EM-058"]], extractor=fake_extractor)
     assert [len(o) for _, o in results] == [2, 0]
     assert seen[0] == ("orionstrategypar-inv-029.pdf", "EM-029", "ar@orionstrategy.example")
+
+
+# ---------------------------------------------------------------- LLM tie-break (rules unsure)
+
+_UNSURE = {"email_id": "EM-T01", "from_name": "Someone", "from_address": "someone@example.com",
+           "subject": "Hello", "body": "Just checking in.", "attachments": []}
+
+
+class _TriageClient:
+    def __init__(self, parsed=None, fail=False):
+        from types import SimpleNamespace
+
+        self.parsed, self.fail, self.calls = parsed, fail, []
+        self.messages = SimpleNamespace(parse=self._parse)
+
+    def _parse(self, **kwargs):
+        from types import SimpleNamespace
+
+        self.calls.append(kwargs)
+        if self.fail:
+            raise TimeoutError("slow")
+        return SimpleNamespace(parsed_output=self.parsed)
+
+
+def test_unsure_email_goes_to_the_llm_and_keeps_its_reason():
+    from app.intake.classifier import _LLMTriage, classify, classify_rules
+
+    assert classify_rules(_UNSURE) is None
+    client = _TriageClient(_LLMTriage(email_class="payment_inquiry", reason="asks when they'll be paid"))
+    t = classify(_UNSURE, client=client)
+    assert t.email_class == "payment_inquiry" and t.reason == "(LLM) asks when they'll be paid"
+    assert t.attachments_to_process == [] and client.calls[0]["output_config"] == {"effort": "low"}
+
+
+def test_llm_invoice_class_processes_the_invoice_attachments():
+    from app.intake.classifier import _LLMTriage, classify, classify_rules
+
+    email = {**_UNSURE, "attachments": ["scan.pdf", "logo.gif"]}
+    if classify_rules(email) is not None:
+        return  # the rules decide this one; nothing for the LLM to do
+    t = classify(email, client=_TriageClient(_LLMTriage(email_class="invoice", reason="an invoice")))
+    assert t.email_class == "invoice" and "scan.pdf" in t.attachments_to_process
+
+
+def test_llm_failure_or_empty_answer_falls_back_to_not_ap():
+    from app.intake.classifier import classify
+
+    failed = classify(_UNSURE, client=_TriageClient(fail=True))
+    assert failed.email_class == "not_ap" and "TimeoutError" in failed.reason
+    empty = classify(_UNSURE, client=_TriageClient(parsed=None))
+    assert empty.email_class == "not_ap" and "returned nothing" in empty.reason
