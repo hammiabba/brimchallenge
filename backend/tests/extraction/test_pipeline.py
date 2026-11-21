@@ -16,6 +16,7 @@ from app.extraction.llm_parser import (
 )
 from app.shared.schemas import MatchMethod, TaxCode
 from tests.conftest import INCOMING
+from tests.pdfs import invoice_page, make_pdf
 
 
 def to_wire(raw: RawInvoice) -> WireInvoice:
@@ -192,3 +193,10 @@ def test_blank_po_field_is_noted(repo):
                             client=FakeClient(raw_invoice(po_field_present=True, po_number="  ")))
     assert bill.po_number is None
     assert any("PO field" in w for w in bill.extraction_warnings)
+
+
+def test_multi_invoice_file_warns_and_lowers_confidence(repo):
+    data = make_pdf([invoice_page("A-1001"), invoice_page("A-1002")])
+    bill = pipeline.extract(data, "batch.pdf", repo=repo, client=FakeClient(raw_invoice(invoice_number="A-1001")))
+    assert any("appears to contain 2 invoices" in w for w in bill.extraction_warnings)
+    assert bill.field_confidence["invoice_number"] <= 0.5 and bill.field_confidence["total"] <= 0.5

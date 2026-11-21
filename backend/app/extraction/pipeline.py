@@ -44,6 +44,7 @@ CENT = Decimal("0.01")
 # Confidence taken off a date that was ambiguous: settled by evidence, or still a day-first guess.
 DATE_RESOLVED_PENALTY = 0.15
 DATE_AMBIGUOUS_PENALTY = 0.45
+MULTI_INVOICE_PENALTY = 0.5
 
 
 class ExtractionIncomplete(ValueError):
@@ -123,7 +124,10 @@ def extract_outcome(data: bytes, filename: str, *, email_id: str | None = None, 
         was_ocr=tr.was_ocr or use_vision,
     )
     try:
-        out.draft = build_draft(raw, source, repo, extra_warnings=out.warnings)
+        # Several invoices in one file: whichever one the model read, number and total are suspect.
+        multi = {"invoice_number": MULTI_INVOICE_PENALTY, "total": MULTI_INVOICE_PENALTY} \
+            if len(tr.invoice_numbers) > 1 else {}
+        out.draft = build_draft(raw, source, repo, extra_warnings=out.warnings, extra_penalties=multi)
     except ExtractionIncomplete as exc:
         out.error = str(exc)
         return out
@@ -148,7 +152,8 @@ def _terms_days(terms: str | None) -> int | None:
 
 
 def build_draft(raw: RawInvoice, source: SourceInfo, repo: ReferenceRepository,
-                extra_warnings: list[str] | None = None) -> DraftBill:
+                extra_warnings: list[str] | None = None,
+                extra_penalties: dict[str, float] | None = None) -> DraftBill:
     warnings = list(extra_warnings or [])
     ocr_fixed: set[str] = set()
     missing: set[str] = set()
@@ -183,7 +188,8 @@ def build_draft(raw: RawInvoice, source: SourceInfo, repo: ReferenceRepository,
     dates = normalize.resolve_dates(raw.invoice_date, raw.due_date, expected_terms, get_settings().as_of_date)
     invoice_date, due_date = dates.invoice_date, dates.due_date
     warnings += dates.warnings
-    penalties = {f: DATE_RESOLVED_PENALTY for f in dates.resolved}
+    penalties = dict(extra_penalties or {})
+    penalties |= {f: DATE_RESOLVED_PENALTY for f in dates.resolved}
     penalties |= {f: DATE_AMBIGUOUS_PENALTY for f in dates.ambiguous}
     if due_date is None:
         missing.add("due_date")

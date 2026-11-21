@@ -28,6 +28,7 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.6",
     "httpx>=0.27",
+    "fpdf2>=2.7",          # builds test PDFs (multi-invoice, encrypted, synthetic layouts)
 ]
 
 [tool.setuptools.packages.find]
