@@ -15,14 +15,17 @@ from app.auth.settings import get_auth_settings
 from app.db import models
 from app.db.audit import AuditAction
 from app.db.database import get_session, get_write_session
+from app.services import users
 from app.services.events import record
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def me_out(user: CurrentUser) -> Me:
+def me_out(db: Session, user: CurrentUser) -> Me:
+    approval_limit, release_limit = users.limits(db, user)
     return Me(user_id=user.user_id, full_name=user.full_name, title=user.title, role=user.role,
-              department_id=user.department_id, status=user.status,
+              department_id=user.department_id, status=user.status, approval_limit_cad=approval_limit,
+              release_limit_cad=release_limit,
               acting_for=[{"user_id": a.user_id, "full_name": a.full_name, "starts_on": a.starts_on,
                            "ends_on": a.ends_on} for a in user.acting_for])
 
@@ -45,7 +48,7 @@ def login(body: LoginIn, response: Response, db: Session = Depends(get_write_ses
     s = get_auth_settings()
     response.set_cookie(s.session_cookie_name, signed_session.issue(user.user_id), max_age=s.session_ttl_hours * 3600,
                         httponly=True, samesite="lax", secure=s.secure_cookie, path="/")
-    return me_out(user)
+    return me_out(db, user)
 
 
 @router.post("/logout", status_code=204, responses=READ_ERRORS)
@@ -60,5 +63,5 @@ def logout(response: Response, user: CurrentUser = Depends(current_user),
 
 
 @router.get("/me", response_model=Me, responses=READ_ERRORS)
-def me(user: CurrentUser = Depends(current_user)) -> Me:
-    return me_out(user)
+def me(user: CurrentUser = Depends(current_user), db: Session = Depends(get_session)) -> Me:
+    return me_out(db, user)

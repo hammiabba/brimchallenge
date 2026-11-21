@@ -43,7 +43,7 @@ def payment_dashboard(user: CurrentUser = Depends(require_role(*BACK_OFFICE_READ
 @router.get("/payments/{payment_id}", response_model=PaymentDetail, responses=READ_ERRORS)
 def get_payment(payment_id: str, user: CurrentUser = Depends(require_role(*BACK_OFFICE_READ)),
                 db: Session = Depends(get_session)):
-    return payments.payment_detail(db, user.role, payment_id)
+    return payments.payment_detail(db, user, payment_id)
 
 
 @router.post("/bills/{bill_id}/payments", response_model=PaymentDetail, status_code=201, responses=WRITE_ERRORS)
@@ -51,7 +51,7 @@ def schedule_payment(bill_id: str, body: ScheduleIn, user: CurrentUser = Depends
                      db: Session = Depends(get_write_session)):
     payment_id = payments.schedule(db, user, bill_id, body)
     db.commit()
-    return payments.payment_detail(db, user.role, payment_id)
+    return payments.payment_detail(db, user, payment_id)
 
 
 @router.post("/payments/{payment_id}/release", response_model=PaymentDetail, responses=WRITE_ERRORS)
@@ -63,7 +63,7 @@ def release_payment(payment_id: str, idempotency_key: IdempotencyKey, response: 
     db.commit()
     if replayed:
         response.headers["Idempotent-Replayed"] = "true"
-    return payments.payment_detail(db, user.role, payment_id)
+    return payments.payment_detail(db, user, payment_id)
 
 
 @router.post("/payments/{payment_id}/cancel", response_model=PaymentDetail, responses=WRITE_ERRORS)
@@ -72,4 +72,4 @@ def cancel_payment(payment_id: str, body: CommentIn,
                    db: Session = Depends(get_write_session)):
     payments.cancel(db, user, payment_id, body.comment)
     db.commit()
-    return payments.payment_detail(db, user.role, payment_id)
+    return payments.payment_detail(db, user, payment_id)

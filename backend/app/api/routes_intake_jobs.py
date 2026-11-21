@@ -9,7 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.common import READ_ERRORS, WRITE_ERRORS, Limit, Offset
-from app.api.schemas_api import IntakeItemOut, JobOut, Page
+from app.api.schemas_api import EmailOut, IntakeItemOut, JobOut, Page
 from app.auth.deps import CurrentUser, require_role
 from app.auth.roles import AP_CLERK, BACK_OFFICE_READ, EMPLOYEE
 from app.db import models
@@ -60,6 +60,14 @@ def start_inbox_job(background: BackgroundTasks, user: CurrentUser = Depends(req
 def inbox_job_status(job_id: str, user: CurrentUser = Depends(require_role(*BACK_OFFICE_READ)),
                      db: Session = Depends(get_session)):
     return jobs.status(db, job_id)
+
+
+@router.get("/intake/emails", response_model=Page[EmailOut], responses=READ_ERRORS)
+def intake_emails(user: CurrentUser = Depends(require_role(*BACK_OFFICE_READ)), email_class: str | None = None,
+                  triaged: bool | None = None, limit: Limit = 100, offset: Offset = 0,
+                  db: Session = Depends(get_session)):
+    """The AP inbox with each email's triage (class, reason) and the intake items made from it."""
+    return intake.list_emails(db, email_class=email_class, triaged=triaged, limit=limit, offset=offset)
 
 
 @router.get("/intake/items", response_model=Page[IntakeItemOut], responses=READ_ERRORS)

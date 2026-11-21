@@ -15,6 +15,7 @@ from app.api import (
     routes_bills,
     routes_intake_jobs,
     routes_payments,
+    routes_reference,
     routes_spend,
     routes_vendors,
 )
@@ -55,6 +56,7 @@ app.include_router(routes_vendors.router)
 app.include_router(routes_spend.router)
 app.include_router(routes_admin.router)
 app.include_router(routes_audit.router)
+app.include_router(routes_reference.router)
 
 
 @app.get("/health")

@@ -62,10 +62,14 @@ def _latest_run_out(db: Session, bill_id: str) -> s.ControlsRunOut | None:
                                     decided_at=d.acted_at if d else None))
     return s.ControlsRunOut(run_id=run.run_id, version=run.version, evaluated_at=run.evaluated_at,
                             can_auto_proceed=run.can_auto_proceed, recommendation=run.recommendation,
-                            flags=[views.flag_out(f) for f in flags], route=route)
+                            flags=[views.flag_out(f) for f in flags], route=route,
+                            duplicates=[s.DuplicateOut.model_validate(d)
+                                        for d in (run.result_json or {}).get("duplicates", [])])
 
 
 def bill_detail(db: Session, user: CurrentUser, bill_id: str) -> s.BillDetail:
+    from app.services.actions import bill_actions  # actions builds on this module's rules
+
     bill = get_bill_for(db, user, bill_id)
     summary = views.bill_summary(bill, views.vendor_names(db, {bill.vendor_id}).get(bill.vendor_id))
     lines = db.scalars(select(models.BillLine).where(models.BillLine.bill_id == bill.bill_id)
@@ -84,7 +88,8 @@ def bill_detail(db: Session, user: CurrentUser, bill_id: str) -> s.BillDetail:
         created_by=bill.created_by, updated_at=bill.updated_at, extracted=views.extracted_for(user.role, bill),
         lines=[views.line_out(ln) for ln in lines], taxes=[views.tax_out(t) for t in taxes],
         latest_run=_latest_run_out(db, bill.bill_id), decisions=[views.decision_out(d) for d in decisions],
-        payments=views.payment_summaries(db, payments), audit=audit.entity_history(db, AUDIT_ENTITY, bill.bill_id))
+        payments=views.payment_summaries(db, payments), audit=audit.entity_history(db, AUDIT_ENTITY, bill.bill_id),
+        allowed_actions=bill_actions(db, user, bill))
 
 
 # ---------------------------------------------------------------- writes

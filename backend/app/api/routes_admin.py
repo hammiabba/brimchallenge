@@ -32,7 +32,7 @@ def set_my_delegation(body: DelegationIn, user: CurrentUser = Depends(require_ro
     admin.set_absence(db, user, user_id=user.user_id, delegate_user_id=body.delegate_user_id,
                       starts_on=body.starts_on, ends_on=body.ends_on)
     db.commit()
-    return me_out(load_current_user(db, user.user_id))
+    return me_out(db, load_current_user(db, user.user_id))
 
 
 @router.get("/admin/policies", response_model=list[PolicyOut], responses=READ_ERRORS)

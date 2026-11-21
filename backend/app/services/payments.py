@@ -73,7 +73,10 @@ def _account_paid_to(db: Session, p: models.Payment) -> models.VendorBankAccount
         .order_by(models.VendorBankAccount.valid_from.desc()).limit(1)).first()
 
 
-def payment_detail(db: Session, role: str, payment_id: str) -> s.PaymentDetail:
+def payment_detail(db: Session, user: CurrentUser, payment_id: str) -> s.PaymentDetail:
+    from app.services.actions import payment_actions  # actions builds on this module's checks
+
+    role = user.role
     p = db.get(models.Payment, payment_id)
     if p is None:
         raise not_found("payment", payment_id)
@@ -90,7 +93,8 @@ def payment_detail(db: Session, role: str, payment_id: str) -> s.PaymentDetail:
         discount_taken=cents(p.discount_taken_cents),
         bank_account=views.bank_account_out(role, _account_paid_to(db, p)),
         bill=views.bill_summary(bill, names.get(bill.vendor_id)), lines=[views.line_out(ln) for ln in lines],
-        decisions=[views.decision_out(d) for d in decisions], audit=sorted(events, key=lambda e: e.seq))
+        decisions=[views.decision_out(d) for d in decisions], audit=sorted(events, key=lambda e: e.seq),
+        allowed_actions=payment_actions(db, user, p))
 
 
 # ---------------------------------------------------------------- writes
@@ -105,17 +109,13 @@ def _payment(db: Session, payment_id: str) -> models.Payment:
     return p
 
 
-def schedule(db: Session, user: CurrentUser, bill_id: str, body: s.ScheduleIn) -> str:
-    """An AP clerk prepares the payment of an approved bill. Records which bank account version it will go to, so
-    a bank change after scheduling is caught at release."""
-    bill = get_bill_for(db, user, bill_id)
+def schedule_check(db: Session, bill: models.Bill, method: str = "EFT"):
+    """Whether this bill can be scheduled for payment now, without writing. Raises ApiError with the reason;
+    returns (vendor, open bank account)."""
     if bill.status != "approved":
         raise invalid_state("bill", bill.status, "approved")
     if bill.is_credit_note or bill.total_cents <= 0:
         raise ApiError(409, "payment.credit_note", "A credit note is applied against an open invoice, not paid.")
-    as_of = get_settings().as_of_date
-    if body.scheduled_date < as_of:
-        raise ApiError(422, "payment.date_in_past", f"Schedule on or after {as_of.isoformat()}.")
     vendor = db.get(models.Vendor, bill.vendor_id) if bill.vendor_id else None
     if vendor is None or vendor.status != "active":
         raise ApiError(409, "payment.vendor_not_active", "The vendor must be in the master and active to be paid.")
@@ -126,13 +126,24 @@ def schedule(db: Session, user: CurrentUser, bill_id: str, body: s.ScheduleIn) -
         raise ApiError(409, "payment.bank_change_pending",
                        f"Bank change {pending} for this vendor isn't verified yet.", {"change_id": pending})
     account = vendors.open_account(db, vendor.vendor_id)
-    if body.method == "EFT" and account is None:
+    if method == "EFT" and account is None:
         raise ApiError(409, "payment.no_bank_account", "The vendor has no bank account on file for EFT.")
-    existing = db.scalars(select(models.Payment.payment_id).where(models.Payment.bill_id == bill_id,
+    existing = db.scalars(select(models.Payment.payment_id).where(models.Payment.bill_id == bill.bill_id,
                                                                   models.Payment.status.in_(OPEN_PAYMENT))).first()
     if existing:
         raise ApiError(409, "payment.already_exists", f"Payment {existing} already covers this bill.",
                        {"payment_id": existing})
+    return vendor, account
+
+
+def schedule(db: Session, user: CurrentUser, bill_id: str, body: s.ScheduleIn) -> str:
+    """An AP clerk prepares the payment of an approved bill. Records which bank account version it will go to, so
+    a bank change after scheduling is caught at release."""
+    bill = get_bill_for(db, user, bill_id)
+    as_of = get_settings().as_of_date
+    if body.scheduled_date < as_of:
+        raise ApiError(422, "payment.date_in_past", f"Schedule on or after {as_of.isoformat()}.")
+    vendor, account = schedule_check(db, bill, body.method)
     payment = models.Payment(
         payment_id=next_id(db, models.Payment.payment_id, "PAY-", 5), bill_id=bill_id, vendor_id=vendor.vendor_id,
         method=body.method, currency=bill.currency, amount_cents=bill.total_cents, fx_rate_to_cad=bill.fx_rate_to_cad,
@@ -160,23 +171,9 @@ def _draft_and_ref(db: Session, bill: models.Bill):
     return load_draft_bill(db, bill.bill_id), ref
 
 
-def release(db: Session, user: CurrentUser, payment_id: str, idempotency_key: str) -> tuple[str, bool]:
-    """Release a scheduled payment (simulated EFT). Returns (payment_id, replayed).
-
-    Idempotency: the key is stored on the payment. The same key for the same payment returns the stored result and
-    changes nothing; a key already used for a different payment is refused. The write lock makes check-then-set
-    safe, and the UNIQUE index on idempotency_key backs it up.
-
-    Permission is controls.can_release, fed only from stored data: approvers from approval_decisions (never the
-    request), only the flags still open in the latest stored run, approval completeness from the bill's status
-    (a bill reaches approved only through its final approval step).
-    """
-    used = db.scalars(select(models.Payment).where(models.Payment.idempotency_key == idempotency_key)).first()
-    if used is not None:
-        if used.payment_id != payment_id:
-            raise ApiError(409, "payment.idempotency_key_reused", "This Idempotency-Key was used for another payment.")
-        return payment_id, True
-    p = _payment(db, payment_id)
+def release_check(db: Session, user: CurrentUser, p: models.Payment):
+    """Whether `user` may release this payment now, without writing. Raises ApiError with the reason; returns
+    (permission, bill). Used by the release and by allowed_actions."""
     if p.status != "scheduled":
         raise invalid_state("payment", p.status, "scheduled")
     if p.prepared_by == user.user_id:
@@ -194,6 +191,27 @@ def release(db: Session, user: CurrentUser, payment_id: str, idempotency_key: st
                              bill.status in ("approved", "scheduled"), ref, bill=draft)
     if not permission.allowed:
         raise ApiError(403, "payment.release_refused", permission.reason)
+    return permission, bill
+
+
+def release(db: Session, user: CurrentUser, payment_id: str, idempotency_key: str) -> tuple[str, bool]:
+    """Release a scheduled payment (simulated EFT). Returns (payment_id, replayed).
+
+    Idempotency: the key is stored on the payment. The same key for the same payment returns the stored result and
+    changes nothing; a key already used for a different payment is refused. The write lock makes check-then-set
+    safe, and the UNIQUE index on idempotency_key backs it up.
+
+    Permission is controls.can_release, fed only from stored data: approvers from approval_decisions (never the
+    request), only the flags still open in the latest stored run, approval completeness from the bill's status
+    (a bill reaches approved only through its final approval step).
+    """
+    used = db.scalars(select(models.Payment).where(models.Payment.idempotency_key == idempotency_key)).first()
+    if used is not None:
+        if used.payment_id != payment_id:
+            raise ApiError(409, "payment.idempotency_key_reused", "This Idempotency-Key was used for another payment.")
+        return payment_id, True
+    p = _payment(db, payment_id)
+    permission, bill = release_check(db, user, p)
     as_of = get_settings().as_of_date
     p.status, p.released_by, p.released_at = "released", user.user_id, utcnow()
     p.paid_date, p.idempotency_key = as_of, idempotency_key
