@@ -29,6 +29,12 @@ Every endpoint is live. Writes run in one write session (`get_write_session`) wi
 - Intake: `POST /submissions` and `POST /intake/inbox/jobs` return 202 and work in a background task; poll
   `GET /submissions` or `GET /intake/inbox/jobs/{id}`. Results are real bills with a controls run.
 
+- UI support: `allowed_actions` on bill and payment detail (computed by `app/services/actions.py` from the same
+  checks the writes run, so a button marked allowed won't be refused); queue fields on bill summaries
+  (`open_flags`, `top_flag_code`, `current_step`); approval and release limits on `/auth/me`; `/reference/flag-help`,
+  `/reference/departments`, `/reference/gl-accounts`; `/intake/emails`; `duplicates` on the controls run. Every
+  timestamp is ISO 8601 UTC with `Z`.
+
 The permission matrix (`tests/api/matrix.py`) lists every endpoint x role.
 
 ## Adding an endpoint
