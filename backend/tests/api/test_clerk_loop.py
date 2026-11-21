@@ -129,3 +129,36 @@ def test_each_recheck_is_audited_and_as_extracted_is_written_once(act_as, monkey
                                 .order_by(models.AuditEvent.seq)))
     assert len(events) == 2
     assert "invoice_date" in events[0].comment and "due_date" in events[1].comment
+
+
+def _override_polar(act_as, monkeypatch) -> dict:
+    monkeypatch.setattr(intake_service, "extract_outcome", coded_extract(vendor_id="V001"))
+    clerk = act_as("U004")
+    first = submit(clerk, b"%PDF polar before restart")
+    r = clerk.patch(f"/bills/{first['bill_id']}/lines/1",
+                    json={"row_version": first["row_version"], "gl_account": "6630", "department_id": "D04"})
+    assert r.status_code == 200, r.text
+    return first
+
+
+def test_learned_codings_are_rebuilt_from_the_database(act_as, monkeypatch, fresh_db):
+    from app.coding.feedback import replay_learned_codings
+    from app.coding.history_index import corrections_for, forget_corrections
+
+    first = _override_polar(act_as, monkeypatch)
+    forget_corrections()  # what a restart does to process memory
+    assert corrections_for("V001") == []
+    with fresh_db() as s:
+        assert replay_learned_codings(s) == 1
+    [c] = corrections_for("V001")
+    assert (c.gl_account, c.department_id, c.bill_id, c.overridden) == ("6630", "D04", first["bill_id"], True)
+    second = submit(act_as("U004"), b"%PDF polar after restart")
+    assert second["lines"][0]["suggested_gl_account"] == "6630"
+    assert first["bill_id"] in second["lines"][0]["suggestion_reason"]
+
+
+def test_replay_ignores_history_bills_and_unreviewed_lines(fresh_db):
+    from app.coding.feedback import replay_learned_codings
+
+    with fresh_db() as s:  # the seeded database: 426 history bills, no app bills yet
+        assert replay_learned_codings(s) == 0
