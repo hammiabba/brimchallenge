@@ -681,6 +681,25 @@
             ],
             "title": "Department Id"
           },
+          "department_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "invoice",
+                  "submitter",
+                  "coding",
+                  "user",
+                  "history"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where department_id came from. 'coding' means suggested from the line coding and not yet confirmed by a person; editing the department makes it 'user'.",
+            "title": "Department Source"
+          },
           "due_date": {
             "anyOf": [
               {
