@@ -6,9 +6,11 @@ wiring only, no logic.
 """
 from fastapi import FastAPI
 
+from app.api.routes_intake import router as intake_router
 from app.config import get_settings
 
 app = FastAPI(title="Brim AP", version="0.1.0")
+app.include_router(intake_router)
 
 
 @app.get("/health")
