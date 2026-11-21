@@ -7,7 +7,7 @@ Each test seeds a fresh SQLite file (tmp_path) from the real dataset. No network
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
@@ -102,13 +102,15 @@ def _create(session: Session, draft: DraftBill | None = None):
     return create_bill_from_draft(session, draft or harlow_draft(), created_by="U004", received_date=date(2026, 10, 28))
 
 
-def controls_result(*, evidence: dict | None = None, step1_user: str = "U007") -> ControlsResult:
-    """A small ControlsResult: a block flag (with Decimal evidence), an info flag, and a two-step route."""
+def controls_result(*, evidence: dict | None = None, step1_user: str = "U007",
+                    severity: Severity = Severity.BLOCK) -> ControlsResult:
+    """A small ControlsResult: a VENDOR_LOOKALIKE flag (block unless `severity` says otherwise, with Decimal
+    evidence), an info flag, and a two-step route."""
     if evidence is None:
         evidence = {"similar_vendor": "V026", "total": Decimal("6452.30")}
     return ControlsResult(
         flags=[
-            Flag(code="VENDOR_LOOKALIKE", severity=Severity.BLOCK, message="looks like V026", field="vendor",
+            Flag(code="VENDOR_LOOKALIKE", severity=severity, message="looks like V026", field="vendor",
                  evidence=evidence),
             Flag(code="CREDIT_NOTE", severity=Severity.INFO, message="info", field="total", evidence={}),
         ],
@@ -316,6 +318,80 @@ def test_overridden_flag_carries_over_until_its_evidence_changes(ws: Session) ->
 
     save_controls_run(ws, bill_id, controls_result(evidence={"similar_vendor": "V026", "total": "9999.00"}))
     assert latest_controls_run(ws, bill_id).flags[0].resolution == "open"
+
+
+def _resolve_lookalike(session: Session, run_id: int, resolution: str, user_id: str) -> datetime:
+    """Mark the run's VENDOR_LOOKALIKE flag as `resolution` by `user_id`, with a comment; returns resolved_at."""
+    resolved_at = utcnow()
+    session.execute(update(models.BillFlag)
+                    .where(models.BillFlag.run_id == run_id, models.BillFlag.code == "VENDOR_LOOKALIKE")
+                    .values(resolution=resolution, resolution_comment=f"{resolution} by {user_id}",
+                            resolved_by=user_id, resolved_at=resolved_at))
+    return resolved_at
+
+
+@pytest.mark.parametrize("resolution", ["overridden", "resolved"])
+@pytest.mark.parametrize(("before", "after", "carries"), [
+    (Severity.WARN, Severity.WARN, True),    # same severity: carries over, as before
+    (Severity.WARN, Severity.BLOCK, False),  # severity rises: the new flag starts open
+    (Severity.BLOCK, Severity.WARN, True),   # severity drops: carries over
+    (Severity.INFO, Severity.WARN, False),
+    (Severity.BLOCK, Severity.BLOCK, True),
+])
+def test_resolution_carries_over_only_to_the_same_or_lower_severity(
+        ws: Session, resolution: str, before: Severity, after: Severity, carries: bool) -> None:
+    # An AP clerk (U004) may resolve or override a warn; finance or the controller must decide on a block.
+    bill_id = _create(ws).bill_id
+    run1 = save_controls_run(ws, bill_id, controls_result(severity=before))
+    resolved_at = _resolve_lookalike(ws, run1, resolution, "U004")
+
+    save_controls_run(ws, bill_id, controls_result(severity=after))  # identical code, field and evidence
+    lookalike = latest_controls_run(ws, bill_id).flags[0]
+    assert (lookalike.code, lookalike.severity) == ("VENDOR_LOOKALIKE", after)
+    if carries:
+        assert (lookalike.resolution, lookalike.resolved_by, lookalike.resolved_at) == (resolution, "U004", resolved_at)
+        assert lookalike.resolution_comment == f"{resolution} by U004"
+    else:
+        assert lookalike.resolution == "open"
+        assert (lookalike.resolved_by, lookalike.resolved_at, lookalike.resolution_comment) == (None, None, None)
+
+
+def test_carry_over_uses_the_stored_severity_and_reopens_once_raised(ws: Session) -> None:
+    # The previous flag's severity comes from bill_flags.severity, not from today's FLAG_CODES: a warn override
+    # stays on the warn flag, is not inherited by the block that follows, and stays gone after that.
+    bill_id = _create(ws).bill_id
+    run1 = save_controls_run(ws, bill_id, controls_result(severity=Severity.WARN))
+    _resolve_lookalike(ws, run1, "overridden", "U004")
+    stored = ws.scalar(select(models.BillFlag.severity)
+                       .where(models.BillFlag.run_id == run1, models.BillFlag.code == "VENDOR_LOOKALIKE"))
+    assert stored == "warn"
+
+    save_controls_run(ws, bill_id, controls_result(severity=Severity.BLOCK))
+    assert latest_controls_run(ws, bill_id).flags[0].resolution == "open"
+    save_controls_run(ws, bill_id, controls_result(severity=Severity.WARN))  # the open block doesn't carry anything
+    assert latest_controls_run(ws, bill_id).flags[0].resolution == "open"
+
+
+def test_a_resolution_skipped_by_a_higher_flag_still_covers_a_later_identical_one(ws: Session) -> None:
+    # Two identical warn flags, one overridden. In the next run the first identical flag is a block (not covered)
+    # and the second is a warn, which keeps the override.
+    def two_flags(first: Severity, second: Severity) -> ControlsResult:
+        """Two VENDOR_LOOKALIKE flags with the same field and evidence, at the given severities."""
+        flag = controls_result().flags[0]
+        return controls_result().model_copy(update={"flags": [flag.model_copy(update={"severity": first}),
+                                                              flag.model_copy(update={"severity": second})]})
+
+    bill_id = _create(ws).bill_id
+    run1 = save_controls_run(ws, bill_id, two_flags(Severity.WARN, Severity.WARN))
+    first_id = ws.scalar(select(func.min(models.BillFlag.id)).where(models.BillFlag.run_id == run1))
+    ws.execute(update(models.BillFlag).where(models.BillFlag.id == first_id)
+               .values(resolution="overridden", resolution_comment="checked", resolved_by="U004",
+                       resolved_at=utcnow()))
+
+    save_controls_run(ws, bill_id, two_flags(Severity.BLOCK, Severity.WARN))
+    block, warn = latest_controls_run(ws, bill_id).flags
+    assert (block.severity, block.resolution) == ("block", "open")
+    assert (warn.severity, warn.resolution, warn.resolved_by) == ("warn", "overridden", "U004")
 
 
 # ---------------------------------------------------------------- 10. UNASSIGNED
