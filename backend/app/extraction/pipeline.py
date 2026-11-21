@@ -25,7 +25,7 @@ from typing import Literal
 
 from app.coding import suggest as coding
 from app.config import get_settings
-from app.extraction import cache, llm_parser, normalize, selfcheck, text_layer, vendor_match
+from app.extraction import cache, filecheck, llm_parser, normalize, selfcheck, text_layer, vendor_match
 from app.extraction.llm_parser import LLMUnavailableError, RawInvoice
 from app.reference.csv_repository import default_repository
 from app.reference.repository import ReferenceRepository
@@ -90,9 +90,16 @@ def extract_outcome(data: bytes, filename: str, *, email_id: str | None = None, 
     s = get_settings()
     repo = repo or default_repository()
     file_hash = cache.file_sha256(data)
-    tr = text_layer.get_text(data, filename)
+    if problem := filecheck.problem(data, filename):
+        return ExtractionOutcome(filename, file_hash, "failed", error=problem)
+    read_as, renamed = filecheck.real_name(data, filename)
+    try:
+        tr = text_layer.get_text(data, read_as)
+    except Exception as exc:  # a file that passed the checks but still breaks the reader
+        msg = f"The file couldn't be read ({type(exc).__name__}); ask the sender to resend it."
+        return ExtractionOutcome(filename, file_hash, "failed", error=msg)
     out = ExtractionOutcome(filename, file_hash, "failed", text=tr.text, text_method=tr.method,
-                            was_ocr=tr.was_ocr, warnings=list(tr.warnings))
+                            was_ocr=tr.was_ocr, warnings=[*([renamed] if renamed else []), *tr.warnings])
 
     # LLM step, cached. A cache hit works even without an API key, which keeps demos offline-friendly.
     use_vision = not tr.text
@@ -108,7 +115,7 @@ def extract_outcome(data: bytes, filename: str, *, email_id: str | None = None, 
     else:
         try:
             raw = llm_parser.parse_invoice(tr.text or None, file_bytes=data if use_vision else None,
-                                           filename=filename, client=client)
+                                           filename=read_as, client=client)
         except Exception as exc:  # one bad file must not stop the batch
             out.error = f"{type(exc).__name__}: {exc}"
             return out
