@@ -5,7 +5,7 @@ masked for roles without full access.
 """
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api import schemas_api as s
@@ -32,9 +32,48 @@ def bill_summary(bill: models.Bill, vendor_name: str | None) -> s.BillSummary:
         department_id=bill.department_id, requester_user_id=bill.requester_user_id, row_version=bill.row_version)
 
 
+_SEVERITY_RANK = {"block": 0, "warn": 1, "info": 2}
+
+
+def _flag_overview(db: Session, bill_ids: list[str]) -> dict[str, tuple[s.OpenFlagCounts, str | None]]:
+    """Open-flag counts and the most severe open flag code from each bill's latest controls run, in two queries."""
+    if not bill_ids:
+        return {}
+    latest = (select(models.ControlsRun.bill_id, func.max(models.ControlsRun.version).label("v"))
+              .where(models.ControlsRun.bill_id.in_(bill_ids)).group_by(models.ControlsRun.bill_id).subquery())
+    runs = dict(db.execute(select(models.ControlsRun.run_id, models.ControlsRun.bill_id).join(
+        latest, (latest.c.bill_id == models.ControlsRun.bill_id) & (latest.c.v == models.ControlsRun.version))).all())
+    out: dict[str, tuple[s.OpenFlagCounts, str | None]] = {}
+    if not runs:
+        return out
+    rows = db.execute(select(models.BillFlag.run_id, models.BillFlag.severity, models.BillFlag.code, models.BillFlag.id)
+                      .where(models.BillFlag.run_id.in_(runs), models.BillFlag.resolution == "open"))
+    grouped: dict[str, list[tuple[str, str, int]]] = {}
+    for run_id, severity, code, flag_id in rows:
+        grouped.setdefault(runs[run_id], []).append((severity, code, flag_id))
+    for bill_id, flags in grouped.items():
+        counts = s.OpenFlagCounts(**{sev: sum(1 for f in flags if f[0] == sev) for sev in _SEVERITY_RANK})
+        top = min(flags, key=lambda f: (_SEVERITY_RANK.get(f[0], 9), f[2]))[1]
+        out[bill_id] = (counts, top)
+    return out
+
+
 def bill_summaries(db: Session, bills: list[models.Bill]) -> list[s.BillSummary]:
+    """Summaries with the queue fields: open flags, the top flag and, for pending bills, the current step."""
+    from app.services.approvals import current_step  # approvals imports this module's helpers indirectly
+
     names = vendor_names(db, {b.vendor_id for b in bills})
-    return [bill_summary(b, names.get(b.vendor_id)) for b in bills]
+    flags = _flag_overview(db, [b.bill_id for b in bills])
+    out = []
+    for b in bills:
+        summary = bill_summary(b, names.get(b.vendor_id))
+        if b.bill_id in flags:
+            summary.open_flags, summary.top_flag_code = flags[b.bill_id]
+        if b.status == "pending_approval" and (step := current_step(db, b.bill_id)) is not None:
+            summary.current_step = s.CurrentStepOut(step_no=step.step_no, role=step.role, user_id=step.user_id,
+                                                    delegated_from=step.delegated_from)
+        out.append(summary)
+    return out
 
 
 def line_out(line: models.BillLine) -> s.BillLineOut:
