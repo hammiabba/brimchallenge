@@ -61,6 +61,28 @@ def list_items(db: Session, *, status: str | None, email_id: str | None, limit: 
                                    limit=limit, offset=offset)
 
 
+def list_emails(db: Session, *, email_class: str | None, triaged: bool | None, limit: int,
+                offset: int) -> s.Page[s.EmailOut]:
+    stmt = select(models.Email)
+    if email_class:
+        stmt = stmt.where(models.Email.email_class == email_class)
+    if triaged is not None:
+        stmt = stmt.where(models.Email.email_class.isnot(None) if triaged else models.Email.email_class.is_(None))
+    rows, total = paginate(db, stmt.order_by(models.Email.received_at.desc(), models.Email.email_id), limit=limit,
+                           offset=offset)
+    items: dict[str, list[models.IntakeItem]] = {}
+    if rows:
+        ids = [e.email_id for e in rows]
+        for item in db.scalars(select(models.IntakeItem).where(models.IntakeItem.email_id.in_(ids))
+                               .order_by(models.IntakeItem.item_id)):
+            items.setdefault(item.email_id, []).append(item)
+    out = [s.EmailOut(email_id=e.email_id, from_name=e.from_name, from_address=e.from_address, subject=e.subject,
+                      received_at=e.received_at, attachments=list(e.attachments or []), email_class=e.email_class,
+                      triage_reason=e.triage_reason, triaged_at=e.triaged_at,
+                      items=[s.IntakeItemOut.model_validate(i) for i in items.get(e.email_id, [])]) for e in rows]
+    return s.Page[s.EmailOut](items=out, total=total, limit=limit, offset=offset)
+
+
 # ---------------------------------------------------------------- shared storage step
 
 
