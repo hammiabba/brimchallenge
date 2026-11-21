@@ -226,3 +226,34 @@ def test_fee_line_next_to_a_one_off_line_is_still_checked(ref, make_bill):
     bill.subtotal += D("900.00")
     kinds = sorted(f.evidence["kind"] for f in validate(bill, ref) if f.code == "OVER_CONTRACT_RATE")
     assert kinds == ["fee", "one_off"]  # $1,500 platform fee vs $1,320 contract, plus the one-off line
+
+
+# ---- invoice dated before a bank change but already showing the new account (Cascadia scan_8049.png) ----
+def _account_flags(bill, ref):
+    return [f for f in validate(bill, ref)
+            if f.code == "BANK_DETAILS_MISMATCH" and f.evidence.get("kind") == "account_before_change"]
+
+
+def test_invoice_before_bank_change_showing_new_account_is_flagged(ref, make_bill):
+    # V004 Cascadia: BC-009 on 2026-10-27 changed …7504 to …9679; the master already holds …9679
+    bill = make_bill(vendor_id="V004", province="BC", when=date(2026, 10, 24))
+    assert bill.vendor.bank.account.endswith("9679")
+    [f] = _account_flags(bill, ref)
+    assert f.severity == Severity.BLOCK and f.evidence["change_id"] == "BC-009"
+    assert "…9679" in f.message and "…7504" in f.message and "2026-10-24" in f.message
+
+
+def test_invoice_on_or_after_the_change_is_not_flagged(ref, make_bill):
+    assert not _account_flags(make_bill(vendor_id="V004", province="BC", when=date(2026, 10, 27)), ref)
+
+
+def test_invoice_before_the_change_with_the_old_account_is_not_this_flag(ref, make_bill):
+    bill = make_bill(vendor_id="V004", province="BC", when=date(2026, 10, 24))
+    bill.vendor.bank.account = "000017504"
+    assert not _account_flags(bill, ref)  # the plain invoice-vs-master comparison still applies
+
+
+def test_no_bank_account_on_the_invoice_is_not_flagged(ref, make_bill):
+    bill = make_bill(vendor_id="V004", province="BC", when=date(2026, 10, 24))
+    bill.vendor.bank.account = None
+    assert not _account_flags(bill, ref)
