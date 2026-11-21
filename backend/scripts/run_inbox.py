@@ -18,6 +18,7 @@ import argparse
 import json
 import re
 import sys
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -40,7 +41,9 @@ def main() -> int:
         print("ANTHROPIC_API_KEY not set: running classification + text layer only (cached LLM results are used).\n")
 
     emails = sorted(load_emails(args.emails), key=lambda e: e["email_id"])
+    started = time.monotonic()
     results = process_inbox(emails)
+    elapsed = time.monotonic() - started
 
     summary, rows, statuses = [], [], Counter()
     for triage, outcomes in results:
@@ -78,6 +81,12 @@ def main() -> int:
     classes = Counter(t.email_class.value for t, _ in results)
     print(f"\n{len(results)} emails: " + ", ".join(f"{k}={v}" for k, v in sorted(classes.items())))
     print(f"{sum(statuses.values())} attachments: " + ", ".join(f"{k}={v}" for k, v in sorted(statuses.items())))
+    tokens = Counter()
+    for _, outcomes in results:
+        for o in outcomes:
+            tokens.update(o.usage)
+    print(f"Runtime {elapsed:.0f}s; LLM tokens this run: {tokens['input_tokens']:,} in, "
+          f"{tokens['output_tokens']:,} out (cache hits cost nothing)")
     print(f"Output: {out_dir}")
     return 0
 

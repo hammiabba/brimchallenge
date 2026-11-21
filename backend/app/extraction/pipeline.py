@@ -62,6 +62,7 @@ class ExtractionOutcome:
     was_ocr: bool = False
     warnings: list[str] = field(default_factory=list)
     error: str | None = None
+    usage: dict = field(default_factory=dict)   # LLM tokens spent on this file in this run ({} on a cache hit)
 
     def to_dict(self) -> dict:
         return {
@@ -115,13 +116,13 @@ def extract_outcome(data: bytes, filename: str, *, email_id: str | None = None, 
     else:
         try:
             raw = llm_parser.parse_invoice(tr.text or None, file_bytes=data if use_vision else None,
-                                           filename=read_as, client=client)
+                                           filename=read_as, client=client, usage=out.usage)
         except Exception as exc:  # one bad file must not stop the batch
             out.error = f"{type(exc).__name__}: {exc}"
             return out
         cache.put(file_hash, pv, s.llm_model, {"input": "vision" if use_vision else "text",
                                                "model": s.llm_model, "prompt_version": pv,
-                                               "raw": raw.model_dump()})
+                                               "usage": out.usage, "raw": raw.model_dump()})
     if use_vision:
         out.warnings.append("no usable text layer; extracted from the image by the vision model")
 
