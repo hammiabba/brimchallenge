@@ -42,6 +42,8 @@ addopts = "-q"
 [tool.ruff]
 line-length = 110
 target-version = "py311"
+# The shared contract is changed only by team agreement, so lint style rules don't apply to it.
+extend-exclude = ["app/shared/schemas.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
