@@ -1,0 +1,19 @@
+/*
+ * Self-hosted IBM Plex (Fontsource), bundled by Vite: nothing is fetched from a font CDN. Only the weights in use,
+ * and only the Latin and Latin Extended subsets (French and other accented names are covered).
+ *   Sans 400 / 500 / 600: all UI and body text.
+ *   Serif 600: page titles (h1, h2).
+ *   Mono 400 / 500: IDs and codes.
+ */
+@import '@fontsource/ibm-plex-sans/latin-400.css';
+@import '@fontsource/ibm-plex-sans/latin-ext-400.css';
+@import '@fontsource/ibm-plex-sans/latin-500.css';
+@import '@fontsource/ibm-plex-sans/latin-ext-500.css';
+@import '@fontsource/ibm-plex-sans/latin-600.css';
+@import '@fontsource/ibm-plex-sans/latin-ext-600.css';
+@import '@fontsource/ibm-plex-serif/latin-600.css';
+@import '@fontsource/ibm-plex-serif/latin-ext-600.css';
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-ext-400.css';
+@import '@fontsource/ibm-plex-mono/latin-500.css';
+@import '@fontsource/ibm-plex-mono/latin-ext-500.css';

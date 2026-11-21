@@ -29,10 +29,12 @@ from app.controls.duplicates import norm_invoice_no
 from app.db import models
 from app.db.database import require_write_session
 from app.db.types import CENT, dec_to_text, from_cents, text_to_dec, to_cents, utcnow
-from app.shared.schemas import ApprovalStep, CodingSuggestion, ControlsResult, DraftBill
+from app.shared.schemas import ApprovalStep, CodingSuggestion, ControlsResult, DraftBill, Severity
 
 _BILL_ID = re.compile(r"^AP-(\d+)$")
 CARRY_OVER_RESOLUTIONS = ("overridden", "resolved")  # flag resolutions a new controls run inherits
+# schemas.Severity from lowest to highest. A resolution carries over only to a flag of the same or lower severity.
+SEVERITY_RANK = {Severity.INFO.value: 0, Severity.WARN.value: 1, Severity.BLOCK.value: 2}
 CLERK_CODING_REASON = "set by clerk"
 
 
@@ -287,10 +289,14 @@ def _flags_of(session: Session, run_id: int) -> list[models.BillFlag]:
 def save_controls_run(session: Session, bill_id: str, result: ControlsResult) -> int:
     """Store one controls run for a bill (version = previous + 1) with its flags and route steps; returns run_id.
 
-    Requires a write session. Never commits or logs. A flag identical to one in the previous run (same code, field
-    and evidence, compared as canonical JSON) that a person had overridden or resolved keeps that resolution;
-    every other flag starts open. A route step whose user_id isn't a user (e.g. "UNASSIGNED") is stored with
-    user_id NULL; result_json keeps the original value.
+    Requires a write session. Never commits or logs. A flag keeps the resolution a person gave it in the previous
+    run (overridden or resolved, with who, when and the comment) only when the previous flag had the same code,
+    field and evidence (compared as canonical JSON) and a severity at least as high as the new one, judged by the
+    stored `bill_flags.severity`, not today's FLAG_CODES. Every other flag starts open. The severity rule exists
+    because who may override depends on severity: an AP clerk may override a warn but only finance or the
+    controller may override a block, so a warn override must not silently cover the flag once it becomes a block.
+    An override of a block still covers it as a warn. A route step whose user_id isn't a user (e.g. "UNASSIGNED")
+    is stored with user_id NULL; result_json keeps the original value.
     """
     require_write_session(session, "save_controls_run")
     _bill(session, bill_id)
@@ -313,7 +319,14 @@ def save_controls_run(session: Session, bill_id: str, result: ControlsResult) ->
 
     for flag_json in dumped["flags"]:
         key = (flag_json["code"], flag_json["field"], _canonical(flag_json["evidence"]))
-        old = inherited[key].pop(0) if inherited.get(key) else None
+        # The first matching earlier resolution made at the same or a higher severity. One made at a lower severity
+        # doesn't cover this flag (the new flag starts open), but stays available for a later identical flag it does
+        # cover. With an unchanged severity this is the first match, as before.
+        candidates = inherited.get(key, [])
+        rank = SEVERITY_RANK[flag_json["severity"]]
+        old = next((c for c in candidates if SEVERITY_RANK[c.severity] >= rank), None)
+        if old is not None:
+            candidates.remove(old)
         session.add(models.BillFlag(
             run_id=run.run_id, code=flag_json["code"], severity=flag_json["severity"], field=flag_json["field"],
             message=flag_json["message"], evidence_json=flag_json["evidence"],

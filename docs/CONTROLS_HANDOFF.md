@@ -128,7 +128,7 @@ $4,000 bills looked like a $12,000 split, and a duplicate pair listed its match 
 | Vendor not in the master, but `name_on_invoice` is ≥ 85% similar to a master vendor's name | `VENDOR_LOOKALIKE` (block) | An unknown sender using a real vendor's name is the impersonation case. Names are compared after removing Ltd/Inc/&/punctuation. |
 | Vendor on hold / inactive | `VENDOR_NOT_ACTIVE` (block) | The master says don't pay them. |
 | Vendor is `pending_review` | `VENDOR_PENDING_REVIEW` (warn) | Not blocked: routing adds the P05 finance manager step, and the flag says why it's there (Riverbend V054). |
-| Canadian vendor with no GST/HST number on the invoice or in the master | `GST_NUMBER_MISSING` (warn) | The tax can't be claimed back, and if no tax is charged we can't tell a small supplier from a missing number (Riverbend). Foreign vendors are skipped. |
+| Canadian vendor with no GST/HST number in the master or on the invoice | `GST_NUMBER_MISSING` (warn), always | Two messages. **No tax charged** (`kind: no_tax`): "No GST/HST number on file. Confirm the vendor is a small supplier (under $30k/year) before paying." (Riverbend 1739.) **Tax charged** (`kind: tax_charged`): the tax can't be claimed back without a registration number, and charging tax with no number is a common fake-invoice signal. Either way, no tax flag: the tax check expects no tax from them. Foreign and unknown vendors are skipped. |
 | Email sent from a domain other than the vendor's AP contact on file | `SENDER_DOMAIN_MISMATCH` (warn) | Someone else billing in the vendor's name. Domains are compared case-insensitively. Only for known vendors, and only when the bill came by email. |
 | Bill sits on a lookalike vendor record (same name after removing Ltd/Inc/&, or same bank account as another vendor) | `VENDOR_LOOKALIKE` (block) | Classic impersonation fraud (V051/V053/V052). Only flags the *suspicious* copy (fewer past invoices, or not active), never the real vendor. |
 | GST/HST number differs from master | `GST_NUMBER_MISMATCH` (warn) | Could be OCR or a fake invoice. OCR confusions (1/I/!, 0/O) are folded first, so OCR noise doesn't fire it. |
@@ -140,14 +140,17 @@ $4,000 bills looked like a $12,000 split, and a duplicate pair listed its match 
 
 | Catches | Flag | Why |
 | --- | --- | --- |
-| A tax that should be charged isn't | `TAX_MISSING` (warn) | e.g. QC bill with GST but no QST (AP-00098). |
+| A tax that should be charged isn't | `TAX_MISSING` (block) | e.g. QC bill with GST but no QST (AP-00098). |
 | BC PST charged on services | `PST_ON_SERVICES` (warn) | BC PST applies to goods only. |
-| Anything else wrong (wrong code, wrong amount) | `TAX_WRONG_FOR_PROVINCE` (warn) | e.g. HST charged on an Alberta delivery (AP-00253). |
+| Anything else wrong (wrong code, wrong amount) | `TAX_WRONG_FOR_PROVINCE` (block) | e.g. HST charged on an Alberta delivery (AP-00253). |
 
 **Why tax is recomputed, not trusted:** the vendor's printed tax is exactly what we're checking, so it can't be
 the reference. Expected tax comes from the place of supply (`ship_to_province`), the vendor's country and category,
 and each line's type: ON = HST 13%; QC = GST 5% + QST 9.975%; BC = GST 5% + PST 7% on goods only;
-AB/SK/MB/territories = GST 5%; insurance = exempt; foreign vendors = no Canadian tax. Tolerance is 5 cents
+AB/SK/MB/territories = GST 5%; insurance = exempt; foreign vendors = no Canadian tax; **small suppliers** (a
+Canadian vendor in the master with no GST/HST number there or on the invoice) = no tax expected, so `TAX_MISSING`
+never fires for them. They always get a `GST_NUMBER_MISSING` warning instead (a "confirm small supplier" message,
+or the can't-claim-it-back message if they charged GST/HST). PST/QST they charge is still checked. A GST number printed on the invoice counts as registered. Tolerance is 5 cents
 because some vendors round tax per line. **Unknown vendors are checked too:** with no master record, a CAD bill is
 treated as a taxable Canadian supplier and a foreign-currency bill as a foreign vendor.
 
@@ -155,9 +158,12 @@ treated as a taxable Canadian supplier and a foreign-currency bill as a foreign 
 
 | Catches | Flag |
 | --- | --- |
-| quantity × unit price ≠ line amount | `LINE_MATH_ERROR` (warn) |
-| lines don't add up to the subtotal | `SUBTOTAL_MISMATCH` (warn) |
-| subtotal + taxes ≠ total | `TOTAL_MISMATCH` (warn) |
+| quantity × unit price ≠ line amount | `LINE_MATH_ERROR` (block) |
+| lines don't add up to the subtotal | `SUBTOTAL_MISMATCH` (block) |
+| subtotal + taxes ≠ total | `TOTAL_MISMATCH` (block) |
+
+Tax and math flags block: a bill with wrong tax or wrong totals can't be submitted or paid until someone marks the
+flag resolved (e.g. a corrected invoice came in) or a finance manager or the controller overrides it with a reason.
 
 Tolerance is 2 cents. Extraction never "fixes" printed numbers, so these catch both vendor errors and misreads.
 
@@ -302,7 +308,8 @@ routing follows.
 ## Incoming batch results (2026-11-21)
 
 `cd backend && python scripts/run_incoming.py`, after Person A's extraction fix. All 56 files were read: 0
-unreadable, **19 hold**, **14 review**, **23 can proceed**, $89,963.04 CAD on hold. The 4 emails with no bill
+unreadable, **19 hold**, **14 review**, **23 can proceed**, $89,963.04 CAD on hold (before tax and math flags
+became block; now 23 / 10 / 23 and $108,303.23, see the last rerun below). The 4 emails with no bill
 (EM-056 to EM-059) were listed correctly. The two scans and the two French invoices were checked by hand against
 the files. Numbers, dates and totals were all read correctly, so none of the flags below come from extraction
 mistakes.
@@ -316,7 +323,7 @@ mistakes.
 | Voyageur "000903-A" | ✅ Caught, and stricter than §4: `DUPLICATE_EXACT` (normalized, score 0.95) rather than a near match. AP-00277 is already paid, so blocking is right. |
 | Queen St rent $18,758 | ✅ Not flagged as a duplicate. Routed P02: department manager (U003, delegate for U012), then finance step (U002) |
 | Blue Heron, Zephyr | ✅ `VENDOR_NOT_FOUND` |
-| Riverbend 1739 | ✅ `PO_REQUIRED_MISSING` (block), `TAX_MISSING`, `VENDOR_PENDING_REVIEW` (with the P05 finance step) and `GST_NUMBER_MISSING` (warn). |
+| Riverbend 1739 | ✅ `PO_REQUIRED_MISSING` (block), `VENDOR_PENDING_REVIEW` (with the P05 finance step) and `GST_NUMBER_MISSING` (warn: "Confirm the vendor is a small supplier (under $30k/year) before paying"). No tax flag: with no GST number, it's treated as a small supplier that shouldn't charge tax, and it charged none. (Earlier runs also showed `TAX_MISSING`; see the tax-and-math rerun.) |
 | Harlow **and** Stern (EM-026) | ✅ `VENDOR_LOOKALIKE` of V026, plus the P06 finance step |
 | V053 Great Lakes Incorporated | n/a: both Great Lakes files matched V002 |
 | Cascadia 1625 and `scan_8049.png` | ✅ `BANK_CHANGE_UNVERIFIED` on both |
@@ -403,6 +410,18 @@ The history replay output is identical.
 These numbers are with tax and math flags as `warn`. If `b/tax-math-block` (PR #23) is merged as well, the 4 bills
 it moves to hold come on top.
 
+### Rerun with tax and math flags as block (`b/tax-math-block`)
+
+**24 hold, 9 review, 23 can proceed, $110,405.03 CAD on hold** (on top of the polish rerun's 20 / 13 / 23 and
+$92,064.84). Four bills moved from review to hold: Evergreen 000850 (`TOTAL_MISMATCH`, $3,439.00), Beaumont
+FA-000557 (`TAX_MISSING`, $8,101.67), Northbound 000639 (`TAX_WRONG_FOR_PROVINCE`, $2,505.52) and Northstar
+NO26-1773 (`LINE_MATH_ERROR`, $4,294.00). Ironwood has `TAX_MISSING` too but was already held for its missing PO.
+
+Small-supplier rule (from review): Riverbend 1739 has no GST number anywhere, so it's treated as a small supplier
+that shouldn't charge tax. It charged none, so it no longer gets `TAX_MISSING`, which would now block a legitimate
+invoice. It keeps `GST_NUMBER_MISSING` as a warning ("Confirm the vendor is a small supplier (under $30k/year)
+before paying") and stays held for its missing PO, with `VENDOR_PENDING_REVIEW`. No other incoming bill changed. History replay: same counts; the 3 tax flags show as block instead of warn.
+
 ### Caught beyond §4 (checked against the PDFs: real, not extraction errors)
 - Summit 000809 is printed with date 2026-11-27, in the future → `DATE_ANOMALY`.
 - Lumen FA-001761 is printed with date 2026-04-06, 210 days old → `DATE_ANOMALY`.
@@ -426,10 +445,7 @@ split false positives and bank fields on `b/controls-fixes`; the history replay 
 
 ## Open questions for the team
 
-1. **Should tax and math flags be `block`?** `TAX_WRONG_FOR_PROVINCE`, `TAX_MISSING`, `LINE_MATH_ERROR`,
-   `SUBTOTAL_MISMATCH`, `TOTAL_MISMATCH` are `warn`, so a bill with wrong tax or bad totals can still be paid.
-   Needs schema agreement.
-2. **`RefData` vs `ReferenceRepository`:** API/DB team, let's agree on one.
+1. **`RefData` vs `ReferenceRepository`:** API/DB team, let's agree on one.
 
 ## Likely judge questions
 
@@ -465,6 +481,11 @@ real invoice from before the change would show the old account, so the invoice w
 engine holds the bill, but it doesn't yet flag this specific date mismatch on its own.
 Update: it does now. `BANK_DETAILS_MISMATCH` (`kind: account_before_change`) fires on the scan: "Invoice dated
 2026-10-24 shows bank account …9679, but that account was only set up on 2026-10-27 (BC-009, via email_request)."
+
+**Why do tax and math errors block payment?**
+Paying a wrong invoice means paying the wrong amount, or claiming input tax credits the CRA won't allow. So the bill
+waits for a corrected invoice, or for a finance manager or the controller to accept it with a written reason, which
+goes into the audit log.
 
 **Why recompute tax instead of trusting the invoice?**
 The printed tax is what we're auditing. Expected tax comes from the place of supply, the vendor and the line type.

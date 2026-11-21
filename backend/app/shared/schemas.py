@@ -221,12 +221,12 @@ FLAG_CODES = {
     "GST_NUMBER_MISSING": "warn",
     "SENDER_DOMAIN_MISMATCH": "warn",
     # tax / arithmetic
-    "TAX_WRONG_FOR_PROVINCE": "warn",
-    "TAX_MISSING": "warn",
+    "TAX_WRONG_FOR_PROVINCE": "block",
+    "TAX_MISSING": "block",
     "PST_ON_SERVICES": "warn",
-    "LINE_MATH_ERROR": "warn",
-    "SUBTOTAL_MISMATCH": "warn",
-    "TOTAL_MISMATCH": "warn",
+    "LINE_MATH_ERROR": "block",
+    "SUBTOTAL_MISMATCH": "block",
+    "TOTAL_MISMATCH": "block",
     # contract / PO
     "OVER_CONTRACT_RATE": "warn",
     "OVER_FUEL_SURCHARGE_CAP": "warn",

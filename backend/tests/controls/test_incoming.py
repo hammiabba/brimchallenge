@@ -1,5 +1,5 @@
 """Incoming-batch logic on hand-built bills (no extraction, no network)."""
-from decimal import Decimal as D
+from datetime import timedelta
 
 from app.controls.incoming import IncomingItem, render_report, run_batch, summary, top_findings, with_department
 from app.shared.schemas import CodingSuggestion
@@ -59,7 +59,7 @@ def test_split_inside_the_batch_is_caught(ref, make_bill):
 def test_problem_bills_come_first(ref, make_bill):
     clean = make_bill(number="OK-101", file_hash="ok")
     warn = make_bill(number="W-202", amount="2000.00", file_hash="w")
-    warn.subtotal += D("10")  # SUBTOTAL_MISMATCH (warn)
+    warn.due_date = warn.invoice_date - timedelta(days=1)  # DATE_ANOMALY (warn)
     hold = make_bill(vendor_id="V004", province="BC", number="H-303", file_hash="h")  # unverified bank change
     failed = IncomingItem(file_name="bad.pdf", status="failed", error="no invoice number")
     items = run_batch([item(clean, "ok.pdf"), item(warn, "w.pdf"), item(hold, "h.pdf"), failed], ref)
