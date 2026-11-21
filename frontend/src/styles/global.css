@@ -1,0 +1,100 @@
+/*
+ * The few rules Mantine's theme can't express. Colours come from the CSS variables set in src/theme.ts
+ * (cssVariablesResolver); don't write colour values here. Rules: frontend/DESIGN.md.
+ */
+
+/* Tabular figures for amounts, dates and counts, so columns line up. */
+.app-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- header and navigation */
+
+/* The 3px Robin's Egg bar along the top of the header (decorative accent). */
+.app-header {
+  border-top: 3px solid var(--app-accent);
+}
+
+/* Sidebar items. The active one is bold Blumine text on the lightest tint, plus a Robin's Egg bar on its left
+   edge: colour is never the only signal. */
+.app-nav-link {
+  position: relative;
+  border-radius: 4px;
+  color: var(--app-ink);
+}
+
+.app-nav-link[data-active] {
+  background-color: var(--app-primary-tint);
+  color: var(--mantine-primary-color-filled);
+}
+
+.app-nav-link[data-active] .mantine-NavLink-label {
+  font-weight: 600;
+}
+
+.app-nav-link[data-active]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background-color: var(--app-accent);
+}
+
+/* ---------------------------------------------------------------- tables */
+
+/* Header cells on the page neutral (also behind the sticky header while scrolling), in ink, never uppercase. */
+.mantine-Table-th {
+  background-color: var(--app-page);
+  color: var(--app-ink);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+/* Numeric columns: mark the th and td with data-numeric. */
+.mantine-Table-th[data-numeric],
+.mantine-Table-td[data-numeric] {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The selected row is Sand, with ink text; it stays Sand on hover. */
+.mantine-Table-tr[data-selected],
+.mantine-Table-tr[data-selected]:hover {
+  background-color: var(--app-sand);
+  color: var(--app-ink);
+}
+
+/* ---------------------------------------------------------------- highlights */
+
+/* The marker behind a field a person changed (bill review): Sand with ink text. */
+.app-changed {
+  background-color: var(--app-sand);
+  color: var(--app-ink);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+/* ---------------------------------------------------------------- focus and motion */
+
+/* Mantine draws a Blumine focus ring on its own components; this gives plain elements the same ring. */
+:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+}
+
+/* When the system asks for reduced motion, every transition and animation becomes an instant change. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

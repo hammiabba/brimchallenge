@@ -4,7 +4,7 @@ import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
 import { AuthProvider } from './auth/AuthProvider'
-import { theme } from './theme'
+import { cssVariablesResolver, theme } from './theme'
 
 /**
  * Everything the app runs inside except the router: the Mantine theme and notifications, TanStack Query, and auth.
@@ -17,8 +17,14 @@ export function AppProviders({ queryClient, env = 'default', children }: {
   children: ReactNode
 }) {
   return (
-    <MantineProvider theme={theme} defaultColorScheme="light" env={env}>
-      <Notifications position="top-right" />
+    <MantineProvider
+      theme={theme}
+      cssVariablesResolver={cssVariablesResolver}
+      defaultColorScheme="light"
+      env={env}
+    >
+      {/* Notifications float, so they get the theme's one shadow; they enter and leave in 150 ms. */}
+      <Notifications position="top-right" transitionDuration={150} />
       <QueryClientProvider client={queryClient}>
         <AuthProvider>{children}</AuthProvider>
       </QueryClientProvider>
