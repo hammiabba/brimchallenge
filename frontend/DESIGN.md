@@ -18,7 +18,8 @@ is `APP_NAME` ("AP Automation").
 |---|---|---|---|
 | Blumine | `#1E5572` | Primary: buttons, links, active navigation text, focus rings. Mantine palette `blumine`, shade 6 | 8.08:1 on white |
 | Robin's Egg | `#00C2D5` | Decorative accent only: the 3px bar along the top of the header and the active-navigation bar. Later, the first chart series | 2.17:1 on white: never text, never behind text, never a focus ring or button fill |
-| Sand | `#F1D49B` | Highlight surfaces only: the selected table row, the "changed" marker behind an edited field, the delegate banner. Always with ink text | ink on Sand 11.03:1 |
+| Sand | `#F1D49B` | Highlight surfaces only: the selected table row and the "changed" marker behind an edited field. Always with ink text | ink on Sand 11.03:1 |
+| Sand tint | `#F9EED7` | Slim highlight banners: the one-line delegate banner (border `#EAD7AE`). Ink text | ink 13.75:1, secondary 5.95:1 |
 | Ink | `#0B2533` | Body text (near-black, derived from Blumine) | 15.83:1 on white, 14.71:1 on page |
 | Secondary | `#4A5D6A` | The only secondary text colour (titles under names, hints, metadata) | 6.85:1 on white, 6.37:1 on page |
 | Placeholder | `#5A6C78` | Input placeholders | 5.45:1 on white |
@@ -26,7 +27,7 @@ is `APP_NAME` ("AP Automation").
 | Page | `#F4F7F9` | Page background and table headers (one very light cool neutral) | |
 | Border | `#CED8DF` | Dividers, table rules, panel borders (decorative) | |
 | Control border | `#7A8C98` | Inputs and default buttons, so controls are identifiable | 3.48:1 on white |
-| Primary tint | `#EAF2F6` | Active navigation item and row hover | Blumine on it 7.13:1, ink 13.97:1 |
+| Primary tint | `#EAF2F6` | Active navigation item, row hover, and the part of an invoice a flag points at (with a 2px Blumine outline) | Blumine on it 7.13:1, ink 13.97:1 |
 
 There are no lighter text greys than Secondary. Mantine's `c="dimmed"` is mapped to Secondary and its placeholder
 colour to Placeholder, so Mantine defaults stay inside the palette.
@@ -57,13 +58,14 @@ colour, and the contrast test checks it.
 
 ## 2. Typography
 
-- **IBM Plex Sans** for all UI and body text. **IBM Plex Serif** for page titles only (`<Title order={1}>` and
-  `order={2}`), the one editorial touch. **IBM Plex Mono** for IDs and codes (AP-00427, V004, PAY-00012, GL 6310,
-  HST13).
+- **IBM Plex Sans** for all UI and body text. **IBM Plex Serif** for the page title only (`<Title order={1}>`, one
+  per page), the one editorial touch. Section headings are `order={2}` and below, in Plex Sans, so a page keeps its
+  heading order (h1, then h2 sections, then h3) without a second serif. **IBM Plex Mono** for IDs and codes
+  (AP-00427, V004, PAY-00012, GL 6310, HST13).
 - Self-hosted through Fontsource (`src/styles/fonts.css`): Sans 400/500/600, Serif 600, Mono 400/500, Latin and Latin
   Extended only. No font CDN. Never Inter.
-- One scale, in the theme: 12 (xs, metadata), 13 (sm, compact UI), 14 (md, body), 16 (lg), 20 (xl). Headings: h1 26
-  and h2 20 (serif), h3 16, h4 14 (sans, semibold).
+- One scale, in the theme: 12 (xs, metadata), 13 (sm, compact UI), 14 (md, body), 16 (lg), 20 (xl). Headings: h1 28
+  (serif, the page title), h2 18 (section), h3 16 (subsection, e.g. one flag), h4 14; all semibold.
 - Money and other numbers use tabular figures (`font-variant-numeric: tabular-nums`) and are right-aligned in tables.
 - No all-caps labels. Badges are sentence case too.
 - Shared components (`src/ui/DataText.tsx`):
@@ -85,6 +87,19 @@ colour, and the contrast test checks it.
   sticky header on the page neutral, no zebra stripes, row hover in the primary tint, 1px row rules. Mark numeric
   cells (and their header) with `data-numeric` to right-align them in tabular figures; mark the selected row with
   `data-selected` for the Sand highlight. An edited field gets `className="app-changed"` (Sand, ink text).
+- Links inside a table (a bill id in the bills list) are underlined on hover; links in running text are always
+  underlined.
+- Loading tables and pages show static skeleton rows (`<Skeleton animate={false} />`), never a pulsing skeleton and
+  never a spinner on a blank page. A spinner is fine for a small region (a lazy screen loading).
+- Values read by intake with low confidence (below 80%) get a 2px amber (warn) underline, a tooltip with the
+  percentage, and the same in visually hidden text (`className="app-low-confidence"`).
+- A flag's `field` marks the part of the invoice it is about: wrap that part in `<FieldRegion name=...>`; while the
+  flag is hovered, focused or pinned it gets the primary tint and a 2px Blumine outline. Not Sand: Sand means edited
+  or selected.
+- The approval route is a vertical timeline (`app-timeline` in global.css): a status icon (green approved, red
+  rejected, grey waiting) on a 1px line, with the words beside it, so colour is never the only signal.
+- Slim banners (the delegate line) are one line of ink text on the Sand tint with an info icon; any longer
+  explanation goes in the icon's tooltip, and the icon-only button has an `aria-label`.
 
 ```tsx
 <Table>
@@ -126,8 +141,9 @@ colour, and the contrast test checks it.
 
 | Piece | Where | Use |
 |---|---|---|
-| `StatusBadge kind status` | `src/ui/Badges.tsx` | Bill, payment, vendor, bank-change and user statuses |
+| `StatusBadge kind status` | `src/ui/Badges.tsx` | Bill, payment, vendor, bank-change and user statuses, and flag resolutions |
 | `SeverityBadge severity` | `src/ui/Badges.tsx` | Flag severity |
+| `SeverityCountBadge severity count` | `src/ui/Badges.tsx` | Open-flag counts in a list ("2 block"); nothing for zero |
 | `RoleBadge role` | `src/ui/Badges.tsx` | The signed-in user's role |
 | `Id`, `MoneyText`, `DateText` | `src/ui/DataText.tsx` | IDs, amounts, dates and timestamps |
 | `Icon` | `src/ui/Icon.tsx` | Every icon |

@@ -47,6 +47,10 @@ export const SURFACE = {
   controlBorder: '#7A8C98',
   /** The border around Sand surfaces. */
   sandBorder: '#D9B66E',
+  /** A lighter Sand for slim banners (the delegate line), still with ink text. */
+  sandTint: '#F9EED7',
+  /** The border around the lighter Sand tint. */
+  sandTintBorder: '#EAD7AE',
   /** Row hover and the active navigation background: the lightest Blumine tint. */
   primaryTint: '#EAF2F6',
 } as const
@@ -137,6 +141,8 @@ export const CONTRAST_PAIRS: ReadonlyArray<{ name: string; fg: string; bg: strin
   { name: 'Active navigation text on its tint', fg: BRAND.blumine, bg: SURFACE.primaryTint, min: 4.5 },
   { name: 'Body text on row hover tint', fg: TEXT.ink, bg: SURFACE.primaryTint, min: 4.5 },
   { name: 'Ink on Sand', fg: TEXT.ink, bg: BRAND.sand, min: 4.5 },
+  { name: 'Ink on Sand tint (delegate banner)', fg: TEXT.ink, bg: SURFACE.sandTint, min: 4.5 },
+  { name: 'Secondary text on Sand tint', fg: TEXT.secondary, bg: SURFACE.sandTint, min: 4.5 },
   ...Object.entries(STATUS_TONES).map(([tone, t]) => ({
     name: `Status badge: ${tone}`, fg: t.color, bg: t.background, min: 4.5,
   })),
@@ -157,7 +163,7 @@ export const CONTRAST_PAIRS: ReadonlyArray<{ name: string; fg: string; bg: strin
 
 export const FONT = {
   sans: '"IBM Plex Sans", "Helvetica Neue", Arial, sans-serif',
-  /** Page titles (h1, h2) only. */
+  /** Page titles (h1) only. */
   serif: '"IBM Plex Serif", Georgia, "Times New Roman", serif',
   /** IDs and codes (AP-00427, V004, GL 6310, HST13). */
   mono: '"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace',
@@ -186,8 +192,8 @@ export const theme = createTheme({
     fontFamily: FONT.sans,
     fontWeight: '600',
     sizes: {
-      h1: { fontSize: rem(26), lineHeight: '1.25' },
-      h2: { fontSize: rem(20), lineHeight: '1.3' },
+      h1: { fontSize: rem(28), lineHeight: '1.25' },
+      h2: { fontSize: rem(18), lineHeight: '1.35' },
       h3: { fontSize: rem(16), lineHeight: '1.35' },
       h4: { fontSize: rem(14), lineHeight: '1.4' },
       h5: { fontSize: rem(13), lineHeight: '1.4' },
@@ -207,10 +213,10 @@ export const theme = createTheme({
   // Plain objects rather than Component.extend(): extend() would import every listed component into the bundle,
   // including ones no screen uses yet (Modal, Drawer, Menu...).
   components: {
-    // Page titles (h1, h2; order 1 is the default) are the one serif element.
+    // Page titles (h1; order 1 is the default) are the one serif element. h2 and below are section headings.
     Title: {
       styles: (_theme: unknown, props: { order?: number }) => ({
-        root: (props.order ?? 1) <= 2 ? { fontFamily: FONT.serif } : {},
+        root: (props.order ?? 1) === 1 ? { fontFamily: FONT.serif } : {},
       }),
     },
     Badge: {
@@ -258,12 +264,16 @@ export const cssVariablesResolver: CSSVariablesResolver = () => ({
     '--app-accent': BRAND.robinsEgg,
     '--app-sand': BRAND.sand,
     '--app-sand-border': SURFACE.sandBorder,
+    '--app-sand-tint': SURFACE.sandTint,
+    '--app-sand-tint-border': SURFACE.sandTintBorder,
     '--app-ink': TEXT.ink,
     '--app-text-secondary': TEXT.secondary,
     '--app-page': SURFACE.page,
     '--app-border': SURFACE.border,
     '--app-primary-tint': SURFACE.primaryTint,
     '--app-font-serif': FONT.serif,
+    // The warn colour, for the low-confidence underline (a decoration next to text, at 5.4:1 on white).
+    '--app-warn': orange[6],
   },
   light: {
     '--mantine-color-text': TEXT.ink,
