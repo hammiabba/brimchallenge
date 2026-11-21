@@ -18,7 +18,7 @@ from decimal import Decimal
 from app.shared.schemas import ControlsResult, DraftBill, Severity
 
 from .engine import run_controls
-from .refdata import RefData, currency, default_refdata, is_credit
+from .refdata import RefData, bill_id, currency, default_refdata, is_credit
 
 # Report order: worst first
 LEVELS = ["unreadable", "hold", "review", "ok"]
@@ -147,7 +147,19 @@ def summary(items: list[IncomingItem]) -> dict:
     }
 
 
-def _bill_block(it: IncomingItem) -> list[str]:
+def _readable_ids(items: list[IncomingItem]) -> dict[str, str]:
+    """Batch bills are matched by their internal id (a file hash); the report shows the file name instead."""
+    return {bill_id(it.bill): it.file_name for it in items if it.bill is not None}
+
+
+def _named(text: str, names: dict[str, str]) -> str:
+    for bid, name in names.items():
+        text = text.replace(bid, name)
+    return text
+
+
+def _bill_block(it: IncomingItem, names: dict[str, str] | None = None) -> list[str]:
+    names = names or {}
     head = f"{it.file_name}  [{it.email_id or 'no email'}]"
     if it.bill is None:
         return [head, f"    extraction {it.status}: {it.error or 'no detail'}"]
@@ -160,10 +172,10 @@ def _bill_block(it: IncomingItem) -> list[str]:
     if it.sender:
         lines.append(f"    sender   {it.sender}")
     for f in r.flags:
-        lines.append(f"    {f.severity.value.upper():5} {f.code}: {f.message}")
+        lines.append(f"    {f.severity.value.upper():5} {f.code}: {_named(f.message, names)}")
     for m in r.duplicates:
-        lines.append(f"    dup   {m.kind} {m.matched_invoice_id or m.matched_card_txn_id} "
-                     f"(score {m.score:.2f}): {'; '.join(m.reasons)}")
+        lines.append(_named(f"    dup   {m.kind} {m.matched_invoice_id or m.matched_card_txn_id} "
+                            f"(score {m.score:.2f}): {'; '.join(m.reasons)}", names))
     if is_credit(b):
         lines.append("    route    none: credit note, apply it against an open invoice")
     else:
@@ -179,6 +191,7 @@ def _bill_block(it: IncomingItem) -> list[str]:
 
 def render_report(items: list[IncomingItem], no_bill_emails: Iterable[tuple[str, str, str]] = ()) -> str:
     """items must come from run_batch (sorted worst first). no_bill_emails: (email_id, class, reason)."""
+    names = _readable_ids(items)
     out = [f"Incoming batch: {len(items)} file(s), checked together as one batch", "", "TOP FINDINGS", ""]
     out += [f"  - {line}" for line in top_findings(items)] or ["  - nothing on hold"]
     for level in LEVELS:
@@ -187,7 +200,7 @@ def render_report(items: list[IncomingItem], no_bill_emails: Iterable[tuple[str,
             continue
         out += ["", "", f"{LEVEL_TITLE[level]}: {len(group)}", ""]
         for it in group:
-            out += _bill_block(it) + [""]
+            out += _bill_block(it, names) + [""]
     no_bill = list(no_bill_emails)
     if no_bill:
         out += ["", "EMAILS WITH NO BILL", ""]

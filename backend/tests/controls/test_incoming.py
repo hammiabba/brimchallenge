@@ -45,6 +45,8 @@ def test_duplicate_inside_the_batch_is_caught(ref, make_bill):
     items = run_batch([item(a, "a.pdf", "EM-1"), item(b, "b.pdf", "EM-2")], ref)
     assert all(it.level == "hold" and "DUPLICATE_EXACT" in {f.code for f in it.result.flags} for it in items)
     assert any("Duplicates inside this batch: 2" in line for line in top_findings(items))
+    report = render_report(items)
+    assert "Possible duplicate of b.pdf" in report and "dup   exact a.pdf" in report  # file names, not hashes
 
 
 def test_split_inside_the_batch_is_caught(ref, make_bill):
