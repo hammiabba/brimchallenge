@@ -76,6 +76,7 @@ result.recommendation     # "Hold: This bill is on V052 Harlow and Stern LLP, ..
 | `can_release(user_id, amount_cad, approver_ids, flags, approval_complete, ref, *, bill)` | Call before releasing a payment. Pass `result.flags` so duplicates hold the payment, and the `bill` (requester and credit-note checks). |
 | `validate`, `find_duplicates`, `duplicate_flags`, `find_split`, `route` | The pieces `run_controls` calls, if you need one alone. |
 | `load_refdata()` / `bill_from_history(...)` | Load reference data; turn a historical invoice row into a `DraftBill` (tests, replay). |
+| `history.replay(ref)` | Replays all historical invoices, each judged as of its own date, plus checks on `approvals.csv` and `payments.csv`. Printed by `backend/scripts/replay_history.py`. |
 
 `controls.permissions` re-exports `can_approve` / `can_release` (the API guide refers to that module).
 
@@ -229,16 +230,8 @@ routing follows.
 
 ## Bugs not fixed yet
 
-From the code review. The review's other items (permissions, currency, unknown vendors, contract and split false
-positives, bank fields) were fixed on `b/controls-fixes`.
-
-### History replay ([`backend/scripts/replay_history.py`](../backend/scripts/replay_history.py))
-- **Applies today's state to past bills** (current bank-change status, terminated requesters), so old bills get flags
-  that didn't apply at the time.
-- **Counts each duplicate pair twice.**
-- **Hides the key case:** AP-00388 was paid on Oct 29, two days after Cascadia's unverified bank change (Oct 27).
-- **Doesn't check `approvals.csv`:** U010 self-approved AP-00092, AP-00178 and AP-00235; AP-00159 and AP-00216 went
-  over their PO without the finance manager step (P12).
+From the code review. The review's other items were fixed: permissions, currency, unknown vendors, contract and
+split false positives and bank fields on `b/controls-fixes`; the history replay on `b/controls-replay`.
 
 ### Minor
 - Due date isn't checked against the vendor's payment terms.
@@ -269,14 +262,22 @@ the document (extraction); the rules are plain code.
 Layers with scores, and known exceptions: recurring fixed-fee vendors need similar invoice numbers too, credit
 notes never match invoices, and AP card payments are skipped. Splits ignore duplicate pairs, bills on their own
 POs and other departments, which removed the Deskhive and Redline false positives. Replaying all 426 historical invoices
-(`cd backend && python scripts/replay_history.py`) shows what fires.
+(`cd backend && python scripts/replay_history.py`) shows what fires, judging each bill as of its own date.
 
 **What did it find in the history?**
-4 invoices paid twice (AP-00023/34, AP-00073/77, AP-00136/155, AP-00215/224) and 2 scheduled twice (AP-00394/407);
-3 wrong-tax invoices; Cascadia's unverified bank change; two lookalike vendors sharing bank accounts with real ones
-(V053 was paid twice); Torque Industrial's likely split. Lead with **AP-00388**: paid Oct 29, two days after
-Cascadia's unverified bank change. Careful: the replay doesn't show that case yet, still counts duplicate pairs
-twice, and doesn't check `approvals.csv` (U010 self-approved three bills), so don't quote its raw totals.
+Run `cd backend && python scripts/replay_history.py`. Each bill is judged only on what was known on its own date, and
+each duplicate pair or split group is counted once. Lead with Cascadia:
+- **AP-00388 ($3,290.01) was paid on Oct 29, two days after Cascadia's bank account was changed by email with no
+  callback** (Oct 27). **AP-00426 ($2,563.92) is approved and next in line to be paid** to the same account. Hold it.
+- **4 bills paid twice or more, $16,813.66 paid out extra** (same invoice number): Redline AP-00136/155 ($7,456.10),
+  Alpenglow AP-00215/224 plus a card charge, paid three times ($5,022.72), Northbound AP-00073/77 ($2,639.61),
+  Lakeshore AP-00023/34 ($1,695.23). **1 more is set to be paid twice:** Summit AP-00394/407 ($2,457.19 at risk).
+- **5 more are likely paid twice** through an AP payment plus an employee card charge ($6,723.10), matched by vendor
+  name, amount and date rather than invoice number. Call these "likely".
+- **From the approval records:** 3 self-approvals (U010 on AP-00092, AP-00178, AP-00235), 2 bills over their PO that
+  skipped the finance manager step (AP-00159, AP-00216). Nobody approved and released the same bill.
+- Also: 3 wrong-tax bills, 5 bills on lookalike vendor records, and Torque Industrial's likely split (3 bills,
+  ~$14k in 2 days). 48 of the 426 bills have at least one warn or block flag.
 
 **Why recompute tax instead of trusting the invoice?**
 The printed tax is what we're auditing. Expected tax comes from the place of supply, the vendor and the line type.

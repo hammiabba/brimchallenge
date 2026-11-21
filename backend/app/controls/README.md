@@ -9,7 +9,7 @@ Pure Python, no database, no web framework, no LLM. Bill in, flags out.
 
 ```bash
 pytest tests/controls                 # 72 tests, most based on real cases in the dataset
-python scripts/replay_history.py      # runs all 426 historical invoices through the engine
+python scripts/replay_history.py      # all 426 historical invoices, each judged as of its own date (history.py)
 ```
 
 Reference data is read from the repo dataset (`get_settings().dataset_dir / "data"`), and "today" is
@@ -24,6 +24,7 @@ Reference data is read from the repo dataset (`get_settings().dataset_dir / "dat
 | `validate.py` | `validate(bill, ref) -> [Flag]`: vendor, tax, arithmetic, contract, PO, FX, dates, credit notes |
 | `duplicates.py` | `find_duplicates(bill, ref, batch) -> [DuplicateMatch]`, `duplicate_flags(...)`, `find_split(bill, ref, batch)` |
 | `approvals.py` | `route(...) -> [ApprovalStep]`, `can_approve(...)` / `can_release(...) -> PermissionDecision` |
+| `history.py` | `replay(ref)`: point-in-time replay of the history, plus approvals/payments checks (used by `scripts/replay_history.py`) |
 | `permissions.py` | Re-exports `can_approve` / `can_release` from `approvals.py` (the API guide refers to `controls.permissions`) |
 
 ## How the pieces fit
@@ -65,9 +66,10 @@ Money is `Decimal`, not float.
 
 ## What it found in the history
 
-- 4 invoices **paid twice** (AP-00023/34, AP-00073/77, AP-00136/155, AP-00215/224) and 2 more scheduled twice (AP-00394/407)
+- AP-00388 **paid two days after Cascadia's unverified bank change**; AP-00426 approved and next to be paid
+- 4 bills **paid twice or more** ($16,813.66 extra: AP-00023/34, AP-00073/77, AP-00136/155, AP-00215/224 + card) and 1 set to be paid twice (AP-00394/407)
+- 3 self-approvals (U010) and 2 PO overruns without the finance step (P12), from `approvals.csv`
 - 3 wrong-tax invoices (AP-00098 no QST in QC, AP-00253 HST in Alberta, AP-00325 no HST in ON)
-- V004 Cascadia bank change on Oct 27 by **email, never verified**: hold all its payments
 - V051 / V053 lookalike vendors sharing bank accounts with Polar Freight / Great Lakes; V053 is on hold but was paid twice
 - Torque Industrial (V044): expired contract, no PO, 3 bills in one week totaling ~$14k (looks like a split)
 - Redstone Cloud (V021) billing above its $4,800 USD contract fee most months
