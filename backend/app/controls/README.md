@@ -84,4 +84,5 @@ Money is `Decimal`, not float.
   Full list of fixes and open items: `docs/CONTROLS_HANDOFF.md`.
 - Card duplicate check skips AP virtual card payments (they belong to other invoices). Employee card charges only.
 - Signatures differ from the original stubs: functions take a `RefData` (from `load_refdata()`), not a `ReferenceRepository`.
-- Not yet run on the incoming batch: needs Person A's `DraftBill` output.
+- Run on the real incoming batch (all 56 files, `cd backend && python scripts/run_incoming.py`). Results, the
+  check against HACKATHON_PLAN §4, false alarms and misses: "Incoming batch results" in `docs/CONTROLS_HANDOFF.md`.
