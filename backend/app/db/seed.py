@@ -47,7 +47,13 @@ from sqlalchemy.orm import Session
 from app.config import BACKEND_DIR, REPO_ROOT, get_settings
 from app.controls.refdata import load_refdata
 from app.db import models
-from app.db.database import make_engine, resolve_database_url
+from app.db.database import (
+    SQLITE_BEGIN_OPTION,
+    WRITE_EXECUTION_OPTIONS,
+    as_write_engine,
+    make_engine,
+    resolve_database_url,
+)
 from app.db.seed_mapping import (
     Row,
     Violation,
@@ -545,10 +551,16 @@ def _insert(session: Session, name: str, rows: Sequence[Row]) -> TableCounts:
 def seed_all(session: Session, dataset_dir: Path) -> SeedReport:
     """Load the whole dataset in ONE transaction and commit it. All or nothing.
 
-    Pass a fresh session from an engine made by app.db.database.make_engine (foreign keys must be on). Raises
+    Pass a fresh session from an engine made by app.db.database.make_engine (foreign keys must be on). The seed is a
+    write, so it opens its transaction as a write session would (BEGIN IMMEDIATE), whatever kind of session is passed;
+    on SQLite it raises RuntimeError if the session's transaction had already begun some other way. Raises
     SeedValidationError, with every violation, before writing anything if pre-flight fails.
     """
     dataset_dir = Path(dataset_dir)
+    connection = session.connection(execution_options=WRITE_EXECUTION_OPTIONS)  # BEGIN IMMEDIATE on a fresh session
+    begin_mode = connection.get_execution_options().get(SQLITE_BEGIN_OPTION)
+    if connection.dialect.name == "sqlite" and begin_mode != "IMMEDIATE":
+        raise RuntimeError("seed_all needs a fresh session: its transaction already began without BEGIN IMMEDIATE")
     if session.execute(text("PRAGMA foreign_keys")).scalar() != 1:
         raise RuntimeError("foreign keys are off on this connection; create the engine with make_engine()")
     raw = load_dataset(dataset_dir)
@@ -636,7 +648,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     migrate_to_head(url)
     engine = make_engine(url)
     try:
-        with Session(engine) as session:
+        # A write session on the chosen URL (the process-wide get_write_session_factory is bound to DATABASE_URL,
+        # which --database-url may override).
+        with Session(as_write_engine(engine)) as session:
             report = seed_all(session, settings.dataset_dir)
     except SeedValidationError as exc:
         print(exc.format(), file=sys.stderr)

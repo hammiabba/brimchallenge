@@ -86,21 +86,21 @@ def test_downgrade_base_then_upgrade_head(alembic_cfg: Config, db_url: str) -> N
 
 # ---------------------------------------------------------------- 3. audit_events is append-only
 
-def test_audit_events_insert_works_but_update_and_delete_fail(session: Session) -> None:
-    session.add(make_audit_event())
-    session.commit()
-    assert session.scalar(select(models.AuditEvent.event_id)) == "EV-000001"
+def test_audit_events_insert_works_but_update_and_delete_fail(write_session: Session) -> None:
+    write_session.add(make_audit_event())
+    write_session.commit()
+    assert write_session.scalar(select(models.AuditEvent.event_id)) == "EV-000001"
 
     with pytest.raises((IntegrityError, OperationalError), match="append-only"):
-        session.execute(update(models.AuditEvent).values(action="invoice.tampered"))
-    session.rollback()
+        write_session.execute(update(models.AuditEvent).values(action="invoice.tampered"))
+    write_session.rollback()
 
     with pytest.raises((IntegrityError, OperationalError), match="append-only"):
-        session.execute(delete(models.AuditEvent))
-    session.rollback()
+        write_session.execute(delete(models.AuditEvent))
+    write_session.rollback()
 
     # The row is still there, unchanged.
-    row = session.scalars(select(models.AuditEvent)).one()
+    row = write_session.scalars(select(models.AuditEvent)).one()
     assert (row.action, row.seq) == ("invoice.created", 1)
 
 
@@ -413,11 +413,11 @@ def test_every_dataset_value_fits_its_check(csv_name: str, column: str, allowed:
 
 # ---------------------------------------------------------------- timestamps and optimistic concurrency
 
-def test_aware_timestamps_are_stored_as_utc(session: Session) -> None:
+def test_aware_timestamps_are_stored_as_utc(write_session: Session) -> None:
     toronto = timezone(timedelta(hours=-5))
-    session.add(make_audit_event(at=datetime(2026, 11, 2, 10, 0, tzinfo=toronto)))
-    session.commit()
-    raw = session.scalar(text("SELECT at FROM audit_events"))
+    write_session.add(make_audit_event(at=datetime(2026, 11, 2, 10, 0, tzinfo=toronto)))
+    write_session.commit()
+    raw = write_session.scalar(text("SELECT at FROM audit_events"))
     assert raw.startswith("2026-11-02 15:00:00")  # 10:00-05:00 is 15:00 UTC
     assert to_utc(datetime(2026, 11, 2, 15, 0, tzinfo=UTC)) == datetime(2026, 11, 2, 15, 0)
 

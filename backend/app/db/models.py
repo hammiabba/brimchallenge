@@ -733,7 +733,8 @@ class AuditEvent(Base):
     seq is AUTOINCREMENT, so numbers are never reused and give a total order. UPDATE and DELETE are blocked by
     triggers (below and in the baseline migration). actor_user_id has no FK and actor_role / action / entity_type
     have no CHECK on purpose: the log must accept every event, including system actors, rather than lose one.
-    prev_hash / hash will chain rows together (computed in a later step); for now hash is only required.
+    prev_hash / hash chain the rows together: app.db.audit.log_event computes them when it writes an event (prev_hash
+    is the previous event's hash, "GENESIS" for the first), and app.db.audit.verify_chain recomputes them.
     """
 
     __tablename__ = "audit_events"
@@ -741,6 +742,9 @@ class AuditEvent(Base):
         Index(None, "entity_type", "entity_id"),
         Index(None, "at"),
         Index(None, "actor_user_id"),
+        # Migration 0002: no two events may extend the same predecessor, so the hash chain can never fork. The first
+        # event uses prev_hash "GENESIS" (not NULL), so the start of the chain is covered too.
+        Index("uq_audit_events_prev_hash", "prev_hash", unique=True),
         {"sqlite_autoincrement": True},
     )
 
