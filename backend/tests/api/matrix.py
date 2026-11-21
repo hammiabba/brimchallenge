@@ -87,25 +87,26 @@ CASES: list[Case] = [
     Case("GET", "/vendors", ALL, ok=200),
     Case("GET", "/vendors/V001", ALL, ok=200),
     Case("GET", "/vendors/V999", ALL, ok=404),
-    Case("POST", "/vendors", "C", kwargs={"json": {
+    Case("POST", "/vendors", "C", ok=201, kwargs={"json": {
         "legal_name": "Test Supplies Inc.", "category": "Office Supplies", "address": "1 King St W, Toronto ON",
         "province_or_state": "ON", "country": "CA", "ap_contact_email": "ar@test-supplies.example"}}),
-    Case("POST", "/vendors/V001/approve", "F X", kwargs={"json": {}}),
-    Case("POST", "/vendors/V001/hold", "C F X", kwargs={"json": {"comment": "pending review"}}),
-    Case("POST", "/vendors/V001/bank-changes", "C", kwargs={"json": {
+    Case("POST", "/vendors/V054/approve", "F X", ok=200, kwargs={"json": {}}),  # V054 is pending_review
+    Case("POST", "/vendors/V001/hold", "C F X", ok=200, kwargs={"json": {"comment": "pending review"}}),
+    Case("POST", "/vendors/V001/bank-changes", "C", ok=201, kwargs={"json": {
         "institution": "004", "transit": "05541", "account": "1234567", "request_channel": "phone_callback_verified"}}),
     Case("GET", "/bank-changes", "C F X Au", ok=200),
-    Case("POST", "/bank-changes/BC-009/verify", "F X", kwargs={"json": {}}),
-    Case("POST", "/bank-changes/BC-009/reject", "F X", kwargs={"json": {"comment": "no callback"}}),
+    Case("POST", "/bank-changes/BC-009/verify", "F X", ok=200, kwargs={"json": {}}),
+    Case("POST", "/bank-changes/BC-009/reject", "F X", ok=200, kwargs={"json": {"comment": "no callback"}}),
     # spend, delegation, admin
     Case("GET", "/spend", "A C F X Au", ok=200),
-    Case("PUT", "/me/delegation", "A F X", kwargs={"json": {"delegate_user_id": "U003", "starts_on": "2026-11-10"}}),
+    Case("PUT", "/me/delegation", "A F X", ok=200,
+         kwargs={"json": {"delegate_user_id": "U001", "starts_on": "2026-11-10"}}),
     Case("GET", "/admin/policies", "X Au", ok=200),
-    Case("PATCH", "/admin/policies/P01", "X", kwargs={"json": {"notes": "reviewed"}}),
+    Case("PATCH", "/admin/policies/P01", "X", ok=200, kwargs={"json": {"notes": "reviewed"}}),
     Case("GET", "/admin/users", "X Au", ok=200),
-    Case("PATCH", "/admin/users/U013", "X", kwargs={"json": {"approval_limit_cad": "1000.00"}}),
+    Case("PATCH", "/admin/users/U013", "X", ok=200, kwargs={"json": {"approval_limit_cad": "1000.00"}}),
     Case("GET", "/admin/absences", "X Au", ok=200),
-    Case("POST", "/admin/absences", "X", kwargs={"json": {
+    Case("POST", "/admin/absences", "X", ok=201, kwargs={"json": {
         "user_id": "U007", "delegate_user_id": "U003", "starts_on": "2026-11-10"}}),
     # audit
     Case("GET", "/audit", "X Au", ok=200),

@@ -20,8 +20,11 @@ All endpoints exist with typed models so `/openapi.json` is complete.
 - **Live:** auth; bill list and detail (scoped); approval queue; submissions list; intake items; payments list,
   dashboard and detail; vendors list and detail; bank changes list; spend; admin reads; audit list, entity history,
   CSV export.
-- **501 until the DB helpers land:** every write (they need `log_event()`, DB-backed RefData, bill rebuild and
-  controls-run storage) and the inbox job.
+- **Live writes:** vendor onboarding, approval and hold; bank change request, verification and rejection;
+  self-service delegation; admin edits to users, policies and absences. Each runs in one write session
+  (`get_write_session`) with exactly one audit event through `app/services/events.record`, then commits.
+- **501 until DB-backed RefData lands:** bill edits, flags, submit, approve/reject, payments and the inbox job
+  (they call controls, which must read the database, not the dataset CSVs).
 
 The permission matrix (`tests/api/matrix.py`) lists every endpoint x role.
 

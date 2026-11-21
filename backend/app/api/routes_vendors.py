@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.common import READ_ERRORS, WRITE_ERRORS, Limit, Offset
-from app.api.errors import not_implemented
 from app.api.schemas_api import (
     BankChangeIn,
     BankChangeOut,
@@ -20,7 +19,7 @@ from app.api.schemas_api import (
 )
 from app.auth.deps import CurrentUser, require_role
 from app.auth.roles import ALL_ROLES, AP_CLERK, BACK_OFFICE_READ, CONTROLLER_ADMIN, FINANCE_MANAGER, VENDOR_APPROVERS
-from app.db.database import get_session
+from app.db.database import get_session, get_write_session
 from app.services import vendors
 
 router = APIRouter(tags=["vendors"])
@@ -41,25 +40,37 @@ def get_vendor(vendor_id: str, user: CurrentUser = Depends(require_role(*ALL_ROL
 
 
 @router.post("/vendors", response_model=VendorDetail, status_code=201, responses=WRITE_ERRORS)
-def onboard_vendor(body: VendorIn, user: CurrentUser = Depends(require_role(AP_CLERK))):
-    raise not_implemented("Vendor onboarding")
+def onboard_vendor(body: VendorIn, user: CurrentUser = Depends(require_role(AP_CLERK)),
+                   db: Session = Depends(get_write_session)):
+    vendor_id = vendors.onboard(db, user, body)
+    db.commit()
+    return vendors.vendor_detail(db, user.role, vendor_id)
 
 
 @router.post("/vendors/{vendor_id}/approve", response_model=VendorDetail, responses=WRITE_ERRORS)
-def approve_vendor(vendor_id: str, body: CommentIn, user: CurrentUser = Depends(require_role(*VENDOR_APPROVERS))):
-    raise not_implemented("Vendor approval")
+def approve_vendor(vendor_id: str, body: CommentIn, user: CurrentUser = Depends(require_role(*VENDOR_APPROVERS)),
+                   db: Session = Depends(get_write_session)):
+    vendors.approve(db, user, vendor_id, body.comment)
+    db.commit()
+    return vendors.vendor_detail(db, user.role, vendor_id)
 
 
 @router.post("/vendors/{vendor_id}/hold", response_model=VendorDetail, responses=WRITE_ERRORS)
 def hold_vendor(vendor_id: str, body: CommentIn,
-                user: CurrentUser = Depends(require_role(AP_CLERK, FINANCE_MANAGER, CONTROLLER_ADMIN))):
-    raise not_implemented("Vendor hold")
+                user: CurrentUser = Depends(require_role(AP_CLERK, FINANCE_MANAGER, CONTROLLER_ADMIN)),
+                db: Session = Depends(get_write_session)):
+    vendors.hold(db, user, vendor_id, body.comment)
+    db.commit()
+    return vendors.vendor_detail(db, user.role, vendor_id)
 
 
 @router.post("/vendors/{vendor_id}/bank-changes", response_model=BankChangeOut, status_code=201,
              responses=WRITE_ERRORS)
-def request_bank_change(vendor_id: str, body: BankChangeIn, user: CurrentUser = Depends(require_role(AP_CLERK))):
-    raise not_implemented("Bank change request")
+def request_bank_change(vendor_id: str, body: BankChangeIn, user: CurrentUser = Depends(require_role(AP_CLERK)),
+                        db: Session = Depends(get_write_session)):
+    change_id = vendors.request_bank_change(db, user, vendor_id, body)
+    db.commit()
+    return vendors.bank_change(db, user.role, change_id)
 
 
 @router.get("/bank-changes", response_model=list[BankChangeOut], responses=READ_ERRORS)
@@ -70,11 +81,17 @@ def list_bank_changes(user: CurrentUser = Depends(require_role(*BACK_OFFICE_READ
 
 @router.post("/bank-changes/{change_id}/verify", response_model=BankChangeOut, responses=WRITE_ERRORS)
 def verify_bank_change(change_id: str, body: CommentIn,
-                       user: CurrentUser = Depends(require_role(*VENDOR_APPROVERS))):
-    raise not_implemented("Bank change verification")
+                       user: CurrentUser = Depends(require_role(*VENDOR_APPROVERS)),
+                       db: Session = Depends(get_write_session)):
+    vendors.verify_bank_change(db, user, change_id, body.comment)
+    db.commit()
+    return vendors.bank_change(db, user.role, change_id)
 
 
 @router.post("/bank-changes/{change_id}/reject", response_model=BankChangeOut, responses=WRITE_ERRORS)
 def reject_bank_change(change_id: str, body: CommentIn,
-                       user: CurrentUser = Depends(require_role(*VENDOR_APPROVERS))):
-    raise not_implemented("Bank change rejection")
+                       user: CurrentUser = Depends(require_role(*VENDOR_APPROVERS)),
+                       db: Session = Depends(get_write_session)):
+    vendors.reject_bank_change(db, user, change_id, body.comment)
+    db.commit()
+    return vendors.bank_change(db, user.role, change_id)

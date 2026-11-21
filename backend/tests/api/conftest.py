@@ -8,7 +8,9 @@ The repo-wide autouse fixtures (no network, no API key, temp cache dirs) still a
 """
 from __future__ import annotations
 
+import shutil
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -52,26 +54,45 @@ def _audit_hmac_key(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     get_db_settings.cache_clear()
 
 
+def _engine_on(path: Path) -> Engine:
+    return make_engine(f"sqlite:///{path}")
+
+
 @pytest.fixture(scope="session")
-def seeded_engine(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Engine]:
-    path: Path = tmp_path_factory.mktemp("api-db") / "ap.db"
+def seeded_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A migrated, fully seeded database file. Never used directly: tests get copies of it."""
+    path: Path = tmp_path_factory.mktemp("api-template") / "ap.db"
     url = f"sqlite:///{path}"
     migrate_to_head(url)
     engine = make_engine(url)
     with Session(engine) as s:
         seed_all(s, get_settings().dataset_dir)
+    with engine.connect() as conn:  # fold the WAL into the main file so a plain file copy is complete
+        conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
+    engine.dispose()
+    return path
+
+
+def _copy(template: Path, folder: Path) -> Path:
+    target = folder / "ap.db"
+    shutil.copyfile(template, target)
+    return target
+
+
+@pytest.fixture(scope="session")
+def seeded_engine(seeded_template: Path, tmp_path_factory: pytest.TempPathFactory) -> Iterator[Engine]:
+    """The shared database for read tests. Tests that change data use `fresh_engine` instead."""
+    engine = _engine_on(_copy(seeded_template, tmp_path_factory.mktemp("api-shared")))
     yield engine
     engine.dispose()
 
 
 @pytest.fixture
-def db_factory(seeded_engine: Engine) -> sessionmaker[Session]:
-    return sessionmaker(bind=seeded_engine, expire_on_commit=False)
-
-
-@pytest.fixture
-def write_factory(seeded_engine: Engine) -> sessionmaker[Session]:
-    return sessionmaker(bind=as_write_engine(seeded_engine), expire_on_commit=False)
+def fresh_engine(seeded_template: Path, tmp_path: Path) -> Iterator[Engine]:
+    """A private copy of the seeded database for one test, so its writes can't affect any other test."""
+    engine = _engine_on(_copy(seeded_template, tmp_path))
+    yield engine
+    engine.dispose()
 
 
 def _scoped(factory: sessionmaker[Session]):
@@ -87,14 +108,54 @@ def _scoped(factory: sessionmaker[Session]):
     return _session
 
 
+@contextmanager
+def _client_on(engine: Engine) -> Iterator[TestClient]:
+    read = sessionmaker(bind=engine, expire_on_commit=False)
+    write = sessionmaker(bind=as_write_engine(engine), expire_on_commit=False)
+    app.dependency_overrides[get_session] = _scoped(read)
+    app.dependency_overrides[get_write_session] = _scoped(write)
+    try:
+        with TestClient(app) as c:
+            yield c
+    finally:
+        app.dependency_overrides.pop(get_session, None)
+        app.dependency_overrides.pop(get_write_session, None)
+
+
 @pytest.fixture
-def client(db_factory: sessionmaker[Session], write_factory: sessionmaker[Session]) -> Iterator[TestClient]:
-    app.dependency_overrides[get_session] = _scoped(db_factory)
-    app.dependency_overrides[get_write_session] = _scoped(write_factory)
-    with TestClient(app) as c:
+def db_factory(seeded_engine: Engine) -> sessionmaker[Session]:
+    return sessionmaker(bind=seeded_engine, expire_on_commit=False)
+
+
+@pytest.fixture
+def client(seeded_engine: Engine) -> Iterator[TestClient]:
+    with _client_on(seeded_engine) as c:
         yield c
-    app.dependency_overrides.pop(get_session, None)
-    app.dependency_overrides.pop(get_write_session, None)
+
+
+@pytest.fixture
+def fresh_db(fresh_engine: Engine) -> sessionmaker[Session]:
+    """Read sessions on this test's private database, for checking what a write did."""
+    return sessionmaker(bind=fresh_engine, expire_on_commit=False)
+
+
+@pytest.fixture
+def fresh_client(fresh_engine: Engine) -> Iterator[TestClient]:
+    with _client_on(fresh_engine) as c:
+        yield c
+
+
+@pytest.fixture
+def act_as(fresh_client: TestClient) -> Callable[[str], TestClient]:
+    """act_as("U004") signs the private-database client in as that user."""
+
+    def _act(user_id: str) -> TestClient:
+        fresh_client.cookies.clear()
+        r = fresh_client.post("/auth/login", json={"user_id": user_id})
+        assert r.status_code == 200, r.text
+        return fresh_client
+
+    return _act
 
 
 @pytest.fixture

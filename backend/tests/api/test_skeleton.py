@@ -28,10 +28,11 @@ def test_validation_errors_use_envelope_without_echoing_input(as_role):
     assert all(set(d) == {"loc", "msg", "type"} for d in err["details"])
 
 
-def test_money_must_be_a_string(as_role):
-    client = as_role("controller_admin")
+def test_money_must_be_a_string(act_as):
+    client = act_as("U002")
     assert client.patch("/admin/users/U013", json={"approval_limit_cad": 1000.5}).status_code == 422
-    assert client.patch("/admin/users/U013", json={"approval_limit_cad": "1000.50"}).status_code == 501
+    r = client.patch("/admin/users/U013", json={"approval_limit_cad": "1000.50"})
+    assert r.status_code == 200 and r.json()["approval_limit_cad"] == "1000.50"
 
 
 def test_cors_allows_the_frontend_with_credentials(client):

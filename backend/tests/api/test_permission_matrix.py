@@ -17,8 +17,13 @@ def _call(client, case: Case):
 
 @pytest.mark.parametrize("role", list(ROLE_USERS))
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c.id)
-def test_role_matrix(as_role, case: Case, role: str):
-    client = as_role(role)
+def test_role_matrix(request, case: Case, role: str):
+    # Reads share one database; each write cell gets its own fresh copy, so its outcome never depends on what
+    # another cell changed.
+    if case.method == "GET":
+        client = request.getfixturevalue("as_role")(role)
+    else:
+        client = request.getfixturevalue("act_as")(ROLE_USERS[role])
     r = _call(client, case)
     assert r.status_code == case.expected(role), f"{role} {case.id}: {r.status_code} {r.text[:300]}"
     if r.status_code >= 400:
