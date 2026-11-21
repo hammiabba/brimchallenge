@@ -9,7 +9,11 @@ Why strings: the model copies, the code parses. That keeps rounding and "helpful
 corrections out of the model, and puts number/date parsing in tested Python.
 
 Structured outputs (`messages.parse` with a Pydantic `output_format`) guarantee
-the response matches RawInvoice, so there's no JSON-in-text scraping.
+the response matches the schema, so there's no JSON-in-text scraping.
+
+Two models on purpose: the API rejects schemas with more than 16 union-typed
+parameters, so the model fills WireInvoice (plain strings, "" = not printed) and
+`to_raw()` converts it to RawInvoice (None = absent), which the rest of the app uses.
 
 To change the prompt: edit prompts/extract_invoice.md and bump PROMPT_VERSION.
 That changes the cache key, so old results are not reused.
@@ -84,6 +88,72 @@ class RawInvoice(BaseModel):
     bank_account: str | None
 
 
+# ---------------------------------------------------------------- wire model (what the API fills)
+# Same fields as the Raw* models, but union-free: "" means "not printed on the document".
+# Keep both in sync when adding a field; to_raw() fails loudly if they drift.
+
+_ABSENT = 'Empty string "" if not printed'
+
+
+class WireLine(BaseModel):
+    description: str
+    quantity: str = Field(description=_ABSENT)
+    unit_price: str = Field(description=_ABSENT)
+    amount: str = Field(description=_ABSENT)
+    line_type: Literal["goods", "services"]
+
+
+class WireTax(BaseModel):
+    label: str
+    rate: str = Field(description=_ABSENT)
+    amount: str
+
+
+class WireInvoice(BaseModel):
+    document_type: Literal["invoice", "credit_note", "statement", "other"]
+    vendor_name: str
+    vendor_address: str
+    vendor_gst_number: str
+    vendor_qst_number: str
+    vendor_email: str
+    invoice_number: str
+    invoice_date: str
+    due_date: str
+    payment_terms: str
+    currency: str = Field(description='ISO code from the totals line, e.g. "CAD" or "USD"; "" if no code is printed')
+    bill_to_name: str
+    bill_to_address: str
+    ship_to_address: str
+    po_number: str = Field(description='PO number as printed; "" if absent or the PO field is blank')
+    po_field_present: bool
+    contract_reference: str
+    lines: list[WireLine] = Field(description="One entry per billed line, in document order")
+    subtotal: str
+    taxes: list[WireTax]
+    total: str
+    bank_institution: str
+    bank_transit: str
+    bank_account: str
+
+
+def _opt(s: str) -> str | None:
+    s = s.strip()
+    return s or None
+
+
+def to_raw(wire: WireInvoice) -> RawInvoice:
+    """Wire → internal model: strip strings; "" / whitespace-only become None for optional fields."""
+    required = {"document_type", "vendor_name", "po_field_present", "lines", "taxes"}
+    data = {k: (v.strip() if isinstance(v, str) else v) if k in required else _opt(v)
+            for k, v in wire.model_dump(exclude={"lines", "taxes"}).items()}
+    data["lines"] = [RawLine(description=ln.description.strip(), quantity=_opt(ln.quantity),
+                             unit_price=_opt(ln.unit_price), amount=_opt(ln.amount), line_type=ln.line_type)
+                     for ln in wire.lines]
+    data["taxes"] = [RawTax(label=t.label.strip(), rate=_opt(t.rate), amount=t.amount.strip())
+                     for t in wire.taxes]
+    return RawInvoice(**data)
+
+
 # ---------------------------------------------------------------- prompt
 
 @cache
@@ -156,7 +226,7 @@ def parse_invoice(text: str | None, *, file_bytes: bytes | None = None, filename
                 max_tokens=16000,
                 system=system,
                 messages=[{"role": "user", "content": content}],
-                output_format=RawInvoice,
+                output_format=WireInvoice,
                 output_config={"effort": s.llm_effort},
             )
         except (anthropic.APIConnectionError, anthropic.RateLimitError, anthropic.InternalServerError) as exc:
@@ -169,6 +239,6 @@ def parse_invoice(text: str | None, *, file_bytes: bytes | None = None, filename
             last_error = LLMExtractionError(f"Output truncated for {filename}")
             continue
         if resp.parsed_output is not None:
-            return resp.parsed_output
+            return to_raw(resp.parsed_output)
         last_error = LLMExtractionError(f"No parsed output for {filename}")
     raise LLMExtractionError(f"LLM extraction failed for {filename}: {last_error}") from last_error
