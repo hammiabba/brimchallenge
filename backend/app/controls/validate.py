@@ -164,6 +164,40 @@ def _unknown_vendor_lookalike(bill: DraftBill, ref: RefData) -> list[Flag]:
                  evidence=ev, field="vendor")]
 
 
+def _last4(account: str | None) -> str:
+    return re.sub(r"\D", "", account or "")[-4:]
+
+
+def _account_from_after_the_invoice(bill: DraftBill, ref: RefData, vid: str) -> list[Flag]:
+    """An invoice dated before a bank change that already shows the account the change set up.
+
+    A genuine invoice prints the account in use on its date, which is the old one. Showing the new one means the
+    document was made or edited after the change (Cascadia's scan 1624: dated Oct 24, new account from Oct 27).
+    The master already holds the new account, so the plain invoice-vs-master comparison can't see this.
+    """
+    printed = _last4(bill.vendor.bank.account)
+    if not printed:
+        return []
+    later = sorted((c for c in ref.bank_changes
+                    if c["vendor_id"] == vid and (d(c["changed_at"]) or bill.invoice_date) > bill.invoice_date),
+                   key=lambda c: c["changed_at"])
+    if not later or printed == later[0]["old_account_last4"]:
+        return []
+    change = next((c for c in later if c["new_account_last4"] == printed), None)
+    if change is None:
+        return []
+    return [flag("BANK_DETAILS_MISMATCH",
+                 f"Invoice dated {bill.invoice_date} shows bank account …{printed}, but that account was only set up "
+                 f"on {change['changed_at']} ({change['change_id']}, via {change['request_channel']}). On the invoice "
+                 f"date the account was …{later[0]['old_account_last4']}, so the invoice was likely edited or forged. "
+                 f"Verify by calling the vendor on a known number before paying.",
+                 evidence={"kind": "account_before_change", "invoice_date": str(bill.invoice_date),
+                           "printed_last4": printed, "change_id": change["change_id"],
+                           "changed_at": change["changed_at"],
+                           "account_on_invoice_date": later[0]["old_account_last4"]},
+                 field="vendor.bank")]
+
+
 def check_vendor(bill: DraftBill, ref: RefData) -> list[Flag]:
     vid = vendor_id(bill)
     if not vid or vid not in ref.vendors:
@@ -228,6 +262,7 @@ def check_vendor(bill: DraftBill, ref: RefData) -> list[Flag]:
                                     "invoice": {k: bank.model_dump()[k] for k in pairs},
                                     "master": {k: v[f"bank_{k}"] for k in pairs}},
                           field="vendor.bank"))
+    flags += _account_from_after_the_invoice(bill, ref, vid)
 
     # Most recent bank change in the history
     changes = sorted((c for c in ref.bank_changes if c["vendor_id"] == vid), key=lambda c: c["changed_at"])

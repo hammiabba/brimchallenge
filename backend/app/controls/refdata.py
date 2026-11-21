@@ -211,21 +211,26 @@ def bill_from_history(ref: RefData, invoice_id: str) -> DraftBill:
     """Turns a historical invoice into a DraftBill. Used for tests and the history replay.
 
     History has no bank details or GST number on the invoice, so we copy the
-    vendor master values (i.e. assume the invoice matched the master).
+    vendor master values (i.e. assume the invoice matched the master). The exception is bank details on an invoice
+    dated before a later bank change: the master's current account wasn't in use then, and only the old account's
+    last 4 digits are on record, so the bank is left empty rather than invented.
     file_hash is set to the invoice id, so history rows and replayed bills share one id.
     """
     i = ref.invoices[invoice_id]
     v = ref.vendors.get(i["vendor_id"], {})
     rows = ref.invoice_lines.get(invoice_id, [])
+    changed_later = any(c["vendor_id"] == i["vendor_id"] and c["changed_at"][:10] > i["invoice_date"][:10]
+                        for c in ref.bank_changes)
+    bank = BankDetails() if changed_later else BankDetails(institution=v.get("bank_institution") or None,
+                                                           transit=v.get("bank_transit") or None,
+                                                           account=v.get("bank_account") or None)
     return DraftBill(
         source=SourceInfo(file_name=f"{invoice_id}.pdf", file_hash=invoice_id),
         vendor=VendorOnInvoice(
             name_on_invoice=v.get("legal_name", ""),
             gst_number=v.get("gst_hst_number") or None,
             qst_number=v.get("qst_number") or None,
-            bank=BankDetails(institution=v.get("bank_institution") or None,
-                             transit=v.get("bank_transit") or None,
-                             account=v.get("bank_account") or None),
+            bank=bank,
             vendor_id=i["vendor_id"],
             match_method=MatchMethod.GST_NUMBER if v.get("gst_hst_number") else MatchMethod.BANK_ACCOUNT,
             match_score=1.0,
