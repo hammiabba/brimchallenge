@@ -60,6 +60,7 @@ def test_full_pipeline_on_text_pdf(repo):
     assert bill.ship_to_province == "ON"
     assert bill.source.sender_address == "ar@harlowandstern-llp.example"
     assert bill.extraction_warnings == []
+    assert all(ln.coding is not None for ln in bill.lines)
     # The text layer was used, so the model received text, not an image.
     sent = client.calls[0]["messages"][0]["content"][0]
     assert sent["type"] == "text" and "HA26-2766" in sent["text"]

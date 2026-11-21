@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Literal
 
+from app.coding import suggest as coding
 from app.config import get_settings
 from app.extraction import cache, llm_parser, normalize, selfcheck, text_layer, vendor_match
 from app.extraction.llm_parser import LLMUnavailableError, RawInvoice
@@ -123,6 +124,10 @@ def extract_outcome(data: bytes, filename: str, *, email_id: str | None = None, 
     except ExtractionIncomplete as exc:
         out.error = str(exc)
         return out
+    try:
+        out.draft = coding.suggest(out.draft, repo)
+    except Exception as exc:  # a coding bug must not lose an otherwise good extraction
+        out.draft.extraction_warnings.append(f"coding suggestions unavailable: {exc}")
     out.status = "ok"
     return out
 
