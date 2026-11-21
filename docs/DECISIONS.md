@@ -47,3 +47,4 @@ One line per decision: **what** and **why**. Add to this file when you make a ch
 | 41 | DB | Audit reads return `AuditRecord` (`schemas.AuditEvent` plus `seq`, `request_id`, `prev_hash`, `hash`) | Keyset pagination needs `seq`; a subclass extends the contract without changing `schemas.py`. |
 | 42 | DB | log_event refuses to run on a read session | Every audited write must hold the write lock; misuse fails loudly in development. |
 | 43 | DB | chain_head() exposes the newest (seq, hash) for export anchoring | verify_chain cannot detect deletion of the newest events; an anchor kept by the auditor can. |
+| 44 | DB | Correction to row 37: the recipe sets the sqlite3 driver's isolation_level to None (driver autocommit, implicit BEGIN disabled) so SQLAlchemy emits BEGIN / BEGIN IMMEDIATE itself; row 37's 'driver autocommit off' is inverted | Keeps the decision log accurate; the log is append-only. |
