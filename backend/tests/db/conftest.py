@@ -4,6 +4,13 @@ Fixtures for the DB tests: a fresh SQLite file per test, migrated with the real 
 Every database lives in pytest's tmp_path, never inside the repo. The repo-wide autouse fixtures in
 tests/conftest.py still apply (network blocked, settings isolated); SQLite needs neither.
 
+Two kinds of session, like the app: `session` is a read session (plain BEGIN), `write_session` a write session
+(BEGIN IMMEDIATE). Use `write_session` wherever a test writes audit events; app.db.audit.log_event refuses
+anything else.
+
+Every test in tests/db runs with AUDIT_HMAC_KEY set to a fixed, public test value (autouse fixture below), so audit
+fingerprints are deterministic. A test that needs a different or missing key sets it itself and clears the cache.
+
 Row factories (make_*) build the smallest valid rows for the parent tables a test needs. They are plain functions,
 so a test can override any column to break exactly one rule.
 """
@@ -21,10 +28,22 @@ from sqlalchemy.orm import Session
 
 from app.config import BACKEND_DIR
 from app.db import models
-from app.db.database import make_engine
+from app.db.database import as_write_engine, make_engine
+from app.db.settings import get_db_settings
 
 ALEMBIC_INI = BACKEND_DIR / "alembic.ini"
 NOW = datetime(2026, 11, 2, 15, 0, 0)  # naive UTC, like every stored timestamp
+# Not a secret: a fixed key so fingerprints are reproducible in tests. 40 characters (the minimum is 32).
+TEST_AUDIT_HMAC_KEY = "test-only-audit-hmac-key-0123456789abcdef"
+
+
+@pytest.fixture(autouse=True)
+def _audit_hmac_key(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Set AUDIT_HMAC_KEY for every db test, and drop the cached settings before and after so nothing leaks."""
+    monkeypatch.setenv("AUDIT_HMAC_KEY", TEST_AUDIT_HMAC_KEY)
+    get_db_settings.cache_clear()
+    yield
+    get_db_settings.cache_clear()
 
 
 # ---------------------------------------------------------------- alembic + engine fixtures
@@ -61,8 +80,15 @@ def migrated_engine(alembic_cfg: Config, db_url: str) -> Iterator[Engine]:
 
 @pytest.fixture
 def session(migrated_engine: Engine) -> Iterator[Session]:
-    """An ORM session on the migrated database. Nothing is committed unless the test commits."""
+    """A read session (plain BEGIN) on the migrated database. Nothing is committed unless the test commits."""
     with Session(migrated_engine) as s:
+        yield s
+
+
+@pytest.fixture
+def write_session(migrated_engine: Engine) -> Iterator[Session]:
+    """A write session (BEGIN IMMEDIATE) on the migrated database, as app.db.database.get_write_session gives."""
+    with Session(as_write_engine(migrated_engine)) as s:
         yield s
 
 
@@ -103,7 +129,7 @@ def make_bill(**overrides: object) -> models.Bill:
 
 
 def make_audit_event(**overrides: object) -> models.AuditEvent:
-    """A valid audit row. hash is a placeholder; the hash chain comes in a later step."""
+    """A raw audit row for schema tests. It bypasses app.db.audit.log_event on purpose, so hash is a placeholder."""
     values: dict[str, object] = {
         "event_id": "EV-000001", "at": NOW, "actor_user_id": "U004", "actor_role": "ap_clerk",
         "action": "invoice.created", "entity_type": "invoice", "entity_id": "AP-00001",
