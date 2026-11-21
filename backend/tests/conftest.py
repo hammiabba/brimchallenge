@@ -57,6 +57,7 @@ def _isolated_dirs(tmp_path, monkeypatch):
     s = get_settings()
     monkeypatch.setattr(s, "cache_dir", tmp_path / "cache")
     monkeypatch.setattr(s, "output_dir", tmp_path / "output")
+    monkeypatch.setattr(s, "files_dir", tmp_path / "files")
     monkeypatch.setattr(s, "anthropic_api_key", None)
 
 

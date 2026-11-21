@@ -90,6 +90,9 @@ def extract_outcome(data: bytes, filename: str, *, email_id: str | None = None, 
                     repo: ReferenceRepository | None = None, client=None) -> ExtractionOutcome:
     repo = repo or default_repository()
     file_hash = cache.file_sha256(data)
+    from app.intake.files import keep  # here, not at the top: intake.files reads the DB, extraction doesn't
+
+    keep(data)  # the original, for side-by-side review (GET /intake/files/{file_hash})
     if problem := filecheck.problem(data, filename):
         return ExtractionOutcome(filename, file_hash, "failed", error=problem)
     read_as, renamed = filecheck.real_name(data, filename)
