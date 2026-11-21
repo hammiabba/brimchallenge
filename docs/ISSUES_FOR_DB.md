@@ -16,6 +16,8 @@ each hook exists for.
 | 4 | `feat(api): call recode_for_requester from update_header` | `app/services/bills.py` | After the fields are set, `update_header` calls `app.coding.requester.recode_for_requester(db, bill, changes)`. | Setting the requester re-runs the department override: lines still on our suggestion (`coding_status == "suggested"`) take the requester's department; clerk-coded lines are untouched. | `tests/api/test_clerk_loop.py::test_setting_the_requester_moves_suggested_departments` |
 | 6 | `feat(api): call replay_on_startup from main` | `app/main.py` | One import and `app.router.on_startup.append(lambda: replay_on_startup(app))`. | Learned codings survive a restart: at start-up every accepted/overridden line on an app bill is replayed into the in-memory store (`app.coding.feedback.replay_learned_codings`). Uses the app's `get_session` (or its test override); a missing or unmigrated DB is logged and skipped, never stops start-up. | `tests/api/test_clerk_loop.py::test_app_start_up_replays_learned_codings`, `::test_learned_codings_are_rebuilt_from_the_database` |
 | 5 | `feat(api): call recheck_bill from update_header` | `app/services/bills.py` | Just before `controls_runner.rerun`, `update_header` calls `app.extraction.recheck.recheck_bill(db, bill, changes)`. | Edits re-run the self-check, so confidence and warnings stay truthful: a field the clerk set gets confidence 1.0 and loses its extraction warnings (e.g. an ambiguous date); arithmetic warnings are recomputed. Runs before controls so `LOW_EXTRACTION_CONFIDENCE` sees the new values. | `tests/api/test_clerk_loop.py::test_editing_a_field_rechecks_its_confidence_and_warnings` |
+| 7 | `feat(api): call action_for from list_emails` | `app/api/schemas_api.py`, `app/services/intake.py` | `EmailOut` gains an optional `suggested_action: SuggestedAction | None = None` (additive); `list_emails` passes `suggested_action=action_for(e)`. | `GET /intake/emails` shows the next step per email (reply text, payment answer), without a second list route on the same path. | `tests/api/test_intake_review.py::test_list_shows_the_suggested_action_and_filters_by_class` |
+| 8 | `feat(api): mount the intake router without a router-wide guard` | `app/main.py` | `app.include_router(intake_router)` instead of the C/F/X guard at mount (and the now-unused imports). | The intake router's two reads must admit auditors like `/intake/emails`; each route now has its own `require_role(*BACK_OFFICE_READ)`. | `tests/api/test_intake_review.py::test_back_office_can_read_an_email`, `::test_employee_and_approver_are_refused`; matrix rows |
 
 ## New test files in `tests/api/`
 
@@ -25,8 +27,18 @@ They use your fixtures (`act_as`, `fresh_db`, `factories.draft`), so they have t
 |---|---|
 | `tests/api/test_intake_received.py` | Same file twice → same bill, one audit event; different file → new bill; voided bill doesn't block a resend. |
 | `tests/api/test_clerk_loop.py` | Override → next bill's suggestion cites it; requester change moves suggested departments (and doesn't stack reasons); U015 refused with 422; editing a date rechecks its confidence and warning. |
+| `tests/api/test_intake_review.py` | Whole inbox run, then `GET /intake/emails` (suggested actions), `/intake/emails/{id}` (EM-056 to 059, EM-029) and `/intake/files/{hash}`; roles, 404s. Replaces `tests/api/test_intake_guard.py`, which tested the retired `/intake/upload` and `/intake/inbox/run`. |
 | `tests/api/test_flags_end_to_end.py` | The whole inbox through `POST /intake/inbox/jobs` with the model replayed from `tests/fixtures/raw`: every §4 trap raises its flag, 18 clean invoices have no `block` flag. One run per module; reuses `_client_on`, `_copy`, `_engine_on` from your conftest. |
 | `tests/api/test_intake_end_to_end.py` | A real PDF through `POST /submissions` → real pipeline (model output faked) → bill → controls flags (`VENDOR_LOOKALIKE` on HA26-2766); an unreadable file becomes a clean failed item. |
+
+## Other shared files touched
+
+| File | Change |
+|---|---|
+| `tests/api/matrix.py` | Commit `test(api): add matrix rows for intake email and file endpoints`: rows for `/intake/emails/{id}` and `/intake/files/{hash}` (C F X Au), the `/intake/drafts` row removed with the route. |
+| `app/config.py` | Additive `files_dir` setting (`backend/files`), for the kept originals. |
+| `.gitignore` | `backend/files/` and `.coverage`. |
+| `pyproject.toml` | `pytest-cov` in the dev extras. |
 
 ## Open points for you to decide
 

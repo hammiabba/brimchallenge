@@ -61,6 +61,7 @@ __pycache__/
 backend/.cache/
 backend/output/
 backend/files/
+.coverage
 
 # SQLite databases (app DB, test and scratch DBs) and their WAL/shared-memory files, anywhere in the repo
 *.db
