@@ -217,6 +217,9 @@ FLAG_CODES = {
     "GST_NUMBER_MISMATCH": "warn",
     "BANK_DETAILS_MISMATCH": "block",
     "BANK_CHANGE_UNVERIFIED": "block",
+    "VENDOR_PENDING_REVIEW": "warn",
+    "GST_NUMBER_MISSING": "warn",
+    "SENDER_DOMAIN_MISMATCH": "warn",
     # tax / arithmetic
     "TAX_WRONG_FOR_PROVINCE": "warn",
     "TAX_MISSING": "warn",
@@ -232,6 +235,7 @@ FLAG_CODES = {
     "PO_REQUIRED_MISSING": "block",
     "PO_OVER_BALANCE": "warn",
     "PO_CLOSED_OR_WRONG_VENDOR": "block",
+    "PO_NOT_FOUND": "block",
     # duplicates / fraud
     "DUPLICATE_EXACT": "block",
     "DUPLICATE_LIKELY": "warn",
@@ -240,8 +244,10 @@ FLAG_CODES = {
     # misc
     "CREDIT_NOTE": "info",
     "FOREIGN_CURRENCY": "info",
+    "CURRENCY_UNSUPPORTED": "block",
     "DATE_ANOMALY": "warn",
     "LOW_EXTRACTION_CONFIDENCE": "warn",
+    "REQUESTER_TERMINATED": "warn",
 }
 
 
