@@ -1,51 +1,35 @@
-import { Alert, Badge, Code, Group, List, Paper, Stack, Text, Title } from '@mantine/core'
+import { Group, Stack, Text, Title } from '@mantine/core'
+import { IconInfoCircle } from '@tabler/icons-react'
 
 import { useCurrentUser } from '../auth/context'
 import { ROLE_LABELS } from '../auth/roles'
+import { Icon } from '../ui/Icon'
 import { isInNavigation, type NavItem } from './navigation'
 
 /**
- * Stands in for a screen that isn't built yet: its name, what will be built there and the API behind it. When the
- * signed-in role doesn't have this screen in its sidebar, it says so; the server still decides what they may do.
+ * Stands in for a screen that isn't built yet: its title and one line saying what is missing and what comes next.
+ * When the signed-in role doesn't have this screen in its sidebar, a second line says so; the server still decides
+ * what they may do.
  */
 export function PlaceholderPage({ item }: { item: NavItem }) {
   const user = useCurrentUser()
   const inNav = isInNavigation(user.role, item.key)
 
   return (
-    <Stack maw={760} gap="md">
-      <Group gap="sm">
-        <Title order={2}>{item.label}</Title>
-        <Badge color="gray" variant="outline">
-          Not built yet
-        </Badge>
-      </Group>
-
+    <Stack maw={720} gap="sm">
+      <Title order={1}>{item.label}</Title>
+      <Text>{item.placeholder}</Text>
       {!inNav && (
-        <Alert color="gray" variant="light">
-          This screen isn't in the {ROLE_LABELS[user.role]} navigation. When it is built, the server decides what you
-          can see and do here.
-        </Alert>
+        <Group gap={6} wrap="nowrap" align="flex-start">
+          <Text c="dimmed" component="span" mt={2}>
+            <Icon icon={IconInfoCircle} />
+          </Text>
+          <Text size="sm" c="dimmed">
+            This screen isn't in the {ROLE_LABELS[user.role]} navigation. When it is built, the server decides what you
+            can see and do here.
+          </Text>
+        </Group>
       )}
-
-      <Paper withBorder p="md">
-        <Stack gap="sm">
-          <Text fw={600} size="sm">
-            What will be built here
-          </Text>
-          <Text size="sm">{item.description}</Text>
-          <Text fw={600} size="sm" mt="xs">
-            API
-          </Text>
-          <List size="sm" spacing={2}>
-            {item.endpoints.map((endpoint) => (
-              <List.Item key={endpoint}>
-                <Code>{endpoint}</Code>
-              </List.Item>
-            ))}
-          </List>
-        </Stack>
-      </Paper>
     </Stack>
   )
 }

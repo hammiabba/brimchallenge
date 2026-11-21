@@ -19,21 +19,24 @@ export function errorTitle(error: ApiError): string {
   return 'Something went wrong'
 }
 
-/** Shows `error` as a red notification. Non-ApiError values get a generic message and are logged to the console. */
+/**
+ * Shows `error` as a notification: white, with a thin red bar on its left edge (Mantine's `color`), the title and
+ * message in ink and the request id in small mono text. It floats, so it carries the theme's one shadow.
+ * Non-ApiError values get a generic message and are logged to the console.
+ */
 export function notifyError(error: unknown, title?: string): void {
   if (!(error instanceof ApiError)) {
     console.error(error)
   }
   const apiError = error instanceof ApiError ? error : null
-  // The body: the message, then "Request id: ..." in small dimmed text when there is one.
   notifications.show({
     color: 'red',
     title: title ?? (apiError ? errorTitle(apiError) : 'Something went wrong'),
     message: (
       <Stack gap={2}>
-        <Text size="sm">{apiError?.message ?? 'An unexpected error occurred.'}</Text>
+        <Text size="sm" c="var(--app-ink)">{apiError?.message ?? 'An unexpected error occurred.'}</Text>
         {apiError?.request_id && (
-          <Text size="xs" c="dimmed">
+          <Text size="xs" c="dimmed" ff="monospace">
             Request id: {apiError.request_id}
           </Text>
         )}
