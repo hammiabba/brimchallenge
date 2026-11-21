@@ -162,3 +162,13 @@ def test_replay_ignores_history_bills_and_unreviewed_lines(fresh_db):
 
     with fresh_db() as s:  # the seeded database: 426 history bills, no app bills yet
         assert replay_learned_codings(s) == 0
+
+
+def test_app_start_up_replays_learned_codings(act_as, monkeypatch, fresh_engine):
+    from app.coding.history_index import corrections_for, forget_corrections
+    from tests.api.conftest import _client_on
+
+    first = _override_polar(act_as, monkeypatch)
+    forget_corrections()
+    with _client_on(fresh_engine):  # a new app start on the same database
+        assert [c.bill_id for c in corrections_for("V001")] == [first["bill_id"]]

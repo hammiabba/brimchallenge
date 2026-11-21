@@ -25,6 +25,7 @@ from app.api.routes_intake import router as intake_router
 from app.auth.deps import require_role
 from app.auth.roles import AP_CLERK, CONTROLLER_ADMIN, FINANCE_MANAGER
 from app.auth.settings import get_auth_settings
+from app.coding.feedback import replay_on_startup
 from app.config import get_settings
 
 auth_settings = get_auth_settings()
@@ -45,6 +46,7 @@ app.add_middleware(
 app.add_middleware(RequestIdMiddleware)
 
 install_error_handlers(app)
+app.router.on_startup.append(lambda: replay_on_startup(app))
 
 # The intake router belongs to the intake lane; its role guard is applied here so that file stays untouched.
 app.include_router(intake_router, dependencies=[Depends(require_role(AP_CLERK, FINANCE_MANAGER, CONTROLLER_ADMIN))])
