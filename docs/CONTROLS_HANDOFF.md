@@ -78,8 +78,22 @@ result.recommendation     # "Hold: This bill is on V052 Harlow and Stern LLP, ..
 | `load_refdata()` / `bill_from_history(...)` | Load reference data; turn a historical invoice row into a `DraftBill` (tests, replay). |
 | `incoming.run_batch(items)` / `incoming.render_report(...)` | Runs the controls on the extracted incoming batch as one batch (so in-batch duplicates and splits are caught), sorts problem bills first and renders the report. Printed by `backend/scripts/run_incoming.py`. |
 | `history.replay(ref)` | Replays all historical invoices, each judged as of its own date, plus checks on `approvals.csv` and `payments.csv`. Printed by `backend/scripts/replay_history.py`. |
+| `flag_help.help_for(code)` / `flag_help.FLAG_HELP` | **For the UI team.** A short title and one plain-English help sentence (what it means, what to do) for every code in `FLAG_CODES`, plus its severity. Show the title as the badge, the flag's own `message` for this bill's details, and the help as a tooltip or help panel. A test fails if a code has no help. |
+| `refdata.history_taxes(ref, invoice, lines)` | Tax lines for a historical invoice, with the same tax codes the engine uses. Public now, so the DB seed uses it directly (`_history_taxes` still works as an alias). |
 
 `controls.permissions` re-exports `can_approve` / `can_release` (the API guide refers to that module).
+
+**For the UI team: flag help.** Every flag has a code, a severity and a `message` about this bill. For the general
+explanation, call `help_for(flag.code)` from `app.controls.flag_help` (also exported from `app.controls`):
+
+```python
+help_for("BANK_CHANGE_UNVERIFIED")
+# {"code": "BANK_CHANGE_UNVERIFIED", "severity": "block", "title": "Bank change not verified",
+#  "help": "The vendor's bank account was changed recently without a callback check, so hold payment until
+#           someone verifies it by phone."}
+```
+
+A code that isn't in the map (shouldn't happen) gets a generic title from the code name.
 
 ## Each check in plain English
 
