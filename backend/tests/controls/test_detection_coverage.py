@@ -22,6 +22,7 @@ from app.controls.approvals import can_approve
 from app.controls.history import replay_bill
 from app.controls.incoming import IncomingItem, run_batch
 from app.controls.refdata import bill_from_history
+from app.extraction import text_layer
 from app.extraction.pipeline import extract_outcome
 from tests.conftest import DATASET, INCOMING, FixtureClient
 
@@ -84,21 +85,28 @@ CASES = [
     Case("PO problems", "history", "AP-00159", "PO_OVER_BALANCE"),
     Case("arithmetic errors", "batch", "evergreenenergyu_000850.pdf", "TOTAL_MISMATCH"),
     Case("arithmetic errors", "batch", "northstarmediabu_NO261773.pdf", "LINE_MATH_ERROR"),
+    Case("low-quality scans", "batch", "scan_8749.png", "LOW_EXTRACTION_CONFIDENCE", {"was_ocr": True}),
+    Case("low-quality scans", "batch", "scan_8049.png", "LOW_EXTRACTION_CONFIDENCE", {"was_ocr": True}),
 ]
 
 # Items with no flag of their own. Each is explained in the doc's "Not caught" section.
 NO_FLAG = {
     "self-approval": "enforced by route() and can_approve(), not a flag (test below)",
-    "low-quality scans": "LOW_EXTRACTION_CONFIDENCE is in FLAG_CODES but nothing raises it",
 }
 
 
 @pytest.fixture(scope="module")
 def batch(repo, tmp_path_factory) -> dict[str, IncomingItem]:
-    """The incoming batch through the real pipeline (recorded model output) and run_batch, by file name."""
+    """The incoming batch through the real pipeline (recorded model output) and run_batch, by file name.
+
+    OCR is switched off, as it was when the fixtures were recorded: the scans are read by the vision model, which
+    leaves a note on them. With tesseract installed a clean OCR read leaves none, so the result would depend on
+    the machine.
+    """
     s = get_settings()
-    saved = s.cache_dir, s.anthropic_api_key
+    saved = s.cache_dir, s.anthropic_api_key, text_layer.ocr_available
     s.cache_dir, s.anthropic_api_key = tmp_path_factory.mktemp("cache"), None
+    text_layer.ocr_available = lambda: False
     try:
         emails = json.loads((DATASET / "inbox" / "emails.json").read_text(encoding="utf-8"))
         sent = {a: (e["email_id"], e["from_address"]) for e in emails for a in e.get("attachments") or []}
@@ -111,7 +119,7 @@ def batch(repo, tmp_path_factory) -> dict[str, IncomingItem]:
                                       sender=sender, error=o.error))
         return {it.file_name: it for it in run_batch(items)}
     finally:
-        s.cache_dir, s.anthropic_api_key = saved
+        s.cache_dir, s.anthropic_api_key, text_layer.ocr_available = saved
 
 
 def _flags(case: Case, batch, ref):
@@ -162,7 +170,6 @@ def test_self_approval_escalates_and_is_refused(ref):
 
 def test_scans_are_read_and_checked(batch):
     # Both scans go through the same checks as any bill (scan_8049's bank flags come from its scan).
-    # No flag says "read from a scan" yet: see the doc's "Not caught" section.
     for name in ("scan_8049.png", "scan_8749.png"):
         it = batch[name]
         assert it.bill.source.was_ocr and it.result is not None

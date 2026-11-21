@@ -8,7 +8,7 @@ Owner: Person B (controls).
 (replaying the model output recorded in `backend/tests/fixtures/raw/`, so there are no API calls) and
 `run_controls` on all 56 bills as one batch, like `backend/scripts/run_incoming.py`. Items the batch has no example
 of come from the history replay (`backend/scripts/replay_history.py`), where each historical invoice is judged as of
-its own date. Result: 24 hold, 9 review, 23 can proceed, $110,405.03 CAD on hold.
+its own date. Result: 24 hold, 10 review, 22 can proceed, $110,405.03 CAD on hold.
 
 **Kept honest by a test.** [`backend/tests/controls/test_detection_coverage.py`](../backend/tests/controls/test_detection_coverage.py)
 runs the batch the same way and fails if any example below stops getting its flag. It also fails if this page stops
@@ -52,22 +52,22 @@ Severity: **block** holds the bill until someone fixes or overrides the flag, **
 | arithmetic errors | `TOTAL_MISMATCH` (block) | `evergreenenergyu_000850.pdf` | 3,180.00 + 159.00 = 3,339.00, but the total says 3,439.00. |
 | | `LINE_MATH_ERROR` (block) | `northstarmediabu_NO261773.pdf` | 24 × 150.00 = 3,600.00, but the line says 3,800.00. |
 | | `SUBTOTAL_MISMATCH` (block) | none (see below) | Lines don't add up to the subtotal. |
-| low-quality scans | none (see below) | `scan_8049.png`, `scan_8749.png` | Both are read correctly and get the same checks as any bill. Cascadia's bank flags above come from its scan. |
+| low-quality scans | `LOW_EXTRACTION_CONFIDENCE` (warn) | `scan_8749.png` (Prairie Natural Gas), `scan_8049.png` (Cascadia) | Read from a scanned image, with extraction notes: check the vendor, invoice number, date, amounts and bank details against the image. It also fires on any key field read below 0.7 confidence, and names those fields. Both scans otherwise get the same checks as any bill: Cascadia's bank flags above come from its scan. |
 
 ## Not caught, or only partly
 
-1. **Low-quality scans have no flag of their own.** `LOW_EXTRACTION_CONFIDENCE` is in `FLAG_CODES` (warn), but
-   nothing raises it. Extraction caps a scan's field confidence at 0.75 and records its own warnings, and every new
-   bill starts in `needs_review`. After the clerk's review, though, nothing tells the approver the numbers came
-   from a scan.
+1. **Scans: a misread that looks plausible.** `LOW_EXTRACTION_CONFIDENCE` (warn) now marks a bill when a key
+   field is below 0.7 confidence, or when a scan has extraction notes. It tells the approver to check the bill
+   against the image, but it doesn't find the misread itself.
 
-   A misread GST number or bank account is still caught: it no longer matches the vendor master
+   A misread GST number or bank account is caught because it no longer matches the vendor master
    (`GST_NUMBER_MISMATCH`, `BANK_DETAILS_MISMATCH`). So is a misread amount that breaks the arithmetic. A misread
-   amount that still adds up, or a misread date, gets through. Both scans in the batch were read correctly, so
-   nothing was missed here.
+   amount that still adds up, or a misread date, is only covered by that warning and the clerk's review. Both scans
+   in the batch were read correctly.
 
-   Fix: raise `LOW_EXTRACTION_CONFIDENCE` in the controls when a key field (vendor, invoice number, date, total, bank)
-   is below a threshold. It's a small change in `validate.py`. Not done yet.
+   A clean scan with no extraction notes isn't flagged. Its fields score 0.75, above the threshold. In this batch
+   tesseract isn't installed, so both scans were read by the vision model, which leaves a note. With tesseract, a
+   clean OCR read leaves none, and the only marker left is `was_ocr` on the bill.
 
 2. **Self-approval can't be spotted at intake.** Invoices don't print who requested them, so no incoming bill has a
    requester, and the "terminated requester" check (`REQUESTER_TERMINATED`) can't fire on them either. Both are

@@ -614,6 +614,48 @@ def check_requester(bill: DraftBill, ref: RefData) -> list[Flag]:
                  field="requester_user_id")]
 
 
+# ---------------------------------------------------------------------------
+# Extraction confidence
+# ---------------------------------------------------------------------------
+# Extraction's self-check scores each field: 0.95 for a clean text-layer read, 0.75 for a clean scan, then lowers it
+# for an OCR correction (-0.15), a resolved or ambiguous date (-0.15 / -0.45), a failed arithmetic or tax check
+# (-0.2 to -0.4), a weak vendor match (capped at the match score) and a missing value (0). 0.7 is just under a clean
+# scan, so any one of those deductions on a scanned field is caught, while a clean read of either kind is not.
+LOW_CONFIDENCE = 0.7
+KEY_FIELDS = {"vendor": "vendor", "invoice_number": "invoice number", "invoice_date": "invoice date",
+              "subtotal": "subtotal", "taxes": "taxes", "total": "total", "bank": "bank details"}
+# A low score that another flag already reports is not repeated on a text-layer bill: the text is read exactly,
+# so a wrong total there is the vendor's maths (TOTAL_MISMATCH), not a misread. On a scan it may be a misread.
+EXPLAINED_BY = {"VENDOR_NOT_FOUND": {"vendor"}, "TOTAL_MISMATCH": {"total", "subtotal"},
+                "SUBTOTAL_MISMATCH": {"subtotal"}}
+
+
+def check_extraction_confidence(bill: DraftBill, ref: RefData, others: list[Flag] | None = None) -> list[Flag]:
+    """Key fields read with low confidence, or a scan that extraction left notes on. `others`: the other flags."""
+    ocr = bill.source.was_ocr
+    explained = set() if ocr else {f for x in others or [] for f in EXPLAINED_BY.get(x.code, ())}
+    weak = {k: bill.field_confidence[k] for k in KEY_FIELDS
+            if bill.field_confidence.get(k, 1.0) < LOW_CONFIDENCE and k not in explained}
+    scan_notes = list(bill.extraction_warnings) if ocr else []
+    if not weak and not scan_notes:
+        return []
+    parts = []
+    if weak:
+        parts.append("Low extraction confidence on "
+                     + ", ".join(f"{KEY_FIELDS[k]} ({v:.2f})" for k, v in sorted(weak.items(), key=lambda x: x[1]))
+                     + ".")
+    if scan_notes:
+        parts.append(f"Read from a scanned image, with {len(scan_notes)} extraction note(s): "
+                     + "; ".join(scan_notes) + ".")
+    check = ", ".join(KEY_FIELDS[k] for k in weak) if weak else \
+        "vendor, invoice number, date, amounts and bank details"
+    parts.append(f"Check the {check} against the document before approving.")
+    return [flag("LOW_EXTRACTION_CONFIDENCE", " ".join(parts),
+                 evidence={"weak_fields": weak, "threshold": LOW_CONFIDENCE, "was_ocr": ocr,
+                           "scan_notes": scan_notes},
+                 field=min(weak, key=weak.get) if weak else None)]
+
+
 ALL_CHECKS = [check_vendor, check_requester, check_tax, check_arithmetic, check_contract, check_po,
               check_fx, check_dates, check_credit_note]
 
@@ -622,6 +664,7 @@ def validate(bill: DraftBill, ref: RefData) -> list[Flag]:
     flags: list[Flag] = []
     for check in ALL_CHECKS:
         flags.extend(check(bill, ref))
+    flags.extend(check_extraction_confidence(bill, ref, flags))  # last: it skips what other flags already say
     return flags
 
 
