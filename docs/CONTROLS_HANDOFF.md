@@ -89,7 +89,10 @@ result.recommendation     # "Hold: This bill is on V052 Harlow and Stern LLP, ..
 | --- | --- | --- |
 | Vendor not in the master | `VENDOR_NOT_FOUND` (block) | Never pay someone who hasn't been onboarded. Routing also adds a finance step (P05). |
 | Vendor not in the master, but `name_on_invoice` is ≥ 85% similar to a master vendor's name | `VENDOR_LOOKALIKE` (block) | An unknown sender using a real vendor's name is the impersonation case. Names are compared after removing Ltd/Inc/&/punctuation. |
-| Vendor on hold / inactive | `VENDOR_NOT_ACTIVE` (block) | The master says don't pay them. `pending_review` vendors aren't flagged (no code); routing adds the P05 finance step. |
+| Vendor on hold / inactive | `VENDOR_NOT_ACTIVE` (block) | The master says don't pay them. |
+| Vendor is `pending_review` | `VENDOR_PENDING_REVIEW` (warn) | Not blocked: routing adds the P05 finance manager step, and the flag says why it's there (Riverbend V054). |
+| Canadian vendor with no GST/HST number on the invoice or in the master | `GST_NUMBER_MISSING` (warn) | The tax can't be claimed back, and if no tax is charged we can't tell a small supplier from a missing number (Riverbend). Foreign vendors are skipped. |
+| Email sent from a domain other than the vendor's AP contact on file | `SENDER_DOMAIN_MISMATCH` (warn) | Someone else billing in the vendor's name. Domains are compared case-insensitively. Only for known vendors, and only when the bill came by email. |
 | Bill sits on a lookalike vendor record (same name after removing Ltd/Inc/&, or same bank account as another vendor) | `VENDOR_LOOKALIKE` (block) | Classic impersonation fraud (V051/V053/V052). Only flags the *suspicious* copy (fewer past invoices, or not active), never the real vendor. |
 | GST/HST number differs from master | `GST_NUMBER_MISMATCH` (warn) | Could be OCR or a fake invoice. OCR confusions (1/I/!, 0/O) are folded first, so OCR noise doesn't fire it. |
 | Bank details on the invoice differ from master | `BANK_DETAILS_MISMATCH` (block) | Changed bank details on an invoice is the main payment-fraud pattern. Verify by phone on a known number. Only fields present on both the invoice and the master are compared (leading zeros ignored), so a missing institution number isn't a mismatch. |
@@ -136,16 +139,23 @@ Tolerance is 2 cents. Extraction never "fixes" printed numbers, so these catch b
 
 | Catches | Flag | Why |
 | --- | --- | --- |
-| Vendor requires a PO and there isn't one, or it doesn't exist | `PO_REQUIRED_MISSING` (block) | P13: missing PO means hold. |
+| Vendor requires a PO and there isn't one | `PO_REQUIRED_MISSING` (block) | P13: missing PO means hold. |
+| The PO number on the bill doesn't exist | `PO_NOT_FOUND` (block) | Raised for any vendor, not only PO-required ones (they also get policy P13 in the evidence). |
 | PO belongs to another vendor, or is closed and fully used | `PO_CLOSED_OR_WRONG_VENDOR` (block) | |
 | Bill is above what's left on the PO | `PO_OVER_BALANCE` (warn) | P12: routing adds a finance manager step. |
+
+### Requester (`validate.check_requester`)
+
+| Catches | Flag | Why |
+| --- | --- | --- |
+| The requester is terminated | `REQUESTER_TERMINATED` (warn) | Someone who has left can't confirm the purchase. In the history replay, each bill is judged as of its own date, so U015's 10 invoices (all before their 2026-09-15 termination) aren't flagged. |
 
 ### FX, dates, credit notes
 
 | Catches | Flag | Why |
 | --- | --- | --- |
 | Non-CAD bill | `FOREIGN_CURRENCY` (info) | Shows the rate used, where it came from and the CAD amount. Currency codes are case-insensitive. Rate order: the rate given on the bill (`fx_rate_to_cad`), then the USD/CAD table (USD only; weekends fall back up to 6 days). A non-USD currency is **never** converted at the USD rate. |
-| No reliable FX rate | `FOREIGN_CURRENCY` (info), message starts "FX rate missing" | The CAD amount is left unknown (never 1, never guessed); routing uses the face amount and says so on every step. Should be a block: needs `CURRENCY_UNSUPPORTED` (see Open questions). |
+| No reliable FX rate (unsupported currency, or no USD rate for the date and none on the bill) | `CURRENCY_UNSUPPORTED` (block), message starts "FX rate missing" | The CAD amount is left unknown (never 1, never guessed), so the bill is held. Routing uses the face amount and says so on every step. Replaces the `FOREIGN_CURRENCY` info flag for this case. |
 | Invoice dated in the future, due before invoice date, or over 180 days old | `DATE_ANOMALY` (warn) | "Today" is the fixed as-of date (2026-11-02) from settings, never the machine clock, so results don't change with the demo date. |
 | Credit note | `CREDIT_NOTE` (info) | Apply it to an open invoice instead of paying it. |
 
@@ -260,7 +270,7 @@ mistakes.
 | Voyageur "000903-A" | ✅ Caught, and stricter than §4: `DUPLICATE_EXACT` (normalized, score 0.95) rather than a near match. AP-00277 is already paid, so blocking is right. |
 | Queen St rent $18,758 | ✅ Not flagged as a duplicate. Routed P02: department manager (U003, delegate for U012), then finance step (U002) |
 | Blue Heron, Zephyr | ✅ `VENDOR_NOT_FOUND` |
-| Riverbend 1739 | ⚠️ Partial. ✅ `PO_REQUIRED_MISSING` and `TAX_MISSING`. `pending_review` only adds the P05 finance step to the route; there's no flag, because `VENDOR_PENDING_REVIEW` isn't in `FLAG_CODES`. ❌ **No GST number** (none on the invoice or in the master) isn't checked. |
+| Riverbend 1739 | ✅ `PO_REQUIRED_MISSING` (block), `TAX_MISSING`, `VENDOR_PENDING_REVIEW` (with the P05 finance step) and `GST_NUMBER_MISSING` (warn). |
 | Harlow **and** Stern (EM-026) | ✅ `VENDOR_LOOKALIKE` of V026, plus the P06 finance step |
 | V053 Great Lakes Incorporated | n/a: both Great Lakes files matched V002 |
 | Cascadia 1625 and `scan_8049.png` | ✅ `BANK_CHANGE_UNVERIFIED` on both |
@@ -303,11 +313,7 @@ mistakes.
    above $10k together is exactly the pattern P01 is about. Kept as a warning.
 
 ### Misses
-1. **Vendor with no GST number** (Riverbend). There's no check and no flag code. `GST_NUMBER_MISMATCH` doesn't
-   fit, because there's nothing to compare.
-2. **`pending_review` vendor has no flag** (Riverbend), only the extra P05 route step. Needs `VENDOR_PENDING_REVIEW`
-   (open question 2).
-3. **Not checked, worth knowing:** Cascadia 1624 (`scan_8049.png`) is dated 2026-10-24 but already prints the new
+1. **Not checked, worth knowing:** Cascadia 1624 (`scan_8049.png`) is dated 2026-10-24 but already prints the new
    account (…9679), which was only changed on 2026-10-27 by an unverified email request. The bill is held anyway.
 
 ### Cascadia: likely edited or forged invoice
@@ -322,6 +328,13 @@ Levels are unchanged: 19 hold, 14 review, 23 can proceed, $89,963.04 CAD on hold
 review because of `POSSIBLE_SPLIT`, and Lattice 557 because of the one-off warning. `DUPLICATE_LIKELY` drops from 3
 bills to 1 (only Cloudbarn INV-01561, false alarm 3), and "Duplicates inside this batch" no longer appears. The
 history replay output is identical.
+
+### Rerun after the new flag codes (`b/flag-codes`)
+
+Riverbend 1739 now also gets `VENDOR_PENDING_REVIEW` and `GST_NUMBER_MISSING`. Nothing else changed: 19 hold,
+14 review, 23 can proceed, $89,963.04 CAD on hold (Riverbend was already held for its missing PO). No bill came from
+an unexpected sender domain, none has an unknown PO number or a missing FX rate, and no requester is terminated.
+The history replay output is identical.
 
 ### Caught beyond §4 (checked against the PDFs: real, not extraction errors)
 - Summit 000809 is printed with date 2026-11-27, in the future → `DATE_ANOMALY`.
@@ -349,14 +362,7 @@ split false positives and bank fields on `b/controls-fixes`; the history replay 
 1. **Should tax and math flags be `block`?** `TAX_WRONG_FOR_PROVINCE`, `TAX_MISSING`, `LINE_MATH_ERROR`,
    `SUBTOTAL_MISMATCH`, `TOTAL_MISMATCH` are `warn`, so a bill with wrong tax or bad totals can still be paid.
    Needs schema agreement.
-2. **Missing flag codes.** These checks are dropped until codes exist in `FLAG_CODES`: `PO_NOT_FOUND` (block),
-   `CURRENCY_UNSUPPORTED` (block), `REQUESTER_TERMINATED` (warn), `VENDOR_PENDING_REVIEW` (warn),
-   `SENDER_DOMAIN_MISMATCH` (warn). `CURRENCY_UNSUPPORTED` would also cover a missing FX rate (or add a separate
-   `FX_RATE_MISSING`): today that case is only reported on the `FOREIGN_CURRENCY` info flag, so it doesn't hold
-   the bill.
-   In the real batch, `VENDOR_PENDING_REVIEW` would have fired on Riverbend 1739. A code for "vendor has no
-   GST/HST number" (e.g. `GST_NUMBER_MISSING`, warn) would also be needed for Riverbend.
-3. **`RefData` vs `ReferenceRepository`:** API/DB team, let's agree on one.
+2. **`RefData` vs `ReferenceRepository`:** API/DB team, let's agree on one.
 
 ## Likely judge questions
 

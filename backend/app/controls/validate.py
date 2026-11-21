@@ -84,14 +84,14 @@ def check_fx(bill: DraftBill, ref: RefData) -> list[Flag]:
     cad = (bill.total * rate).quantize(Decimal("0.01")) if rate is not None else None
     ev = {"currency": cur, "rate": str(rate) if rate is not None else None,
           "rate_source": source, "total_cad": str(cad) if cad is not None else None}
-    # A missing rate should hold the bill, but FLAG_CODES has no code for it (FX_RATE_MISSING /
-    # CURRENCY_UNSUPPORTED), so it is reported on the FOREIGN_CURRENCY flag for now.
+    # No reliable rate: the CAD amount is unknown, so the bill is held (CURRENCY_UNSUPPORTED, block).
     if rate is None:
         why = (f"no {cur}/CAD rate on file" if cur != "USD"
                else f"no USD/CAD rate for {bill.invoice_date} (or the 6 days before)")
         msg = (f"FX rate missing: {why}, and the bill gives none, so the CAD amount is unknown. "
                f"Routing uses the face amount {cur} {_amt(bill.total)}. Convert it manually before approving.")
-    elif source == "bill":
+        return [flag("CURRENCY_UNSUPPORTED", msg, evidence=ev, field="currency")]
+    if source == "bill":
         msg = f"{cur} {_amt(bill.total)} converted at {rate} (rate given on the bill) = CAD {_amt(cad)}."
     else:
         msg = f"USD {_amt(bill.total)} converted at {rate} = CAD {_amt(cad)} (rate of {bill.invoice_date})."
@@ -173,9 +173,32 @@ def check_vendor(bill: DraftBill, ref: RefData) -> list[Flag]:
     v = ref.vendors[vid]
     flags: list[Flag] = []
 
-    # pending_review has no flag code; routing adds the P05 finance step instead.
-    if v["status"] not in ("active", "pending_review"):
+    if v["status"] == "pending_review":
+        # Not blocked: routing adds the P05 finance manager step. The flag says why that step is there.
+        flags.append(flag("VENDOR_PENDING_REVIEW",
+                          f"{v['legal_name']} is still pending review in the vendor master. A finance manager "
+                          f"approval is added (P05).",
+                          policy="P05", evidence={"status": v["status"]}, field="vendor"))
+    elif v["status"] != "active":
         flags.append(flag("VENDOR_NOT_ACTIVE", f"{v['legal_name']} is '{v['status']}' in the vendor master.",
+                          field="vendor"))
+
+    # Canadian vendor with no GST/HST number anywhere: tax can't be claimed back, and if they charge none,
+    # we can't tell whether they're a small supplier or just left it off.
+    if v["country"] == "CA" and not bill.vendor.gst_number and not v["gst_hst_number"]:
+        flags.append(flag("GST_NUMBER_MISSING",
+                          f"No GST/HST registration number on the invoice or in the vendor master for "
+                          f"{v['legal_name'].rstrip('.')}. Ask the vendor for it (needed to claim the tax back).",
+                          field="vendor.gst_number"))
+
+    # Email came from a domain other than the vendor's AP contact on file
+    sender = (bill.source.sender_address or "").strip().lower()
+    known = (v["ap_contact_email"] or "").strip().lower()
+    if "@" in sender and "@" in known and sender.split("@")[-1] != known.split("@")[-1]:
+        flags.append(flag("SENDER_DOMAIN_MISMATCH",
+                          f"Sent from {sender}, but {v['legal_name']}'s AP contact on file is {known}. "
+                          f"Confirm the sender before paying.",
+                          evidence={"sender_domain": sender.split("@")[-1], "known_domain": known.split("@")[-1]},
                           field="vendor"))
 
     # GST number on the invoice vs master
@@ -446,12 +469,9 @@ def check_po(bill: DraftBill, ref: RefData) -> list[Flag]:
         return []
     po = ref.purchase_orders.get(bill.po_number)
     if not po:
-        # A PO number that doesn't exist only has a code when the vendor requires a PO.
-        if requires_po:
-            return [flag("PO_REQUIRED_MISSING",
-                         f"PO {bill.po_number} doesn't exist, and {v['legal_name']} requires a valid PO.",
-                         policy="P13", evidence={"po": bill.po_number}, field="po_number")]
-        return []
+        need = f", and {v['legal_name']} requires a valid PO" if requires_po else ""
+        return [flag("PO_NOT_FOUND", f"PO {bill.po_number} doesn't exist{need}. Hold until the PO is confirmed.",
+                     policy="P13" if requires_po else None, evidence={"po": bill.po_number}, field="po_number")]
     flags = []
     if po["vendor_id"] != vendor_id(bill):
         flags.append(flag("PO_CLOSED_OR_WRONG_VENDOR",
@@ -497,7 +517,22 @@ def check_credit_note(bill: DraftBill, ref: RefData) -> list[Flag]:
     return []
 
 
-ALL_CHECKS = [check_vendor, check_tax, check_arithmetic, check_contract, check_po,
+# ---------------------------------------------------------------------------
+# Requester
+# ---------------------------------------------------------------------------
+def check_requester(bill: DraftBill, ref: RefData) -> list[Flag]:
+    u = ref.users.get(bill.requester_user_id or "")
+    if not u or u["status"] != "terminated":
+        return []
+    return [flag("REQUESTER_TERMINATED",
+                 f"Requester {u['full_name']} ({bill.requester_user_id}) no longer works here"
+                 + (f" (since {u['status_since']})" if u.get("status_since") else "")
+                 + ". Confirm someone still needs this before approving.",
+                 evidence={"requester": bill.requester_user_id, "status_since": u.get("status_since")},
+                 field="requester_user_id")]
+
+
+ALL_CHECKS = [check_vendor, check_requester, check_tax, check_arithmetic, check_contract, check_po,
               check_fx, check_dates, check_credit_note]
 
 

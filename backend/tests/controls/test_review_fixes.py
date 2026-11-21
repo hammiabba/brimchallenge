@@ -157,7 +157,7 @@ def test_non_usd_is_never_converted_at_the_usd_rate(ref, make_bill):
     bill = make_bill()
     bill.currency = "EUR"  # no EUR rates on file, none on the bill
     assert to_cad(bill, ref) == (None, None)
-    flag = next(f for f in validate(bill, ref) if f.code == "FOREIGN_CURRENCY")
+    flag = next(f for f in validate(bill, ref) if f.code == "CURRENCY_UNSUPPORTED")
     assert "FX rate missing" in flag.message and flag.evidence["rate_source"] == "missing"
     assert all("CAD amount unknown" in s.reason for s in route(bill, ref))
 
@@ -166,7 +166,7 @@ def test_missing_usd_rate_is_flagged_not_replaced_by_one(ref, make_bill):
     bill = make_bill(when=date(2026, 12, 20))  # after the last rate on file
     bill.currency, bill.fx_rate_to_cad = "USD", D("1")
     assert to_cad(bill, ref) == (None, None)
-    assert "FX rate missing" in next(f for f in validate(bill, ref) if f.code == "FOREIGN_CURRENCY").message
+    assert "FX rate missing" in next(f for f in validate(bill, ref) if f.code == "CURRENCY_UNSUPPORTED").message
 
 
 # ---- 8. release and approval permissions ----
