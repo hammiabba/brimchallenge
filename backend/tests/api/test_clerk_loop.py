@@ -104,3 +104,28 @@ def test_editing_a_field_rechecks_its_confidence_and_warnings(act_as, monkeypatc
     # The values as extracted stay on record.
     assert after["extracted"]["as_extracted"]["field_confidence"]["invoice_date"] == 0.5
     assert date.fromisoformat(after["invoice_date"]) == date(2026, 3, 4)
+
+
+def test_each_recheck_is_audited_and_as_extracted_is_written_once(act_as, monkeypatch, fresh_db):
+    from sqlalchemy import select
+
+    from app.db import models
+
+    monkeypatch.setattr(intake_service, "extract_outcome", coded_extract(vendor_id="V001"))
+    clerk = act_as("U004")
+    bill = submit(clerk, b"%PDF recheck audit")
+    original = bill["extracted"]["field_confidence"]
+    r = clerk.patch(f"/bills/{bill['bill_id']}", json={"row_version": bill["row_version"],
+                                                        "invoice_date": "2026-10-01"})
+    r = clerk.patch(f"/bills/{bill['bill_id']}", json={"row_version": r.json()["row_version"],
+                                                        "due_date": "2026-11-15"})
+    assert r.status_code == 200, r.text
+    extracted = r.json()["extracted"]
+    assert extracted["as_extracted"]["field_confidence"] == original  # not overwritten by the second edit
+    assert extracted["field_confidence"]["invoice_date"] == extracted["field_confidence"]["due_date"] == 1.0
+    with fresh_db() as s:
+        events = list(s.scalars(select(models.AuditEvent).where(models.AuditEvent.entity_id == bill["bill_id"],
+                                                                 models.AuditEvent.action == "bill.rechecked")
+                                .order_by(models.AuditEvent.seq)))
+    assert len(events) == 2
+    assert "invoice_date" in events[0].comment and "due_date" in events[1].comment

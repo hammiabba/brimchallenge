@@ -16,6 +16,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.db import models
+from app.db.audit import SYSTEM_ACTOR
 from app.db.bills import load_draft_bill
 from app.extraction import selfcheck
 from app.shared.schemas import DraftBill
@@ -41,12 +42,23 @@ def recheck(draft: DraftBill, confirmed: set[str]) -> tuple[dict[str, float], li
     return conf, kept + arithmetic
 
 
+RECHECKED = "bill.rechecked"  # audit action: confidence and warnings recomputed after a clerk's edit
+
+
 def recheck_bill(db: Session, bill: models.Bill, changes: dict) -> None:
     confirmed = {HEADER_TO_FIELD[k] for k in changes if k in HEADER_TO_FIELD}
     db.flush()  # load_draft_bill reads the edited columns
     conf, warnings = recheck(load_draft_bill(db, bill.bill_id), confirmed)
     snapshot = dict(bill.draft_json or {})
-    snapshot.setdefault("as_extracted", {"field_confidence": snapshot.get("field_confidence", {}),
-                                         "extraction_warnings": snapshot.get("extraction_warnings", [])})
+    before = {"field_confidence": snapshot.get("field_confidence", {}),
+              "extraction_warnings": snapshot.get("extraction_warnings", [])}
+    if "as_extracted" not in snapshot:  # written once, at the first re-check, and never overwritten
+        snapshot["as_extracted"] = before
     snapshot["field_confidence"], snapshot["extraction_warnings"] = conf, warnings
     bill.draft_json = snapshot  # a new dict, so the JSON column is marked changed
+    from app.services.events import record  # the API lane's audit helper; imported here to keep extraction light
+
+    record(db, actor_user_id=SYSTEM_ACTOR, actor_role=SYSTEM_ACTOR, action=RECHECKED, entity_type="bill",
+           entity_id=bill.bill_id, before=before,
+           after={"field_confidence": conf, "extraction_warnings": warnings},
+           comment=f"self-check re-run after an edit of: {', '.join(sorted(changes)) or 'nothing'}")

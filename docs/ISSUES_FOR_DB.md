@@ -31,8 +31,10 @@ They use your fixtures (`act_as`, `fresh_db`, `factories.draft`), so they have t
 
 1. **`draft_json` is no longer strictly frozen after an edit** (hook 5). `load_draft_bill` reads
    `field_confidence` and `extraction_warnings` from `draft_json`, so `recheck_bill` updates those two keys there.
-   The values as extracted are preserved once, under `draft_json["as_extracted"]`; nothing else in the snapshot
-   changes. If you'd rather keep `draft_json` frozen, a small `review_state` JSON column read by
+   The values as extracted are written once, under `draft_json["as_extracted"]`, at the first re-check and
+   never overwritten; nothing else in the snapshot changes. Each re-check also records a `bill.rechecked` audit event
+   (actor `system`, before/after confidence and warnings, the edited fields in the comment), so every change to
+   `draft_json` is on the audit chain. If you'd rather keep `draft_json` frozen, a small `review_state` JSON column read by
    `load_draft_bill` would do the same job; `recheck()` itself is pure and returns the two values.
 2. **Learned codings are in memory** (hook 2). They're also on `bill_lines` (`coding_status` accepted/overridden),
    so a start-up step could replay them with `app.coding.history_index.learn(Correction(...))`. Not done yet.
