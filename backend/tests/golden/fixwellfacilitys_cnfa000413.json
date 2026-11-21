@@ -1,0 +1,26 @@
+{
+  "file": "fixwellfacilitys_CNFA000413.pdf",
+  "email_id": "EM-042",
+  "sender": "ar@fixwellfacility.example",
+  "verified": false,
+  "notes": "Credit note",
+  "expected": {
+    "vendor_id": "V043",
+    "invoice_number": "CN-FA-000413",
+    "invoice_date": "2026-10-29",
+    "due_date": "2026-11-28",
+    "currency": "CAD",
+    "is_credit_note": true,
+    "subtotal": "-1428.50",
+    "taxes": [
+      {
+        "code": "HST13",
+        "amount": "-185.71"
+      }
+    ],
+    "total": "-1614.21",
+    "ship_to_province": "ON",
+    "po_number": null,
+    "line_count": 2
+  }
+}

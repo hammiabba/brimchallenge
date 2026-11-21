@@ -1,0 +1,30 @@
+{
+  "file": "laurentianlogist_FA002399.pdf",
+  "email_id": "EM-022",
+  "sender": "ar@laurentianlogistics.example",
+  "verified": false,
+  "notes": "French layout, comma decimals",
+  "expected": {
+    "vendor_id": "V005",
+    "invoice_number": "FA-002399",
+    "invoice_date": "2026-10-25",
+    "due_date": "2026-11-24",
+    "currency": "CAD",
+    "is_credit_note": false,
+    "subtotal": "4362.67",
+    "taxes": [
+      {
+        "code": "GST5",
+        "amount": "218.13"
+      },
+      {
+        "code": "QST9975",
+        "amount": "435.18"
+      }
+    ],
+    "total": "5015.98",
+    "ship_to_province": "QC",
+    "po_number": null,
+    "line_count": 6
+  }
+}

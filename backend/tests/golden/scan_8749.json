@@ -1,0 +1,26 @@
+{
+  "file": "scan_8749.png",
+  "email_id": "EM-011",
+  "sender": "ar@prairienatural.example",
+  "verified": false,
+  "notes": "Scan; bank Inst 006 Transit 55541 Acct 704593075",
+  "expected": {
+    "vendor_id": "V042",
+    "invoice_number": "PR26-1012",
+    "invoice_date": "2026-10-22",
+    "due_date": "2026-11-12",
+    "currency": "CAD",
+    "is_credit_note": false,
+    "subtotal": "4494.55",
+    "taxes": [
+      {
+        "code": "GST5",
+        "amount": "224.73"
+      }
+    ],
+    "total": "4719.28",
+    "ship_to_province": "AB",
+    "po_number": null,
+    "line_count": 1
+  }
+}
