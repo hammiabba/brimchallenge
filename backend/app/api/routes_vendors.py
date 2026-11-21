@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
 
 from app.api.common import READ_ERRORS, WRITE_ERRORS, Limit, Offset
 from app.api.errors import not_implemented
@@ -19,6 +20,8 @@ from app.api.schemas_api import (
 )
 from app.auth.deps import CurrentUser, require_role
 from app.auth.roles import ALL_ROLES, AP_CLERK, BACK_OFFICE_READ, CONTROLLER_ADMIN, FINANCE_MANAGER, VENDOR_APPROVERS
+from app.db.database import get_session
+from app.services import vendors
 
 router = APIRouter(tags=["vendors"])
 
@@ -26,13 +29,15 @@ router = APIRouter(tags=["vendors"])
 @router.get("/vendors", response_model=Page[VendorSummary], responses=READ_ERRORS)
 def list_vendors(user: CurrentUser = Depends(require_role(*ALL_ROLES)),
                  status: Annotated[list[VendorStatus] | None, Query()] = None,
-                 q: Annotated[str | None, Query(max_length=100)] = None, limit: Limit = 100, offset: Offset = 0):
-    raise not_implemented("Vendor list")
+                 q: Annotated[str | None, Query(max_length=100)] = None, limit: Limit = 100, offset: Offset = 0,
+                 db: Session = Depends(get_session)):
+    return vendors.list_vendors(db, status=status, q=q, limit=limit, offset=offset)
 
 
 @router.get("/vendors/{vendor_id}", response_model=VendorDetail, responses=READ_ERRORS)
-def get_vendor(vendor_id: str, user: CurrentUser = Depends(require_role(*ALL_ROLES))):
-    raise not_implemented("Vendor detail")
+def get_vendor(vendor_id: str, user: CurrentUser = Depends(require_role(*ALL_ROLES)),
+               db: Session = Depends(get_session)):
+    return vendors.vendor_detail(db, user.role, vendor_id)
 
 
 @router.post("/vendors", response_model=VendorDetail, status_code=201, responses=WRITE_ERRORS)
@@ -58,8 +63,9 @@ def request_bank_change(vendor_id: str, body: BankChangeIn, user: CurrentUser = 
 
 
 @router.get("/bank-changes", response_model=list[BankChangeOut], responses=READ_ERRORS)
-def list_bank_changes(user: CurrentUser = Depends(require_role(*BACK_OFFICE_READ)), status: str | None = None):
-    raise not_implemented("Bank change list")
+def list_bank_changes(user: CurrentUser = Depends(require_role(*BACK_OFFICE_READ)), status: str | None = None,
+                      db: Session = Depends(get_session)):
+    return vendors.list_bank_changes(db, user.role, status=status)
 
 
 @router.post("/bank-changes/{change_id}/verify", response_model=BankChangeOut, responses=WRITE_ERRORS)

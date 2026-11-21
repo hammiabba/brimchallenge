@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Query
+from sqlalchemy.orm import Session
 
 from app.api.common import READ_ERRORS, WRITE_ERRORS, Limit, Offset
 from app.api.errors import not_implemented
@@ -18,6 +19,8 @@ from app.api.schemas_api import (
 )
 from app.auth.deps import CurrentUser, require_role
 from app.auth.roles import AP_CLERK, BACK_OFFICE_READ, CONTROLLER_ADMIN, FINANCE_MANAGER, RELEASERS
+from app.db.database import get_session
+from app.services import payments
 
 router = APIRouter(tags=["payments"])
 
@@ -28,18 +31,20 @@ IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=8, ma
 @router.get("/payments", response_model=Page[PaymentSummary], responses=READ_ERRORS)
 def list_payments(user: CurrentUser = Depends(require_role(*BACK_OFFICE_READ)),
                   status: Annotated[list[PaymentStatus] | None, Query()] = None, vendor_id: str | None = None,
-                  limit: Limit = 50, offset: Offset = 0):
-    raise not_implemented("Payment list")
+                  limit: Limit = 50, offset: Offset = 0, db: Session = Depends(get_session)):
+    return payments.list_payments(db, status=status, vendor_id=vendor_id, limit=limit, offset=offset)
 
 
 @router.get("/payments/summary", response_model=PaymentDashboard, responses=READ_ERRORS)
-def payment_dashboard(user: CurrentUser = Depends(require_role(*BACK_OFFICE_READ))):
-    raise not_implemented("Payment dashboard")
+def payment_dashboard(user: CurrentUser = Depends(require_role(*BACK_OFFICE_READ)),
+                      db: Session = Depends(get_session)):
+    return payments.dashboard(db)
 
 
 @router.get("/payments/{payment_id}", response_model=PaymentDetail, responses=READ_ERRORS)
-def get_payment(payment_id: str, user: CurrentUser = Depends(require_role(*BACK_OFFICE_READ))):
-    raise not_implemented("Payment detail")
+def get_payment(payment_id: str, user: CurrentUser = Depends(require_role(*BACK_OFFICE_READ)),
+                db: Session = Depends(get_session)):
+    return payments.payment_detail(db, user.role, payment_id)
 
 
 @router.post("/bills/{bill_id}/payments", response_model=PaymentDetail, status_code=201, responses=WRITE_ERRORS)
