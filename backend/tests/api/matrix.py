@@ -20,6 +20,9 @@ TOKENS = {"E": "employee", "C": "ap_clerk", "A": "approver", "F": "finance_manag
           "Au": "auditor"}
 ALL = "E C A F X Au"
 STUB = 501
+# Bill and payment write cells target a paid history bill and a settled payment: a role that passes the gate gets
+# the state check's 409, every other role 403. The happy paths are tested on app bills in test_bill_flow.py.
+STATE = 409
 
 PDF = ("invoice.pdf", b"%PDF-1.4 test", "application/pdf")
 
@@ -59,30 +62,32 @@ CASES: list[Case] = [
     # Out of scope for the D01 employee and approver: 404, never 403, so existence doesn't leak.
     Case("GET", f"/bills/{OUT}", ALL, ok=200, overrides={"employee": 404, "approver": 404}),
     Case("GET", "/bills/AP-99999", ALL, ok=404),
-    Case("PATCH", f"/bills/{B}", "C", kwargs={"json": {**RV, "due_date": "2026-12-01"}}),
-    Case("PATCH", f"/bills/{B}/lines/1", "C", kwargs={"json": {**RV, "gl_account": "5010", "department_id": "D01"}}),
-    Case("POST", f"/bills/{B}/flags/1/resolve", "C F X",
+    Case("PATCH", f"/bills/{B}", "C", ok=STATE, kwargs={"json": {**RV, "due_date": "2026-12-01"}}),
+    Case("PATCH", f"/bills/{B}/lines/1", "C", ok=STATE,
+         kwargs={"json": {**RV, "gl_account": "5010", "department_id": "D01"}}),
+    Case("POST", f"/bills/{B}/flags/1/resolve", "C F X", ok=STATE,
          kwargs={"json": {**RV, "resolution": "overridden", "comment": "checked with vendor"}}),
-    Case("POST", f"/bills/{B}/submit", "C", kwargs={"json": RV}),
-    Case("POST", f"/bills/{B}/approve", "A F X", kwargs={"json": RV}),
-    Case("POST", f"/bills/{B}/reject", "A F X", kwargs={"json": {**RV, "comment": "wrong department"}}),
-    Case("POST", f"/bills/{B}/route/1/assign", "F X", kwargs={"json": {**RV, "user_id": "U007"}}),
-    Case("POST", f"/bills/{B}/void", "C X", kwargs={"json": {**RV, "comment": "duplicate"}}),
+    Case("POST", f"/bills/{B}/submit", "C", ok=STATE, kwargs={"json": RV}),
+    Case("POST", f"/bills/{B}/approve", "A F X", ok=STATE, kwargs={"json": RV}),
+    Case("POST", f"/bills/{B}/reject", "A F X", ok=STATE, kwargs={"json": {**RV, "comment": "wrong department"}}),
+    Case("POST", f"/bills/{B}/route/1/assign", "F X", ok=STATE, kwargs={"json": {**RV, "user_id": "U007"}}),
+    Case("POST", f"/bills/{B}/void", "C X", ok=STATE, kwargs={"json": {**RV, "comment": "duplicate"}}),
     Case("GET", "/approvals/queue", "A F X", ok=200),
     # intake
-    Case("POST", "/submissions", "E C", kwargs={"files": {"file": PDF}}),
+    Case("POST", "/submissions", "E C", ok=202, kwargs={"files": {"file": PDF}}),
     Case("GET", "/submissions", "E C", ok=200),
-    Case("POST", "/intake/inbox/jobs", "C"),
-    Case("GET", "/intake/inbox/jobs/job-1", "C F X Au"),
+    Case("POST", "/intake/inbox/jobs", "C", ok=202),
+    Case("GET", "/intake/inbox/jobs/job-1", "C F X Au", ok=404),  # no such job
     Case("GET", "/intake/items", "C F X Au", ok=200),
     # payments
     Case("GET", "/payments", "C F X Au", ok=200),
     Case("GET", "/payments/summary", "C F X Au", ok=200),
     Case("GET", "/payments/PAY-00001", "C F X Au", ok=200),
     Case("GET", "/payments/PAY-99999", "C F X Au", ok=404),
-    Case("POST", f"/bills/{B}/payments", "C", kwargs={"json": {"scheduled_date": "2026-11-10"}}),
-    Case("POST", "/payments/PAY-00001/release", "F X", kwargs={"headers": {"Idempotency-Key": "release-test-0001"}}),
-    Case("POST", "/payments/PAY-00001/cancel", "C F X", kwargs={"json": {"comment": "vendor asked to wait"}}),
+    Case("POST", f"/bills/{B}/payments", "C", ok=STATE, kwargs={"json": {"scheduled_date": "2026-11-10"}}),
+    Case("POST", "/payments/PAY-00001/release", "F X", ok=STATE,
+         kwargs={"headers": {"Idempotency-Key": "release-test-0001"}}),
+    Case("POST", "/payments/PAY-00001/cancel", "C F X", ok=STATE, kwargs={"json": {"comment": "vendor asked to wait"}}),
     # vendors and bank changes
     Case("GET", "/vendors", ALL, ok=200),
     Case("GET", "/vendors/V001", ALL, ok=200),

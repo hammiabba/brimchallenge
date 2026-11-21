@@ -24,7 +24,10 @@ from app.config import get_settings
 from app.db.database import as_write_engine, get_session, get_write_session, make_engine
 from app.db.seed import migrate_to_head, seed_all
 from app.db.settings import get_db_settings
+from app.extraction.pipeline import ExtractionOutcome
 from app.main import app
+from app.services import intake as intake_service
+from app.services import jobs as jobs_service
 
 # Not a secret: a fixed key so audit fingerprints are reproducible in tests (same idea as tests/db).
 TEST_AUDIT_HMAC_KEY = "test-only-audit-hmac-key-0123456789abcdef"
@@ -56,6 +59,20 @@ def _audit_hmac_key(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 def _engine_on(path: Path) -> Engine:
     return make_engine(f"sqlite:///{path}")
+
+
+def fake_extract(data: bytes, filename: str, **_: object) -> ExtractionOutcome:
+    """Stands in for the intake lane's extractor: tests never read files with OCR or call the LLM."""
+    return ExtractionOutcome(filename, "sha256:fake", "llm_skipped", error="LLM skipped: test")
+
+
+@pytest.fixture(autouse=True)
+def _fast_intake(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    monkeypatch.setattr(intake_service, "extract_outcome", fake_extract)
+    monkeypatch.setattr(jobs_service, "extract_outcome", fake_extract)
+    jobs_service.reset_for_tests()
+    yield
+    jobs_service.reset_for_tests()
 
 
 @pytest.fixture(scope="session")
