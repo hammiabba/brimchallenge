@@ -43,5 +43,7 @@ The permission matrix (`tests/api/matrix.py`) lists every endpoint x role.
 3. Put the logic in `app/services/`, including the audit event for writes.
 
 ## Intake routes
-The intake router is mounted in `app/main.py` behind `require_role("ap_clerk", "finance_manager", "controller_admin")`,
-so `routes_intake.py` itself is unchanged. Employees submit through `POST /submissions` instead.
+`routes_intake.py` (intake lane) holds two reads, `GET /intake/emails/{email_id}` and `GET /intake/files/{file_hash}`,
+each behind `require_role(*BACK_OFFICE_READ)` like `/intake/emails`. It is mounted without a router-wide guard. The
+old in-memory `/intake/upload`, `/intake/inbox/run` and `/intake/drafts` are gone: use `POST /submissions` and the
+inbox job. See `app/intake/README.md`.
