@@ -26,6 +26,15 @@ FIELDS = ("vendor", "invoice_number", "invoice_date", "due_date", "currency", "s
           "po_number", "lines", "subtotal", "taxes", "total")
 
 
+# Every warning check() writes contains one of these; used to replace them on a re-check.
+_CHECK_MARKERS = (" but the line amount says ", " but the invoice subtotal says ", " but the invoice total says ",
+                  " but the invoice says ", "looks like a credit note but its total is positive")
+
+
+def is_check_warning(warning: str) -> bool:
+    return any(m in warning for m in _CHECK_MARKERS)
+
+
 def _fmt(d: Decimal) -> str:
     return f"{d.quantize(CENT)}"
 
