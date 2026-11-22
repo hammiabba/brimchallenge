@@ -1,14 +1,50 @@
-import { ActionIcon, Skeleton, Stack, Table, Text, VisuallyHidden } from '@mantine/core'
+import { ActionIcon, Anchor, Skeleton, Stack, Table, Text, VisuallyHidden } from '@mantine/core'
 import { IconChevronDown, IconChevronRight } from '@tabler/icons-react'
 import { Fragment, useState } from 'react'
+import { Link } from 'react-router'
 
-import { personName, usePeople } from '../api/reference'
-import type { AuditEvent } from '../api/types'
+import { codeAsWords, personName, usePeople } from '../api/reference'
+import type { AuditEvent, Role } from '../api/types'
+import { ROLE_LABELS } from '../auth/roles'
+import { auditFieldLabel } from '../bills/auditText'
 import { DateText, Id } from '../ui/DataText'
 import { Icon } from '../ui/Icon'
+import { auditLogActionLabel } from './filters'
 
-const COLUMNS = ['', 'Seq', 'When', 'Who', 'Action', 'Entity', 'Comment'] as const
+/**
+ * Six columns that fit the 752 px content column at 1024 px: the event's number sits under its time. Times are in
+ * UTC, like the date filters and the CSV export.
+ */
+const COLUMNS = ['', 'When (UTC)', 'Who', 'Action', 'Entity', 'Comment'] as const
+const MIN_WIDTH = 720
 const SKELETON_ROWS = 10
+const SYSTEM = 'system'
+
+/** The pages an audited entity has, by entity type; other types are shown as plain ids. */
+const ENTITY_PAGES: Partial<Record<string, (id: string) => string>> = {
+  bill: (id) => `/bills/${id}`,
+  payment: (id) => `/payments/${id}`,
+  vendor: (id) => `/vendors/${id}`,
+  email: (id) => `/inbox/${id}`,
+}
+
+/** A role code as the app words it ("Finance manager"); the system and unknown codes in words. */
+function roleLabel(role: string): string {
+  return (ROLE_LABELS as Record<string, string>)[role as Role] ?? codeAsWords(role)
+}
+
+/** The entity's id, linked to its page when it has one, with its type in words under it. */
+function EntityCell({ event }: { event: AuditEvent }) {
+  const page = ENTITY_PAGES[event.entity_type]
+  return (
+    <Stack gap={0}>
+      {page
+        ? <Anchor component={Link} to={page(event.entity_id)} underline="hover"><Id>{event.entity_id}</Id></Anchor>
+        : <Id>{event.entity_id}</Id>}
+      <Text size="xs" c="dimmed">{codeAsWords(event.entity_type)}</Text>
+    </Stack>
+  )
+}
 
 /** A recorded value as text: strings as they are, everything else as compact JSON. */
 function show(value: unknown): string {
@@ -34,7 +70,7 @@ function ChangeTable({ event }: { event: AuditEvent }) {
           <Table.Tbody>
             {fields.map((field) => (
               <Table.Tr key={field}>
-                <Table.Td><Id>{field}</Id></Table.Td>
+                <Table.Td>{auditFieldLabel(field)}</Table.Td>
                 <Table.Td><Text size="sm" style={{ wordBreak: 'break-word' }}>{show(before[field])}</Text></Table.Td>
                 <Table.Td><Text size="sm" style={{ wordBreak: 'break-word' }}>{show(after[field])}</Text></Table.Td>
               </Table.Tr>
@@ -67,23 +103,27 @@ function EventRow({ event }: { event: AuditEvent }) {
             <Icon icon={open ? IconChevronDown : IconChevronRight} size={16} />
           </ActionIcon>
         </Table.Td>
-        <Table.Td data-numeric>{event.seq}</Table.Td>
-        <Table.Td><DateText value={event.at} kind="timestamp" /></Table.Td>
         <Table.Td>
           <Stack gap={0}>
-            <Text size="sm">{personName(event.actor_user_id, people.data)}</Text>
-            <Text size="xs" c="dimmed">
-              {event.on_behalf_of ? `${event.actor_role}, for ${personName(event.on_behalf_of, people.data)}` : event.actor_role}
-            </Text>
+            <Text size="sm"><DateText value={event.at} kind="timestamp" timeZone="UTC" /></Text>
+            <Text size="xs" c="dimmed">{`No. ${event.seq}`}</Text>
           </Stack>
         </Table.Td>
-        <Table.Td><Id>{event.action}</Id></Table.Td>
         <Table.Td>
-          <Stack gap={0}>
-            <Id>{event.entity_id}</Id>
-            <Text size="xs" c="dimmed">{event.entity_type}</Text>
-          </Stack>
+          {/* The system acts as itself: one line, not "system / system". A person gets their role in words. */}
+          {event.actor_user_id === SYSTEM ? <Text size="sm">System</Text> : (
+            <Stack gap={0}>
+              <Text size="sm">{personName(event.actor_user_id, people.data)}</Text>
+              <Text size="xs" c="dimmed">
+                {event.on_behalf_of
+                  ? `${roleLabel(event.actor_role)}, for ${personName(event.on_behalf_of, people.data)}`
+                  : roleLabel(event.actor_role)}
+              </Text>
+            </Stack>
+          )}
         </Table.Td>
+        <Table.Td>{auditLogActionLabel(event.action)}</Table.Td>
+        <Table.Td><EntityCell event={event} /></Table.Td>
         <Table.Td><Text size="sm">{event.comment ?? ''}</Text></Table.Td>
       </Table.Tr>
       {open && (
@@ -105,12 +145,12 @@ interface AuditTableProps {
 /** Audit events in the server's order (oldest first), each expandable to show its before and after values. */
 export function AuditTable({ events, loading, emptyMessage }: AuditTableProps) {
   return (
-    <Table.ScrollContainer minWidth={1000}>
+    <Table.ScrollContainer minWidth={MIN_WIDTH}>
       <Table aria-label="Audit log" bg="white" withTableBorder>
         <Table.Thead>
           <Table.Tr>
             {COLUMNS.map((column, index) => (
-              <Table.Th key={column || index} data-numeric={column === 'Seq' || undefined}>
+              <Table.Th key={column || index}>
                 {column || <VisuallyHidden>Details</VisuallyHidden>}
               </Table.Th>
             ))}

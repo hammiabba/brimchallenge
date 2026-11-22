@@ -79,3 +79,9 @@ export function apiFilters(filters: AuditFilters) {
 export function hasFilters(filters: AuditFilters): boolean {
   return searchFromFilters(filters).toString() !== ''
 }
+
+/** An audit action in words: "bill.approved" -> "Bill approved", "vendor.bank_change_verified" -> "Vendor bank change verified". */
+export function auditLogActionLabel(action: string): string {
+  const words = action.replace('.', ' ').replace(/_/g, ' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}

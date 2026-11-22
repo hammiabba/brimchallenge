@@ -47,10 +47,15 @@ export function MoneyText({ value, currency = 'CAD', align, fw }: MoneyTextProps
  * A date-only value ("Nov 2, 2026", kind "date", the default) or a timestamp in the browser's time zone
  * ("Nov 2, 2026, 10:00 AM EST", kind "timestamp"), as a <time> element with the original value.
  */
-export function DateText({ value, kind = 'date' }: { value: string; kind?: 'date' | 'timestamp' }) {
+export function DateText({ value, kind = 'date', timeZone }: {
+  value: string
+  kind?: 'date' | 'timestamp'
+  /** For a timestamp: show it in this zone ("UTC") instead of the browser's. */
+  timeZone?: string
+}) {
   return (
     <time dateTime={value} style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-      {kind === 'date' ? formatDate(value) : formatTimestamp(value)}
+      {kind === 'date' ? formatDate(value) : formatTimestamp(value, timeZone ? { timeZone } : {})}
     </time>
   )
 }

@@ -6,13 +6,14 @@ import { useSearchParams } from 'react-router'
 
 import { API_PREFIX, api, unwrap } from '../api/client'
 import { ErrorAlert } from '../api/ErrorAlert'
-import { usePeople } from '../api/reference'
+import { codeAsWords, usePeople } from '../api/reference'
 import { Icon } from '../ui/Icon'
 import { AuditTable } from './AuditTable'
 import {
   ACTIONS,
   ENTITY_TYPES,
   apiFilters,
+  auditLogActionLabel,
   filtersFromSearch,
   hasFilters,
   searchFromFilters,
@@ -42,7 +43,9 @@ function FilterBar({ filters, onChange }: { filters: AuditFilters; onChange: (ne
 
   return (
     <Group gap="sm" align="flex-end" wrap="wrap">
-      <Select label="Entity type" placeholder="Any" data={[...ENTITY_TYPES]} value={filters.entityType}
+      {/* The options read as words; the URL and the request keep the codes. */}
+      <Select label="Entity type" placeholder="Any" value={filters.entityType}
+        data={ENTITY_TYPES.map((type) => ({ value: type, label: codeAsWords(type) }))}
         onChange={(value) => onChange({ ...filters, entityType: value })} clearable w={160} />
       <TextInput label="Entity ID" placeholder="AP-00407, V011, U005" value={entityId}
         onChange={(event) => setEntityId(event.currentTarget.value)} w={180} />
@@ -56,7 +59,8 @@ function FilterBar({ filters, onChange }: { filters: AuditFilters; onChange: (ne
         clearable
         w={240}
       />
-      <Select label="Action" placeholder="Any action" data={[...ACTIONS]} value={filters.action}
+      <Select label="Action" placeholder="Any action" value={filters.action}
+        data={ACTIONS.map((action) => ({ value: action, label: auditLogActionLabel(action) }))}
         onChange={(value) => onChange({ ...filters, action: value })} searchable clearable w={240} />
       <TextInput label="From (UTC)" type="date" value={filters.from}
         onChange={(event) => onChange({ ...filters, from: event.currentTarget.value })} w={160} />
@@ -99,7 +103,10 @@ function AuditResults({ filters }: { filters: AuditFilters }) {
       />
       <Group justify="space-between">
         <Text size="sm" c="dimmed">
-          {first !== undefined && last !== undefined ? `Page ${cursors.length}, events ${first} to ${last}` : ''}
+          {/* How many events are on this page, then the range of their numbers (a range, not a count). */}
+          {first !== undefined && last !== undefined
+            ? `Page ${cursors.length}: ${items.length} event${items.length === 1 ? '' : 's'}, numbers ${first} to ${last}`
+            : ''}
         </Text>
         <Group gap="xs">
           <Button size="xs" variant="default" disabled={cursors.length === 1}
