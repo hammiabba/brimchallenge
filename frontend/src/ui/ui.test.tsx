@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 
 import { BILL_STATUS, PAYMENT_STATUS, VENDOR_STATUS, BANK_CHANGE_STATUS } from './statusStyles'
-import { RoleBadge, SeverityBadge, StatusBadge } from './Badges'
+import { OverdueBadge, RoleBadge, SeverityBadge, SeverityCountBadge, StatusBadge } from './Badges'
 import { DateText, Id, MoneyText } from './DataText'
 import { ICON_STROKE, Icon } from './Icon'
 import { FONT, SEVERITY_STYLES, STATUS_TONES, theme } from '../theme'
@@ -53,6 +53,11 @@ describe('Id', () => {
     renderUi(<Id>AP-00427</Id>)
     expect(screen.getByText('AP-00427').style.fontFamily).toContain('monospace')
   })
+
+  it('never breaks an id across lines', () => {
+    renderUi(<Id>AP-00438</Id>)
+    expect(screen.getByText('AP-00438').style.whiteSpace).toBe('nowrap')
+  })
 })
 
 describe('badges', () => {
@@ -96,6 +101,36 @@ describe('badges', () => {
   it('labels the role', () => {
     renderUi(<RoleBadge role="controller_admin" />)
     expect(screen.getByText('Controller / admin')).toBeInTheDocument()
+  })
+
+  it('never cuts or shrinks a badge, so a table column is always as wide as its longest label', () => {
+    renderUi(<StatusBadge kind="bankChange" status="pending_verification" />)
+    const label = screen.getByText('Pending verification')
+    const badge = label.closest('.mantine-Badge-root') as HTMLElement
+    expect(badge.style.flexShrink).toBe('0')
+    expect(badge.style.maxWidth).toBe('none')
+    expect(label.style.overflow).toBe('visible')
+  })
+
+  it('counts open flags as "2 block", "1 warning", "2 warnings", and shows nothing for zero', () => {
+    renderUi(
+      <>
+        <SeverityCountBadge severity="block" count={2} />
+        <SeverityCountBadge severity="warn" count={1} />
+        <SeverityCountBadge severity="warn" count={2} />
+        <SeverityCountBadge severity="info" count={0} />
+      </>,
+    )
+    expect(screen.getByText('2 block')).toBeInTheDocument()
+    expect(screen.getByText('1 warning')).toBeInTheDocument()
+    expect(screen.getByText('2 warnings')).toBeInTheDocument()
+    expect(screen.queryByText(/info/)).not.toBeInTheDocument()
+  })
+
+  it('marks an overdue payment in the attention tone', () => {
+    renderUi(<OverdueBadge />)
+    const badge = screen.getByText('Overdue').closest('.mantine-Badge-root') as HTMLElement
+    expect(badge.style.color).toBe(rgb(STATUS_TONES.attention.color))
   })
 })
 

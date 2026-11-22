@@ -67,11 +67,13 @@
   background-color: transparent;
 }
 
-/* Tables whose cells hold free text (the invoice lines): long words wrap anywhere instead of running out of the
-   cell. Numeric cells keep nowrap (data-numeric above). */
+/* Tables whose cells hold free text (the invoice lines): text wraps between words, and a word longer than its cell
+   breaks only as a last resort, so "Telecommunications" never splits while the column can still grow to fit it.
+   (`anywhere` would let the browser size the column below one word and split every long word.) Numeric cells keep
+   nowrap (data-numeric above). */
 .app-wrap-cells .mantine-Table-td,
 .app-wrap-cells .mantine-Table-th {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 /* The selected row is Sand, with ink text; it stays Sand on hover. */

@@ -14,10 +14,21 @@ import { ROLE_LABELS } from '../auth/roles'
 import { ROLE_TONE, SEVERITY_STYLES, STATUS_TONES, type BadgeTone } from '../theme'
 import { SEVERITY_LABELS, STATUS_STYLES } from './statusStyles'
 
+/**
+ * Mantine's badge cuts its label with an ellipsis and may shrink to fit (`max-width: 100%`, label `overflow: hidden`).
+ * In an auto-layout table cell that lets the browser squeeze a status down to "Sc…". A badge here never shrinks and
+ * never cuts its label, so its column is always at least as wide as its longest label.
+ */
+const NO_TRUNCATION = {
+  root: { flexShrink: 0, maxWidth: 'none', overflow: 'visible' },
+  label: { overflow: 'visible', textOverflow: 'clip' },
+} as const
+
 /** A badge in one of the theme's tones. Colours are set inline so they are exactly the pairs the contrast test checks. */
 function ToneBadge({ tone, children }: { tone: BadgeTone; children: string }) {
   return (
     <Badge
+      styles={NO_TRUNCATION}
       style={{ color: tone.color, backgroundColor: tone.background, border: `1px solid ${tone.border}` }}
     >
       {children}
@@ -46,10 +57,21 @@ export function SeverityBadge({ severity }: { severity: Severity }) {
   return <ToneBadge tone={SEVERITY_STYLES[severity]}>{SEVERITY_LABELS[severity]}</ToneBadge>
 }
 
-/** A count of open flags of one severity ("2 block"), in that severity's colours; nothing for zero. */
+/** The noun after the count: "warn" reads as a verb, so it says "1 warning" / "2 warnings"; block and info stay. */
+function severityCountLabel(severity: Severity, count: number): string {
+  if (severity === 'warn') return `${count} warning${count === 1 ? '' : 's'}`
+  return `${count} ${severity}`
+}
+
+/** A count of open flags of one severity ("2 block", "1 warning"), in that severity's colours; nothing for zero. */
 export function SeverityCountBadge({ severity, count }: { severity: Severity; count: number }) {
   if (count <= 0) return null
-  return <ToneBadge tone={SEVERITY_STYLES[severity]}>{`${count} ${severity}`}</ToneBadge>
+  return <ToneBadge tone={SEVERITY_STYLES[severity]}>{severityCountLabel(severity, count)}</ToneBadge>
+}
+
+/** "Overdue", in the attention tone: a scheduled payment dated before the business date. */
+export function OverdueBadge() {
+  return <ToneBadge tone={STATUS_TONES.attention}>Overdue</ToneBadge>
 }
 
 /** The signed-in user's role, as in the header. */

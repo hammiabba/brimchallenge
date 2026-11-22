@@ -6,11 +6,12 @@ import { formatMoney } from '../lib/money'
 /**
  * An identifier or code in IBM Plex Mono: AP-00427, V004, PAY-00012, GL 6310, HST13. Slightly smaller than the
  * surrounding text so the mono face doesn't look heavier. Use it wherever an ID stands on its own (a table cell, a
- * header, a link); inside a sentence of running text an ID may stay in the body font.
+ * header, a link); inside a sentence of running text an ID may stay in the body font. An ID never breaks across lines
+ * ("AP-" / "00438"): its column grows to fit it instead.
  */
 export function Id({ children, size }: { children: string; size?: MantineFontSize }) {
   return (
-    <Text component="span" inherit ff="monospace" fz={size ?? '0.93em'}>
+    <Text component="span" inherit ff="monospace" fz={size ?? '0.93em'} style={{ whiteSpace: 'nowrap' }}>
       {children}
     </Text>
   )
