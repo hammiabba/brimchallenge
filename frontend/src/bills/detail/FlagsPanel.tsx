@@ -1,11 +1,15 @@
 import { Box, Button, Divider, Group, Stack, Text, Title } from '@mantine/core'
+import { notifications } from '@mantine/notifications'
 import { IconFocus2 } from '@tabler/icons-react'
+import { useState } from 'react'
 
 import { codeAsWords, personName, useFlagHelp, usePeople } from '../../api/reference'
 import type { BillDetail, BillFlag } from '../../api/types'
 import { SeverityBadge, StatusBadge } from '../../ui/Badges'
 import { DateText } from '../../ui/DataText'
 import { Icon } from '../../ui/Icon'
+import { CommentActionModal } from '../../vendors/CommentActionModal'
+import { useResolveFlag } from '../mutations'
 import { FlagEvidence } from './FlagEvidence'
 import { regionFor, useHighlight } from './highlight'
 
@@ -31,6 +35,62 @@ function Resolution({ flag }: { flag: BillFlag }) {
         </Text>
       </Group>
       {flag.resolution_comment && <Text size="sm">{`Reason: ${flag.resolution_comment}`}</Text>}
+    </Stack>
+  )
+}
+
+/**
+ * Resolve and Override for one open flag, from the bill's allowed_actions: resolve_flags for resolving any flag and
+ * overriding a warning, override_blocking_flags for overriding a block (finance manager or controller only). Both
+ * need a comment, kept in the audit log. Someone who may resolve but not override a block is told why.
+ */
+function FlagActions({ flag, bill, title }: { flag: BillFlag; bill: BillDetail; title: string }) {
+  const [open, setOpen] = useState<'resolved' | 'overridden' | null>(null)
+  const resolve = useResolveFlag(bill, flag.id, 'resolved')
+  const override = useResolveFlag(bill, flag.id, 'overridden')
+  const actions = bill.allowed_actions ?? {}
+  const canResolve = actions.resolve_flags?.allowed ?? false
+  const overrideAction = flag.severity === 'block' ? actions.override_blocking_flags : actions.resolve_flags
+  const canOverride = overrideAction?.allowed ?? false
+  if (!canResolve && !canOverride) return null
+  // The dialogs stay mounted once the flag is closed, so their success handling still runs after the bill refreshes.
+  const isOpen = flag.resolution === 'open'
+
+  function done(verb: string) {
+    notifications.show({ title: `Flag ${verb}`, message: `${title} on ${bill.bill_id}` })
+    setOpen(null)
+  }
+
+  return (
+    <Stack gap={4}>
+      {isOpen && (
+        <Group gap="xs" wrap="nowrap">
+          {canResolve && <Button size="xs" onClick={() => setOpen('resolved')}>Resolve</Button>}
+          {canOverride && <Button size="xs" variant="default" onClick={() => setOpen('overridden')}>Override</Button>}
+        </Group>
+      )}
+      {isOpen && !canOverride && flag.severity === 'block' && (
+        <Text size="xs" c="dimmed">Only a finance manager or the controller can override a blocking flag.</Text>
+      )}
+      <CommentActionModal
+        opened={open === 'resolved'}
+        onClose={() => setOpen(null)}
+        title="Resolve flag"
+        description={`Mark "${title}" as fixed and say what you did or checked.`}
+        mutation={resolve}
+        onDone={() => done('resolved')}
+        commentRequired
+      />
+      <CommentActionModal
+        opened={open === 'overridden'}
+        onClose={() => setOpen(null)}
+        title="Override flag"
+        description={`Accept the bill despite "${title}" and say why.${flag.severity === 'block' ? ' This lets a blocked bill go on to approval.' : ''}`}
+        mutation={override}
+        onDone={() => done('overridden')}
+        danger
+        commentRequired
+      />
     </Stack>
   )
 }
@@ -66,6 +126,7 @@ function FlagSection({ flag, bill }: { flag: BillFlag; bill: BillDetail }) {
         <FlagEvidence evidence={flag.evidence} currency={bill.currency} duplicates={bill.latest_run?.duplicates} />
         <Group justify="space-between" align="flex-start" wrap="wrap" gap="xs">
           <Resolution flag={flag} />
+          <FlagActions flag={flag} bill={bill} title={help?.title ?? codeAsWords(flag.code)} />
           {region && (
             <Button
               variant="subtle"

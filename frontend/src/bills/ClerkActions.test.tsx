@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { BillDetail } from '../api/types'
 import { envelope, installFakeApi, type FakeRoute } from '../test/fakeApi'
-import { billDetail, billScreenRoutes, controlsRun } from '../test/fixtures'
+import { billDetail, billScreenRoutes, controlsRun, flag } from '../test/fixtures'
 import { renderApp } from '../test/renderApp'
 
 const CLERK = { role: 'ap_clerk', user_id: 'U005' } as const
@@ -226,5 +226,96 @@ describe('edit the header', () => {
     } }))
     await screen.findByRole('heading', { level: 1, name: 'Bill AP-00407' })
     expect(screen.queryByRole('button', { name: 'Edit details' })).not.toBeInTheDocument()
+  })
+})
+
+/** AP-00407 in review with a blocking duplicate and a wrong-tax warning, both open. */
+function withFlags(actions: BillDetail['allowed_actions']): BillDetail {
+  return inReview({
+    allowed_actions: actions,
+    latest_run: controlsRun({
+      flags: [
+        flag(),
+        flag({ id: 90, code: 'TAX_WRONG_FOR_PROVINCE', severity: 'warn', field: 'taxes',
+          message: 'Tax charged is HST $282.69, but delivery to AB should be GST $108.73.', evidence: {} }),
+      ],
+    }),
+  })
+}
+
+describe('resolve and override flags', () => {
+  it('shows the flag help, resolves with a required comment, and refreshes the flags', async () => {
+    let sent: unknown = null
+    renderReview(withFlags({ resolve_flags: ALLOWED }), CLERK, (state) => ({
+      'POST /bills/AP-00407/flags/89/resolve': async (request) => {
+        sent = await request.json()
+        const run = state.bill.latest_run!
+        state.bill = { ...state.bill, row_version: 5, latest_run: { ...run, flags: run.flags.map((f) => (f.id === 89
+          ? { ...f, resolution: 'resolved' as const, resolved_by: 'U005', resolution_comment: 'Credit note received' } : f)) } }
+        return { body: state.bill }
+      },
+    }))
+    const user = userEvent.setup()
+
+    const duplicate = await screen.findByRole('region', { name: 'Exact duplicate' })
+    expect(within(duplicate).getByText(/check whether it was paid before approving/)).toBeInTheDocument()
+    // AP can't override a blocking flag: no Override button, and they're told who can.
+    expect(within(duplicate).queryByRole('button', { name: 'Override' })).not.toBeInTheDocument()
+    expect(within(duplicate).getByText('Only a finance manager or the controller can override a blocking flag.')).toBeInTheDocument()
+
+    await user.click(within(duplicate).getByRole('button', { name: 'Resolve' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Resolve flag' })
+    const confirm = within(dialog).getByRole('button', { name: 'Resolve flag' })
+    expect(confirm).toBeDisabled()
+    await user.type(within(dialog).getByRole('textbox', { name: /Comment/ }), 'Credit note received')
+    await user.click(confirm)
+
+    await waitFor(() => expect(sent).toEqual({ row_version: 4, resolution: 'resolved', comment: 'Credit note received' }))
+    expect(await screen.findByText('Flag resolved')).toBeInTheDocument()
+    expect(await within(duplicate).findByText('Reason: Credit note received')).toBeInTheDocument()
+    expect(within(duplicate).queryByRole('button', { name: 'Resolve' })).not.toBeInTheDocument()
+  })
+
+  it('lets AP override a warning, with a comment', async () => {
+    let sent: unknown = null
+    renderReview(withFlags({ resolve_flags: ALLOWED }), CLERK, (state) => ({
+      'POST /bills/AP-00407/flags/90/resolve': async (request) => {
+        sent = await request.json()
+        return { body: state.bill }
+      },
+    }))
+    const user = userEvent.setup()
+
+    const tax = await screen.findByRole('region', { name: 'Wrong tax for province' })
+    await user.click(within(tax).getByRole('button', { name: 'Override' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Override flag' })
+    await user.type(within(dialog).getByRole('textbox', { name: /Comment/ }), 'Vendor confirmed ON delivery')
+    await user.click(within(dialog).getByRole('button', { name: 'Override flag' }))
+    await waitFor(() => expect(sent).toEqual({ row_version: 4, resolution: 'overridden', comment: 'Vendor confirmed ON delivery' }))
+  })
+
+  it('lets the finance manager override a blocking flag, and shows a refusal', async () => {
+    renderReview(withFlags({ resolve_flags: ALLOWED, override_blocking_flags: ALLOWED }),
+      { role: 'finance_manager', user_id: 'U003' }, () => ({
+        'POST /bills/AP-00407/flags/89/resolve': {
+          status: 409, body: envelope('flag.invalid_state', 'The flag is resolved; it must be open.', 'rid-fl-1'),
+        },
+      }))
+    const user = userEvent.setup()
+
+    const duplicate = await screen.findByRole('region', { name: 'Exact duplicate' })
+    expect(within(duplicate).queryByText(/Only a finance manager/)).not.toBeInTheDocument()
+    await user.click(within(duplicate).getByRole('button', { name: 'Override' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Override flag' })
+    expect(within(dialog).getByText(/This lets a blocked bill go on to approval/)).toBeInTheDocument()
+    await user.type(within(dialog).getByRole('textbox', { name: /Comment/ }), 'Different shipment')
+    await user.click(within(dialog).getByRole('button', { name: 'Override flag' }))
+    expect(await within(dialog).findByText('The flag is resolved; it must be open.')).toBeInTheDocument()
+  })
+
+  it('has no flag buttons without the actions', async () => {
+    renderReview(withFlags({}), { role: 'auditor', user_id: 'U015' })
+    const duplicate = await screen.findByRole('region', { name: 'Exact duplicate' })
+    expect(within(duplicate).queryByRole('button', { name: /Resolve|Override/ })).not.toBeInTheDocument()
   })
 })

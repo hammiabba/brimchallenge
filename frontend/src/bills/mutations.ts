@@ -50,3 +50,18 @@ export function useEditBill(bill: BillDetail) {
     onSuccess: apply,
   })
 }
+
+/**
+ * POST /bills/{id}/flags/{flag}/resolve: mark an open flag resolved (fixed) or overridden (accepted as it is), with a
+ * comment. The server lets only the finance manager and the controller override a blocking flag.
+ */
+export function useResolveFlag(bill: BillDetail, flagId: number, resolution: 'resolved' | 'overridden') {
+  const apply = useApplyBill()
+  return useMutation({
+    mutationFn: (comment: string | null) => unwrap(api.POST('/bills/{bill_id}/flags/{flag_id}/resolve', {
+      params: { path: { bill_id: bill.bill_id, flag_id: flagId } },
+      body: { row_version: bill.row_version, resolution, comment },
+    })),
+    onSuccess: apply,
+  })
+}
