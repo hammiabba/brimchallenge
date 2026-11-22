@@ -25,11 +25,13 @@ const DelegationPage = lazy(() => import('./delegation/DelegationPage'))
 const SpendPage = lazy(() => import('./spend/SpendPage'))
 const SubmitPage = lazy(() => import('./intake/SubmitPage'))
 const SubmissionsPage = lazy(() => import('./intake/SubmissionsPage'))
+const InboxPage = lazy(() => import('./intake/InboxPage'))
 
 /** The screens built so far, by navigation item. Every other item still shows its placeholder. */
 const SCREENS: Partial<Record<NavKey, LazyExoticComponent<ComponentType>>> = {
   submit: SubmitPage,
   submissions: SubmissionsPage,
+  inbox: InboxPage,
   bills: BillsPage,
   review: ReviewQueuePage,
   vendors: VendorsPage,
