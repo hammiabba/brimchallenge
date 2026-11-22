@@ -21,6 +21,7 @@ import {
   IconFileInvoice,
   IconFiles,
   IconHistory,
+  IconScale,
   IconInbox,
   IconShieldCheck,
   IconUpload,
@@ -41,6 +42,7 @@ export type NavKey =
   | 'unassigned'
   | 'bills'
   | 'payments'
+  | 'reconciliation'
   | 'vendors'
   | 'bankChanges'
   | 'spend'
@@ -174,6 +176,17 @@ export const NAV_ITEMS: Record<NavKey, NavItem> = {
       'POST /payments/{payment_id}/cancel',
     ],
   },
+  reconciliation: {
+    key: 'reconciliation',
+    path: '/reconciliation',
+    label: 'Bank reconciliation',
+    icon: IconScale,
+    placeholder: 'Bank reconciliation is not built yet. It will match the bank statement to the payments.',
+    description:
+      'The bank statement against the payments: every line matched to its payment, a bank fee or unexplained, with ' +
+      'totals; bills paid twice; payments the statement doesn\'t show; and an "only issues" view for what needs action.',
+    endpoints: ['GET /reconciliation/bank'],
+  },
   vendors: {
     key: 'vendors',
     path: '/vendors',
@@ -267,9 +280,9 @@ export const NAV_BY_ROLE: Record<Role, readonly NavKey[]> = {
   ap_clerk: ['inbox', 'review', 'bills', 'payments', 'vendors', 'bankChanges'],
   approver: ['approvals', 'bills', 'spend', 'delegation'],
   finance_manager: ['approvals', 'payments', 'bills', 'vendors', 'bankChanges', 'unassigned', 'spend', 'delegation'],
-  controller_admin: ['approvals', 'payments', 'bills', 'vendors', 'bankChanges', 'unassigned', 'spend', 'audit',
-    'users', 'policies', 'absences', 'delegation'],
-  auditor: ['audit', 'bills', 'payments', 'vendors', 'bankChanges', 'spend', 'users', 'policies', 'absences'],
+  controller_admin: ['approvals', 'payments', 'reconciliation', 'bills', 'vendors', 'bankChanges', 'unassigned', 'spend',
+    'audit', 'users', 'policies', 'absences', 'delegation'],
+  auditor: ['audit', 'bills', 'payments', 'reconciliation', 'vendors', 'bankChanges', 'spend', 'users', 'policies', 'absences'],
 }
 
 /** Every screen, for building the routes. */

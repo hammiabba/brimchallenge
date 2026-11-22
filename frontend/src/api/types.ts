@@ -57,6 +57,13 @@ export type PaymentDetail = Schemas['PaymentDetail']
 export type PaymentDashboard = Schemas['PaymentDashboard']
 export type ScheduleInput = Schemas['ScheduleIn']
 
+// Bank reconciliation
+export type BankReconciliation = Schemas['BankReconciliation']
+export type ReconLine = Schemas['ReconLineOut']
+export type ReconPayment = Schemas['ReconPaymentOut']
+export type ReconDoublePayment = Schemas['ReconDoublePaymentOut']
+export type ReconIssue = Schemas['ReconIssueOut']
+
 // Audit log
 export type AuditPage = Schemas['AuditPage']
 
