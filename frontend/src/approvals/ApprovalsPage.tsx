@@ -127,7 +127,7 @@ export default function ApprovalsPage() {
         </>
       ) : (
         <>
-          <Table.ScrollContainer minWidth={960} type="native">
+          <Table.ScrollContainer minWidth={960}>
             <Table aria-label="My approvals" bg="white" withTableBorder>
               <Table.Thead>
                 <Table.Tr>

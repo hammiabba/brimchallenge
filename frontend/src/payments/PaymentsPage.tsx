@@ -112,7 +112,7 @@ function Overview() {
             </Field>
           </SimpleGrid>
           <Text size="xs" c="dimmed">Every payment, counted by its current status.</Text>
-          <Table.ScrollContainer minWidth={420} type="native">
+          <Table.ScrollContainer minWidth={420}>
             <Table aria-label="Payments by status" bg="white" withTableBorder>
               <Table.Thead>
                 <Table.Tr>
@@ -189,7 +189,7 @@ function ApprovedBills() {
       {bills.isError ? (
         <ErrorAlert error={bills.error} title="Can't load approved bills" onRetry={() => void bills.refetch()} />
       ) : (
-        <Table.ScrollContainer minWidth={640} type="native">
+        <Table.ScrollContainer minWidth={640}>
           <Table aria-label="Approved bills" bg="white" withTableBorder>
             <Table.Thead>
               <Table.Tr>
@@ -382,7 +382,7 @@ function PaymentsList() {
         <ErrorAlert error={payments.error} title="Can't load payments" onRetry={payments.refetch} />
       ) : (
         <>
-          <Table.ScrollContainer minWidth={760} type="native">
+          <Table.ScrollContainer minWidth={760}>
             <Table aria-label="Payments" bg="white" withTableBorder>
               <Table.Thead>
                 <Table.Tr>

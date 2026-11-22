@@ -134,7 +134,7 @@ export default function UnassignedStepsPage() {
         <ErrorAlert error={steps.error} title="Can't load unassigned steps" onRetry={() => void steps.refetch()} />
       ) : (
         <>
-          <Table.ScrollContainer minWidth={900} type="native">
+          <Table.ScrollContainer minWidth={900}>
             <Table aria-label="Unassigned steps" bg="white" withTableBorder>
               <Table.Thead>
                 <Table.Tr>

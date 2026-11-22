@@ -10,7 +10,7 @@ import { stepRoleLabel } from './labels'
 /**
  * Seven columns that fit the 1008 px content column at 1280 px: the invoice number sits under the vendor, and the
  * flag counts and the top flag share one "Flags" column. Below MIN_WIDTH the table scrolls sideways, with a visible
- * (native) scrollbar.
+ * scrollbar (the theme's native Table.ScrollContainer).
  */
 const COLUMNS = ['Bill', 'Vendor', 'Invoice date', 'Total (CAD)', 'Status', 'Flags', 'Current step'] as const
 const MIN_WIDTH = 900
@@ -108,7 +108,7 @@ interface BillsTableProps {
  */
 export function BillsTable({ bills, loading, emptyMessage, label }: BillsTableProps) {
   return (
-    <Table.ScrollContainer minWidth={MIN_WIDTH} type="native">
+    <Table.ScrollContainer minWidth={MIN_WIDTH}>
       <Table aria-label={label} bg="white" withTableBorder>
         <Table.Thead>
           <Table.Tr>

@@ -245,6 +245,10 @@ export const theme = createTheme({
         },
       }),
     },
+    // A table wider than its column scrolls sideways with the browser's own scrollbar, which shows whenever there is
+    // more to see. Mantine's default ("scrollarea") only shows its scrollbar on hover, so cut-off columns looked
+    // missing rather than scrollable.
+    TableScrollContainer: { defaultProps: { type: 'native' } },
     Anchor: { defaultProps: { underline: 'always' } },
     AppShell: { defaultProps: { transitionDuration: TRANSITION_MS } },
     Burger: { defaultProps: { transitionDuration: TRANSITION_MS } },

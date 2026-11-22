@@ -99,7 +99,7 @@ function SimpleTable({ label, columns, numeric = [], empty, rows }: {
   label: string; columns: readonly string[]; numeric?: readonly string[]; empty: string; rows: ReactNode[]
 }) {
   return (
-    <Table.ScrollContainer minWidth={820} type="native">
+    <Table.ScrollContainer minWidth={820}>
       <Table aria-label={label} bg="white" withTableBorder>
         <Table.Thead>
           <Table.Tr>

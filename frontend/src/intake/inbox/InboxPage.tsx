@@ -17,8 +17,9 @@ type Column = (typeof COLUMNS)[number]
 /** The columns an inbox run fills in; empty for every email that hasn't been triaged yet. */
 const TRIAGE_COLUMNS: ReadonlySet<Column> = new Set(['Class', 'Reason', 'Suggested action', 'Bills'])
 /**
- * Below these widths the table scrolls sideways (with a visible scrollbar). Without the triage columns the four left
- * fit the 1008 px content column at 1280 px; with them, eight columns of free text need more.
+ * Below these widths the table scrolls sideways, with a visible scrollbar (the theme's native Table.ScrollContainer).
+ * Without the triage columns the four left fit the 1008 px content column at 1280 px; with them, eight columns of
+ * free text need more.
  */
 const MIN_WIDTH = { withTriage: 1100, withoutTriage: 700 } as const
 /** GET /intake/emails for the untriaged count only: one row is enough, the total is what counts. */
@@ -132,7 +133,7 @@ export default function InboxPage() {
         <ErrorAlert error={emails.error} title="Can't load the inbox" onRetry={forbidden ? undefined : () => void emails.refetch()} />
       ) : (
         <>
-          <Table.ScrollContainer minWidth={showTriage ? MIN_WIDTH.withTriage : MIN_WIDTH.withoutTriage} type="native">
+          <Table.ScrollContainer minWidth={showTriage ? MIN_WIDTH.withTriage : MIN_WIDTH.withoutTriage}>
             <Table aria-label="Inbox emails" bg="white" withTableBorder>
               <Table.Thead>
                 <Table.Tr>{columns.map((column) => <Table.Th key={column}>{column}</Table.Th>)}</Table.Tr>
