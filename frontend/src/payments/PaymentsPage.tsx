@@ -1,15 +1,17 @@
 import { Anchor, Button, Group, Pagination, SegmentedControl, SimpleGrid, Skeleton, Stack, Table, Text, Title } from '@mantine/core'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
+import { api, unwrap } from '../api/client'
 import { ErrorAlert } from '../api/ErrorAlert'
 import { personName, usePeople } from '../api/reference'
-import type { BillSummary, Payment, PaymentStatus, Role } from '../api/types'
+import type { BillSummary, Payment, PaymentsPage as PaymentsPageData, PaymentStatus, Role } from '../api/types'
 import { useCurrentUser } from '../auth/context'
 import { PAYMENT_METHOD_LABELS } from '../bills/labels'
 import { useBill } from '../bills/queries'
-import { StatusBadge } from '../ui/Badges'
+import { OverdueBadge, StatusBadge } from '../ui/Badges'
 import { DateText, Id, MoneyText } from '../ui/DataText'
 import { PAYMENT_STATUS } from '../ui/statusStyles'
 import { PaymentActions } from './PaymentActions'
@@ -44,12 +46,13 @@ function pageFromSearch(search: URLSearchParams): number {
   return Number.isInteger(page) && page > 1 ? page : 1
 }
 
-/** One label and value in the overview grid. */
-function Field({ label, children }: { label: string; children: ReactNode }) {
+/** One label and value in the overview grid, with a one-line definition under the value. */
+function Field({ label, definition, children }: { label: string; definition: string; children: ReactNode }) {
   return (
     <Stack gap={2}>
       <Text size="xs" c="dimmed">{label}</Text>
       <Text size="sm" component="div">{children}</Text>
+      <Text size="xs" c="dimmed">{definition}</Text>
     </Stack>
   )
 }
@@ -94,16 +97,22 @@ function Overview() {
         <Skeleton animate={false} height={48} />
       ) : (
         <>
+          {/* The definitions say what GET /payments/summary counts (services/payments.py, dashboard()): both
+              figures cover payments still scheduled or outstanding, split by their scheduled date. */}
           <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
-            <Field label="Due in the next 7 days">
+            <Field label="Due in the next 7 days"
+              definition="Scheduled or outstanding payments dated from the as-of date to 7 days after it.">
               <CountAndTotal count={data.due_next_7_days_count} total={data.due_next_7_days_cad} />
             </Field>
-            <Field label="Overdue">
+            <Field label="Overdue" definition="Scheduled or outstanding payments dated before the as-of date.">
               <CountAndTotal count={data.overdue_count} total={data.overdue_cad} />
             </Field>
-            <Field label="As of"><DateText value={data.as_of} /></Field>
+            <Field label="As of" definition="The business date the app treats as today.">
+              <DateText value={data.as_of} />
+            </Field>
           </SimpleGrid>
-          <Table.ScrollContainer minWidth={420}>
+          <Text size="xs" c="dimmed">Every payment, counted by its current status.</Text>
+          <Table.ScrollContainer minWidth={420} type="native">
             <Table aria-label="Payments by status" bg="white" withTableBorder>
               <Table.Thead>
                 <Table.Tr>
@@ -180,7 +189,7 @@ function ApprovedBills() {
       {bills.isError ? (
         <ErrorAlert error={bills.error} title="Can't load approved bills" onRetry={() => void bills.refetch()} />
       ) : (
-        <Table.ScrollContainer minWidth={640}>
+        <Table.ScrollContainer minWidth={640} type="native">
           <Table aria-label="Approved bills" bg="white" withTableBorder>
             <Table.Thead>
               <Table.Tr>
@@ -199,49 +208,162 @@ function ApprovedBills() {
   )
 }
 
-/** One payment in the list; a scheduled one gets the actions the server allows (fetched per row). */
-function PaymentRow({ payment, actions }: { payment: Payment; actions: boolean }) {
+/** The columns a payments table can show; each tab picks the ones that say something on it. */
+type Column = 'payment' | 'bill' | 'vendor' | 'method' | 'scheduled' | 'paid' | 'amount' | 'status' | 'released' | 'actions'
+
+const COLUMN_LABELS: Record<Column, string> = {
+  payment: 'Payment',
+  bill: 'Bill',
+  vendor: 'Vendor',
+  method: 'Method',
+  scheduled: 'Scheduled',
+  paid: 'Paid',
+  amount: 'Amount (CAD)',
+  status: 'Status',
+  released: 'Released by',
+  actions: 'Actions',
+}
+
+/**
+ * The columns per tab, so no column repeats the same empty value on every row: Scheduled has no paid date or
+ * releaser yet; Released shows who released it and when; Settled and Outstanding show the paid date; only All needs
+ * a status column. Release and cancel only apply to scheduled payments, so only Scheduled and All have Actions.
+ */
+function columnsFor(tab: Tab, actions: boolean): Column[] {
+  const base: Column[] = ['payment', 'bill', 'vendor', 'method', 'scheduled']
+  const actionColumn: Column[] = actions ? ['actions'] : []
+  switch (tab) {
+    case 'scheduled': return [...base, 'amount', ...actionColumn]
+    case 'released': return [...base, 'amount', 'released']
+    case 'settled':
+    case 'outstanding': return [...base, 'paid', 'amount']
+    case 'cancelled': return [...base, 'amount']
+    case 'all': return [...base, 'paid', 'amount', 'status', ...actionColumn]
+  }
+}
+
+/** True when a scheduled payment's date is before the business date. Both are "YYYY-MM-DD", so text order is date order. */
+function isOverdue(payment: Payment, asOf: string | undefined): boolean {
+  return payment.status === 'scheduled' && asOf !== undefined && payment.scheduled_date < asOf
+}
+
+/** One payment in the list, with the tab's columns; a scheduled one gets the actions the server allows (fetched per row). */
+function PaymentRow({ payment, columns, asOf }: { payment: Payment; columns: readonly Column[]; asOf: string | undefined }) {
   const people = usePeople()
-  return (
-    <Table.Tr>
-      <Table.Td>
+  const cells: Record<Column, () => ReactNode> = {
+    payment: () => (
+      <Stack gap={0}>
         <Anchor component={Link} to={`/payments/${payment.payment_id}`} underline="hover" fw={500}>
           <Id>{payment.payment_id}</Id>
         </Anchor>
-      </Table.Td>
-      <Table.Td>
-        <Anchor component={Link} to={`/bills/${payment.bill_id}`} underline="hover"><Id>{payment.bill_id}</Id></Anchor>
-      </Table.Td>
-      <Table.Td>{payment.vendor_name ?? payment.vendor_id}</Table.Td>
-      <Table.Td>{PAYMENT_METHOD_LABELS[payment.method] ?? payment.method}</Table.Td>
-      <Table.Td><DateText value={payment.scheduled_date} /></Table.Td>
-      <Table.Td>{payment.paid_date ? <DateText value={payment.paid_date} /> : <Text span c="dimmed" size="sm">Not yet</Text>}</Table.Td>
-      <Table.Td data-numeric>
+        {payment.prepared_by && (
+          <Text size="xs" c="dimmed">{`Prepared by ${personName(payment.prepared_by, people.data)}`}</Text>
+        )}
+      </Stack>
+    ),
+    bill: () => (
+      <Anchor component={Link} to={`/bills/${payment.bill_id}`} underline="hover"><Id>{payment.bill_id}</Id></Anchor>
+    ),
+    vendor: () => payment.vendor_name ?? payment.vendor_id,
+    method: () => PAYMENT_METHOD_LABELS[payment.method] ?? payment.method,
+    scheduled: () => (
+      <Stack gap={4} align="flex-start">
+        <DateText value={payment.scheduled_date} />
+        {isOverdue(payment, asOf) && <OverdueBadge />}
+      </Stack>
+    ),
+    paid: () => (payment.paid_date ? <DateText value={payment.paid_date} /> : <Text span c="dimmed" size="sm">Not yet</Text>),
+    amount: () => (
+      <>
         <MoneyText value={payment.amount_cad} align="right" />
         {payment.currency !== 'CAD' && (
           <Text size="xs" c="dimmed" ta="right"><MoneyText value={payment.amount} currency={payment.currency} /></Text>
         )}
-      </Table.Td>
-      <Table.Td><StatusBadge kind="payment" status={payment.status} /></Table.Td>
-      <Table.Td>{payment.prepared_by ? personName(payment.prepared_by, people.data) : <Text span c="dimmed" size="sm">None</Text>}</Table.Td>
-      <Table.Td>{payment.released_by ? personName(payment.released_by, people.data) : <Text span c="dimmed" size="sm">Not released</Text>}</Table.Td>
-      {actions && <Table.Td>{payment.status === 'scheduled' && <PaymentActions paymentId={payment.payment_id} />}</Table.Td>}
+      </>
+    ),
+    status: () => <StatusBadge kind="payment" status={payment.status} />,
+    released: () => (payment.released_by ? (
+      <Stack gap={0}>
+        <Text size="sm">{personName(payment.released_by, people.data)}</Text>
+        {payment.released_at && <Text size="xs" c="dimmed"><DateText value={payment.released_at} kind="timestamp" /></Text>}
+      </Stack>
+    ) : <Text span c="dimmed" size="sm">Not released</Text>),
+    actions: () => payment.status === 'scheduled' && <PaymentActions paymentId={payment.payment_id} stacked />,
+  }
+  return (
+    <Table.Tr>
+      {columns.map((column) => (
+        <Table.Td key={column} data-numeric={column === 'amount' || undefined}>{cells[column]()}</Table.Td>
+      ))}
     </Table.Tr>
   )
 }
 
-/** The payments list by status, newest scheduled date first, paged (GET /payments). Tab and page are in the URL. */
+/** The list's rows, total and loading state, whichever way they were fetched. */
+interface PaymentsListData {
+  items: readonly Payment[] | undefined
+  total: number
+  isPending: boolean
+  isError: boolean
+  error: Error | null
+  refetch: () => void
+}
+
+/**
+ * One page of the list for a tab. GET /payments sorts newest scheduled date first; the Scheduled tab shows the oldest
+ * (the most urgent) first instead, by reading the server's order from the other end: page N of oldest-first is the
+ * slice of newest-first that ends N pages from the bottom, reversed. The newest-first first page gives the total this
+ * needs; when everything fits on one page it is simply that page reversed. Ties keep their order reversed too (the
+ * server breaks them by payment id), so paging stays stable.
+ */
+function usePaymentsList(tab: Tab, page: number): PaymentsListData {
+  const statuses: PaymentStatus[] = tab === 'all' ? [] : [tab as PaymentStatus]
+  const oldestFirst = tab === 'scheduled'
+  const head = usePaymentsPage(statuses, oldestFirst ? 1 : page)
+  const total = head.data?.total
+  const size = PAYMENTS_PAGE_SIZE
+  const fromEnd = oldestFirst && total !== undefined && total > size
+  const offset = Math.max(0, (total ?? 0) - page * size)
+  const limit = Math.max(1, Math.min(size, (total ?? 0) - (page - 1) * size))
+  // Same key shape as usePaymentsPage, so releasing or cancelling (which refreshes ['payments']) refreshes this too.
+  const query = { status: statuses, limit, offset }
+  const tail = useQuery<PaymentsPageData>({
+    queryKey: ['payments', 'page', query],
+    queryFn: () => unwrap(api.GET('/payments', { params: { query } })),
+    placeholderData: keepPreviousData,
+    enabled: fromEnd,
+  })
+
+  if (!oldestFirst) {
+    return { items: head.data?.items, total: total ?? 0, isPending: head.isPending, isError: head.isError, error: head.error,
+      refetch: () => void head.refetch() }
+  }
+  const source = fromEnd ? tail : head
+  return {
+    items: source.data ? [...source.data.items].reverse() : undefined,
+    total: total ?? 0,
+    isPending: head.isPending || (fromEnd && tail.isPending),
+    isError: head.isError || tail.isError,
+    error: head.error ?? tail.error,
+    refetch: () => { void head.refetch(); if (fromEnd) void tail.refetch() },
+  }
+}
+
+/**
+ * The payments list by status, paged (GET /payments): Scheduled oldest first, the other tabs newest first. Tab and
+ * page are in the URL. Each tab shows only the columns that differ from row to row.
+ */
 function PaymentsList() {
   const user = useCurrentUser()
+  const summary = usePaymentsSummary()
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = tabFromSearch(searchParams)
   const page = pageFromSearch(searchParams)
-  const payments = usePaymentsPage(tab === 'all' ? [] : [tab as PaymentStatus], page)
+  const payments = usePaymentsList(tab, page)
   // Auditors only read: no Actions column for them. The buttons themselves still need the server's yes.
   const actions = ACTION_ROLES.includes(user.role)
-  const columns = ['Payment', 'Bill', 'Vendor', 'Method', 'Scheduled', 'Paid', 'Amount (CAD)', 'Status', 'Prepared by',
-    'Released by', ...(actions ? ['Actions'] : [])]
-  const total = payments.data?.total ?? 0
+  const columns = columnsFor(tab, actions)
+  const total = payments.total
   const pages = Math.max(1, Math.ceil(total / PAYMENTS_PAGE_SIZE))
   const empty = tab === 'all' ? 'No payments yet.' : `No ${PAYMENT_STATUS[tab].label.toLowerCase()} payments.`
 
@@ -256,26 +378,32 @@ function PaymentsList() {
         <SegmentedControl aria-label="Status" data={TABS.map((t) => ({ value: t.value, label: t.label }))} value={tab}
           onChange={setTab} />
       </Group>
-      {payments.isError && !payments.data ? (
-        <ErrorAlert error={payments.error} title="Can't load payments" onRetry={() => void payments.refetch()} />
+      {payments.isError && !payments.items ? (
+        <ErrorAlert error={payments.error} title="Can't load payments" onRetry={payments.refetch} />
       ) : (
         <>
-          <Table.ScrollContainer minWidth={1100}>
+          <Table.ScrollContainer minWidth={760} type="native">
             <Table aria-label="Payments" bg="white" withTableBorder>
               <Table.Thead>
                 <Table.Tr>
-                  {columns.map((c) => <Table.Th key={c} data-numeric={c === 'Amount (CAD)' || undefined}>{c}</Table.Th>)}
+                  {columns.map((c) => (
+                    <Table.Th key={c} data-numeric={c === 'amount' || undefined}>{COLUMN_LABELS[c]}</Table.Th>
+                  ))}
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                <TableState loading={payments.isPending} empty={payments.data?.items.length === 0} columns={columns.length}
+                <TableState loading={payments.isPending} empty={payments.items?.length === 0} columns={columns.length}
                   message={empty} />
-                {payments.data?.items.map((p) => <PaymentRow key={p.payment_id} payment={p} actions={actions} />)}
+                {payments.items?.map((p) => (
+                  <PaymentRow key={p.payment_id} payment={p} columns={columns} asOf={summary.data?.as_of} />
+                ))}
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
           <Group justify="space-between">
-            <Text size="sm" c="dimmed">{total > 0 ? `${total} payment${total === 1 ? '' : 's'}` : ''}</Text>
+            <Text size="sm" c="dimmed">
+              {total > 0 ? `${total} payment${total === 1 ? '' : 's'}${tab === 'scheduled' ? ', oldest first' : ''}` : ''}
+            </Text>
             {pages > 1 && (
               <Pagination
                 total={pages}

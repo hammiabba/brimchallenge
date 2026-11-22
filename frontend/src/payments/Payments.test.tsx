@@ -89,9 +89,65 @@ describe('payments dashboard', () => {
     expect(within(row).getByRole('link', { name: 'AP-00436' })).toHaveAttribute('href', '/bills/AP-00436')
     expect(within(row).getByText('Lakeshore Hydro Services')).toBeInTheDocument()
     expect(within(row).getByText('$1,604.60')).toBeInTheDocument()
-    expect(await within(row).findByText('Jordan Okafor')).toBeInTheDocument() // prepared by
-    expect(within(row).getByText('Not released')).toBeInTheDocument()
+    expect(await within(row).findByText('Prepared by Jordan Okafor')).toBeInTheDocument() // under the payment id
     expect(fake.urls.find((u) => u.pathname === '/api/payments')!.searchParams.get('status')).toBe('scheduled')
+    // Scheduled payments have no paid date, releaser or other status yet: those columns are left out.
+    expect(within(list).getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
+      'Payment', 'Bill', 'Vendor', 'Method', 'Scheduled', 'Amount (CAD)', 'Actions',
+    ])
+    // Each overview figure says what it counts, as GET /payments/summary computes it.
+    expect(within(overview).getByText('Scheduled or outstanding payments dated before the as-of date.')).toBeInTheDocument()
+    expect(within(overview).getByText('Scheduled or outstanding payments dated from the as-of date to 7 days after it.'))
+      .toBeInTheDocument()
+  })
+
+  it('shows the columns each tab needs', async () => {
+    installFakeApi(paymentsRoutes(FINANCE, {
+      'GET /payments': (request) => {
+        const status = new URL(request.url).searchParams.get('status')
+        const item = status === 'released'
+          ? payment({ status: 'released', released_by: 'U003', released_at: '2026-11-02T15:00:00Z' })
+          : payment({ status: 'settled', paid_date: '2026-10-30' })
+        return { body: { items: [item], total: 1, limit: 50, offset: 0 } }
+      },
+    }))
+    const headers = async () => within(await screen.findByRole('table', { name: 'Payments' })).getAllByRole('columnheader')
+      .map((th) => th.textContent)
+    renderApp('/payments?status=released')
+    await waitFor(async () => expect(await headers()).toEqual(
+      ['Payment', 'Bill', 'Vendor', 'Method', 'Scheduled', 'Amount (CAD)', 'Released by']))
+    expect(await screen.findByText('Priya Natarajan')).toBeInTheDocument()
+    expect(screen.getByText('Nov 2, 2026, 10:00 AM EST')).toBeInTheDocument()
+  })
+
+  it('lists scheduled payments oldest first, across pages, and marks the overdue ones', async () => {
+    // The server sends newest first. 60 scheduled payments: PAY-00060 (newest) down to PAY-00001 (oldest).
+    const all = Array.from({ length: 60 }, (_, i) => payment({
+      payment_id: `PAY-${String(60 - i).padStart(5, '0')}`,
+      scheduled_date: `2026-${i < 30 ? '12' : '10'}-${String((i % 28) + 1).padStart(2, '0')}`,
+    }))
+    const fake = installFakeApi(paymentsRoutes(FINANCE, {
+      'GET /payments': (request) => {
+        const query = new URL(request.url).searchParams
+        const offset = Number(query.get('offset'))
+        const limit = Number(query.get('limit'))
+        return { body: { items: all.slice(offset, offset + limit), total: all.length, limit, offset } }
+      },
+    }))
+    renderApp('/payments')
+
+    const list = await screen.findByRole('table', { name: 'Payments' })
+    // Page 1 is the oldest 50: the last 50 of the server's order (offset 10), reversed.
+    const ids = async () => (await within(list).findAllByRole('link', { name: /^PAY-/ })).map((a) => a.textContent)
+    await waitFor(async () => expect((await ids())[0]).toBe('PAY-00001'))
+    expect((await ids()).at(-1)).toBe('PAY-00050')
+    expect(fake.urls.some((u) => u.pathname === '/api/payments' && u.searchParams.get('offset') === '10')).toBe(true)
+    expect(screen.getByText('60 payments, oldest first')).toBeInTheDocument()
+    // Dated before the as-of date (Nov 2, 2026): overdue. Those in December aren't.
+    const oldest = within(list).getByRole('link', { name: 'PAY-00001' }).closest('tr')!
+    expect(within(oldest).getByText('Overdue')).toBeInTheDocument()
+    const later = within(list).getByRole('link', { name: 'PAY-00050' }).closest('tr')!
+    expect(within(later).queryByText('Overdue')).not.toBeInTheDocument()
   })
 
   it('switches status through the URL and pages through the list', async () => {
