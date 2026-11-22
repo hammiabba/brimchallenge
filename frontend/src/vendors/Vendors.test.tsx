@@ -45,6 +45,11 @@ describe('unverified account on file', () => {
     renderApp('/vendors/V011')
     const warning = await screen.findByRole('status')
     expect(warning).toHaveTextContent('Not verified: this account came in through BCR-0007, which nobody has confirmed by phone yet.')
+ 
+    // Sent in full to this role, but shown by its last four digits, as on every page.
+    // (once in the account field and once as the change's new account)
+    expect(screen.getAllByText('Ending 4821')).toHaveLength(2)
+    expect(screen.queryByText('953389679')).not.toBeInTheDocument()
   })
 
   it('says nothing when the account on file is the old, settled one', async () => {
@@ -52,6 +57,40 @@ describe('unverified account on file', () => {
     renderApp('/vendors/V011')
     await screen.findByRole('table', { name: 'Bank change requests' })
     expect(screen.queryByText(/Not verified/)).not.toBeInTheDocument()
+  })
+})
+
+describe('lookalike vendors', () => {
+  const SAME_NAME = "same name once 'Ltd/Inc/&' are ignored"
+  const COPY = { vendor_id: 'V002', legal_name: 'Great Lakes Carriers Inc.', why: SAME_NAME }
+
+  it('tags a suspicious copy in the list with the vendor it looks like', async () => {
+    installFakeApi({
+      ...vendorRoutes(),
+      'GET /vendors': { body: { items: [{ ...VENDOR_SUMMARIES[0], lookalike_of: [COPY] }, VENDOR_SUMMARIES[1]],
+        total: 2, limit: 50, offset: 0 } },
+    })
+    renderApp('/vendors')
+    const table = await screen.findByRole('table', { name: 'Vendors' })
+    const copy = (await within(table).findByRole('link', { name: 'V011' })).closest('tr')!
+    expect(within(copy).getByText('Possible duplicate of V002')).toBeInTheDocument()
+    const real = within(table).getByRole('link', { name: 'V004' }).closest('tr')!
+    expect(within(real).queryByText(/Possible duplicate/)).not.toBeInTheDocument()
+  })
+
+  it('says on the vendor page which record it looks like, with a link to it', async () => {
+    installFakeApi(vendorRoutes(fullVendor({ lookalike_of: [COPY] })))
+    renderApp('/vendors/V011')
+    const note = await screen.findByText(/Possible duplicate of/)
+    expect(note).toHaveTextContent(`Possible duplicate of Great Lakes Carriers Inc. (V002): ${SAME_NAME}.`)
+    expect(within(note).getByRole('link', { name: 'Great Lakes Carriers Inc.' })).toHaveAttribute('href', '/vendors/V002')
+  })
+
+  it('says nothing for a vendor that copies no one', async () => {
+    installFakeApi(vendorRoutes())
+    renderApp('/vendors/V011')
+    await screen.findByRole('table', { name: 'Bank change requests' })
+    expect(screen.queryByText(/Possible duplicate/)).not.toBeInTheDocument()
   })
 })
 

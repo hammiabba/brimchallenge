@@ -1,8 +1,8 @@
-import { Anchor, Skeleton, Table, Text } from '@mantine/core'
+import { Anchor, Group, Skeleton, Table, Text } from '@mantine/core'
 import { Link } from 'react-router'
 
 import type { VendorSummary } from '../api/types'
-import { StatusBadge } from '../ui/Badges'
+import { LookalikeBadge, StatusBadge } from '../ui/Badges'
 import { Id } from '../ui/DataText'
 import { PAYMENT_METHOD_LABELS, termsLabel } from './labels'
 
@@ -17,7 +17,10 @@ interface VendorsTableProps {
   emptyMessage: string
 }
 
-/** The vendor master as a dense table, in the server's order. Each vendor id opens the vendor page. */
+/**
+ * The vendor master as a dense table, in the server's order. Each vendor id opens the vendor page. A record that looks
+ * like an existing vendor is tagged "Possible duplicate of V002" under its name.
+ */
 export function VendorsTable({ vendors, loading, emptyMessage }: VendorsTableProps) {
   return (
     <Table.ScrollContainer minWidth={900}>
@@ -49,7 +52,15 @@ export function VendorsTable({ vendors, loading, emptyMessage }: VendorsTablePro
                   <Id>{vendor.vendor_id}</Id>
                 </Anchor>
               </Table.Td>
-              <Table.Td>{vendor.legal_name}</Table.Td>
+              <Table.Td>
+                {/* A suspicious copy of an existing vendor gets a tag under its name, one per record it copies. */}
+                {vendor.legal_name}
+                {vendor.lookalike_of.length > 0 && (
+                  <Group gap={4} mt={2}>
+                    {vendor.lookalike_of.map((other) => <LookalikeBadge key={other.vendor_id} vendorId={other.vendor_id} />)}
+                  </Group>
+                )}
+              </Table.Td>
               <Table.Td>{vendor.category}</Table.Td>
               <Table.Td>{`${vendor.province_or_state}, ${vendor.country}`}</Table.Td>
               <Table.Td>{termsLabel(vendor.payment_terms_days)}</Table.Td>

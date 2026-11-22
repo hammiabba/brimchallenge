@@ -78,6 +78,14 @@ export function OverdueBadge() {
   return <ToneBadge tone={STATUS_TONES.attention}>Overdue</ToneBadge>
 }
 
+/**
+ * "Possible duplicate of V002", in the attention tone: a vendor record the VENDOR_LOOKALIKE control treats as a
+ * suspicious copy of an existing vendor (VendorSummary.lookalike_of).
+ */
+export function LookalikeBadge({ vendorId }: { vendorId: string }) {
+  return <ToneBadge tone={STATUS_TONES.attention}>{`Possible duplicate of ${vendorId}`}</ToneBadge>
+}
+
 /** The signed-in user's role, as in the header. */
 export function RoleBadge({ role }: { role: Role }) {
   return <ToneBadge tone={ROLE_TONE}>{ROLE_LABELS[role]}</ToneBadge>

@@ -46,11 +46,11 @@ export const GL_ACCOUNTS: GlAccount[] = [
 export const VENDOR_SUMMARIES: VendorSummary[] = [
   {
     vendor_id: 'V011', legal_name: 'Summit Packaging Supply', category: 'Packaging', province_or_state: 'ON',
-    country: 'CA', status: 'active', preferred_payment_method: 'EFT', payment_terms_days: 30, requires_po: true,
+    country: 'CA', status: 'active', preferred_payment_method: 'EFT', payment_terms_days: 30, requires_po: true, lookalike_of: [],
   },
   {
     vendor_id: 'V004', legal_name: 'Cascadia Cartage Ltd.', category: 'Freight & Carriers', province_or_state: 'BC',
-    country: 'CA', status: 'active', preferred_payment_method: 'EFT', payment_terms_days: 30, requires_po: false,
+    country: 'CA', status: 'active', preferred_payment_method: 'EFT', payment_terms_days: 30, requires_po: false, lookalike_of: [],
   },
 ]
 

@@ -8,6 +8,7 @@ import { Link, useParams } from 'react-router'
 import { ApiError } from '../api/errors'
 import { ErrorAlert } from '../api/ErrorAlert'
 import { glAccountName, useGlAccounts, useVendor } from '../api/reference'
+import { accountEnding } from '../lib/accounts'
 import type { VendorDetail } from '../api/types'
 import { STATUS_TONES } from '../theme'
 import { StatusBadge } from '../ui/Badges'
@@ -96,7 +97,7 @@ function BankAccountSection({ vendor }: { vendor: VendorDetail }) {
         <SimpleGrid cols={{ base: 2, md: 4 }} spacing="md">
           <Field label="Institution"><Id>{account.institution}</Id></Field>
           <Field label="Transit"><Id>{account.transit}</Id></Field>
-          <Field label="Account">{account.masked ? `Ending ${account.account_last4}` : <Id>{account.account}</Id>}</Field>
+          <Field label="Account">{accountEnding(account.account_last4)}</Field>
           <Field label="On file since"><DateText value={account.valid_from} /></Field>
         </SimpleGrid>
       ) : (
@@ -154,6 +155,29 @@ function VendorDetails({ vendor }: { vendor: VendorDetail }) {
   )
 }
 
+/**
+ * When this record looks like an existing vendor (the VENDOR_LOOKALIKE control's rule), one line per record it
+ * resembles, with a link to the real one and why. Bills on this record are flagged until someone verifies it.
+ */
+function LookalikeNote({ vendor }: { vendor: VendorDetail }) {
+  if (vendor.lookalike_of.length === 0) return null
+  return (
+    <Stack gap={4} role="status">
+      {vendor.lookalike_of.map((other) => (
+        <Group key={other.vendor_id} gap={6} wrap="nowrap" align="flex-start">
+          <Box pt={2} c={STATUS_TONES.attention.color}><Icon icon={IconAlertTriangle} size={16} /></Box>
+          <Text size="sm" fw={500}>
+            {'Possible duplicate of '}
+            <Anchor component={Link} to={`/vendors/${other.vendor_id}`} inherit>{other.legal_name}</Anchor>
+            {' ('}<Id>{other.vendor_id}</Id>{`): ${other.why}. Bills on this record are flagged "Lookalike vendor"; `}
+            {'verify by phone before approving them.'}
+          </Text>
+        </Group>
+      ))}
+    </Stack>
+  )
+}
+
 /** /vendors/:vendorId: one vendor with its actions, details, bank account and bank change history. */
 export default function VendorDetailPage() {
   const { vendorId = '' } = useParams()
@@ -194,6 +218,7 @@ export default function VendorDetailPage() {
         </Stack>
         <VendorActions vendor={data} />
       </Group>
+      <LookalikeNote vendor={data} />
       <Divider />
       <VendorDetails vendor={data} />
       <Divider />
