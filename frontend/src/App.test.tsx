@@ -32,15 +32,18 @@ describe('signed out', () => {
     const user = userEvent.setup()
     renderApp('/bills')
 
+    expect(await screen.findByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument()
     const picker = await findPicker()
     await user.click(picker)
 
+    // The group labels are inside the picker's list (the persona rows above also show role badges).
+    const list = await screen.findByRole('listbox')
     for (const group of ['Employee', 'AP clerk', 'Approver', 'Finance manager', 'Controller / admin', 'Auditor']) {
-      expect(await screen.findByText(group)).toBeInTheDocument()
+      expect(await within(list).findByText(group)).toBeInTheDocument()
     }
     // Each option shows the name, then title, department and id; on-leave users are marked.
-    expect(screen.getByText('Facilities Manager, D04 (U012)')).toBeInTheDocument()
-    expect(screen.getByText('On leave')).toBeInTheDocument()
+    expect(within(list).getByText('Facilities Manager, D04 (U012)')).toBeInTheDocument()
+    expect(within(list).getByText('On leave')).toBeInTheDocument()
   })
 
   it('searches by title or department as well as name', async () => {
