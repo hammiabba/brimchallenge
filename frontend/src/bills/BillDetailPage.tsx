@@ -9,6 +9,7 @@ import { ApprovalRoute } from './detail/ApprovalRoute'
 import { AuditTrail } from './detail/AuditTrail'
 import { BillHeader } from './detail/BillHeader'
 import { DecisionBar } from './detail/DecisionBar'
+import { SubmitBar } from './detail/SubmitBar'
 import { FlagsPanel } from './detail/FlagsPanel'
 import { HighlightContext, regionDomId, type HighlightState, type InvoiceRegion } from './detail/highlight'
 import { InvoicePanel } from './detail/InvoicePanel'
@@ -42,8 +43,9 @@ function BillNotFound({ billId }: { billId: string }) {
 
 /**
  * /bills/:billId, the one screen: header, the invoice (left) beside its flags (right), the approval route,
- * payments and the audit trail, all from GET /bills/{bill_id}. The only actions so far are Approve and Reject
- * (DecisionBar), shown when allowed_actions allows them; the other actions come in later chunks.
+ * payments and the audit trail, all from GET /bills/{bill_id}. Actions are shown only when allowed_actions allows
+ * them: Approve and Reject (DecisionBar), Submit for approval (SubmitBar), and AP's edits in the header (department),
+ * the invoice panel (details, line coding) and the flags (resolve, override).
  */
 export default function BillDetailPage() {
   const { billId = '' } = useParams()
@@ -73,6 +75,7 @@ export default function BillDetailPage() {
       <Stack gap="lg">
         <BillHeader bill={data} />
         <DecisionBar bill={data} />
+        <SubmitBar bill={data} />
         <Divider />
         <Grid gap="xl">
           <Grid.Col span={{ base: 12, lg: 7 }}><InvoicePanel bill={data} /></Grid.Col>

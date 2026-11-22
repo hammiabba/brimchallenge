@@ -319,3 +319,71 @@ describe('resolve and override flags', () => {
     expect(within(duplicate).queryByRole('button', { name: /Resolve|Override/ })).not.toBeInTheDocument()
   })
 })
+
+describe('submit for approval', () => {
+  it('submits a bill with nothing blocking, sending the row version', async () => {
+    let sent: unknown = null
+    renderReview(inReview({ allowed_actions: { submit: { allowed: true, reason: 'Ready for approval.' } },
+      latest_run: controlsRun({ flags: [] }) }), CLERK, (state) => ({
+      'POST /bills/AP-00407/submit': async (request) => {
+        sent = await request.json()
+        state.bill = { ...state.bill, status: 'pending_approval', allowed_actions: {},
+          current_step: { step_no: 1, role: 'dept_manager', user_id: 'U001', delegated_from: null } }
+        return { body: state.bill }
+      },
+    }))
+    const user = userEvent.setup()
+
+    const bar = await screen.findByRole('region', { name: 'Ready for approval' })
+    expect(within(bar).getByText('Ready for approval: the controls found nothing blocking.')).toBeInTheDocument()
+    await user.click(within(bar).getByRole('button', { name: 'Submit for approval' }))
+    await waitFor(() => expect(sent).toEqual({ row_version: 4 }))
+    expect(await screen.findByText('AP-00407: step 1 (Department manager) goes to Morgan Lee.')).toBeInTheDocument()
+    // Pending approval: no longer AP's to submit.
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Ready for approval' })).not.toBeInTheDocument())
+  })
+
+  it('is disabled with the open blocking flags listed by name', async () => {
+    renderReview(inReview({ allowed_actions: {
+      submit: { allowed: false, reason: 'Resolve or override first: PO_CLOSED_OR_WRONG_VENDOR, DUPLICATE_EXACT.' },
+    } }))
+    const bar = await screen.findByRole('region', { name: 'Ready for approval' })
+    expect(within(bar).getByRole('button', { name: 'Submit for approval' })).toBeDisabled()
+    expect(within(bar).getByText('Resolve or override these blocking flags first:')).toBeInTheDocument()
+    expect(await within(bar).findByText('PO closed or wrong vendor')).toBeInTheDocument()
+    expect(within(bar).getByText('Exact duplicate')).toBeInTheDocument()
+  })
+
+  it('shows the server\'s reason when there is no blocking flag to list', async () => {
+    renderReview(inReview({ latest_run: controlsRun({ flags: [], route: [] }), allowed_actions: {
+      submit: { allowed: false, reason: "Controls haven't produced an approval route yet." },
+    } }))
+    const bar = await screen.findByRole('region', { name: 'Ready for approval' })
+    expect(within(bar).getByText("Controls haven't produced an approval route yet.")).toBeInTheDocument()
+  })
+
+  it('shows a refusal with the blocking flags it names', async () => {
+    renderReview(inReview({ allowed_actions: { submit: { allowed: true, reason: 'Ready for approval.' } },
+      latest_run: controlsRun({ flags: [] }) }), CLERK, () => ({
+      'POST /bills/AP-00407/submit': {
+        status: 409,
+        body: envelope('bill.blocked', 'Resolve or override the blocking flags before submitting.', 'rid-sb-1',
+          { open_blocking_flags: ['VENDOR_LOOKALIKE'] }),
+      },
+    }))
+    const user = userEvent.setup()
+    const bar = await screen.findByRole('region', { name: 'Ready for approval' })
+    await user.click(within(bar).getByRole('button', { name: 'Submit for approval' }))
+    expect(await within(bar).findByText('Not submitted')).toBeInTheDocument()
+    expect(within(bar).getByText('Resolve or override the blocking flags before submitting.')).toBeInTheDocument()
+    expect(within(within(bar).getByRole('list', { name: 'Blocking flags' })).getByText('Lookalike vendor')).toBeInTheDocument()
+    expect(within(bar).getByText('Request id: rid-sb-1')).toBeInTheDocument()
+  })
+
+  it('isn\'t shown to other roles', async () => {
+    renderReview(inReview({ allowed_actions: { submit: { allowed: false, reason: "Your role (finance_manager) can't submit bills." } } }),
+      { role: 'finance_manager', user_id: 'U003' })
+    await screen.findByRole('heading', { level: 1, name: 'Bill AP-00407' })
+    expect(screen.queryByRole('region', { name: 'Ready for approval' })).not.toBeInTheDocument()
+  })
+})

@@ -65,3 +65,18 @@ export function useResolveFlag(bill: BillDetail, flagId: number, resolution: 're
     onSuccess: apply,
   })
 }
+
+/**
+ * POST /bills/{id}/submit: send a bill in review for approval. The server re-runs the controls first and refuses
+ * (409 bill.blocked, with the codes in details.open_blocking_flags) while a blocking flag is still open.
+ */
+export function useSubmitBill(bill: BillDetail) {
+  const apply = useApplyBill()
+  return useMutation({
+    mutationFn: () => unwrap(api.POST('/bills/{bill_id}/submit', {
+      params: { path: { bill_id: bill.bill_id } },
+      body: { row_version: bill.row_version },
+    })),
+    onSuccess: apply,
+  })
+}
