@@ -17,6 +17,7 @@ const BillDetailPage = lazy(() => import('./bills/BillDetailPage'))
 const VendorsPage = lazy(() => import('./vendors/VendorsPage'))
 const VendorDetailPage = lazy(() => import('./vendors/VendorDetailPage'))
 const BankChangesPage = lazy(() => import('./bankChanges/BankChangesPage'))
+const AuditPage = lazy(() => import('./audit/AuditPage'))
 
 /** The screens built so far, by navigation item. Every other item still shows its placeholder. */
 const SCREENS: Partial<Record<NavKey, LazyExoticComponent<ComponentType>>> = {
@@ -24,6 +25,7 @@ const SCREENS: Partial<Record<NavKey, LazyExoticComponent<ComponentType>>> = {
   review: ReviewQueuePage,
   vendors: VendorsPage,
   bankChanges: BankChangesPage,
+  audit: AuditPage,
 }
 
 /** Shown while a screen's code loads. */
