@@ -28,15 +28,24 @@ from app.services.scope import get_bill_for
 
 OPEN_STATUSES = ("scheduled", "outstanding")
 
+# The orders GET /payments offers, as fixed clauses: the requested value only picks one of these (an unknown value
+# is refused by the route's Literal before it gets here, and would raise KeyError rather than reach SQL). The
+# payment id breaks ties in the same direction, so pages never overlap or skip, and ascending is the exact reverse
+# of descending.
+_PAYMENT_ORDER = {
+    "scheduled_desc": (models.Payment.scheduled_date.desc(), models.Payment.payment_id.desc()),
+    "scheduled_asc": (models.Payment.scheduled_date.asc(), models.Payment.payment_id.asc()),
+}
+
 
 def list_payments(db: Session, *, status: list[str] | None, vendor_id: str | None, limit: int,
-                  offset: int) -> s.Page[s.PaymentSummary]:
+                  offset: int, sort: str = "scheduled_desc") -> s.Page[s.PaymentSummary]:
     stmt = select(models.Payment)
     if status:
         stmt = stmt.where(models.Payment.status.in_(status))
     if vendor_id:
         stmt = stmt.where(models.Payment.vendor_id == vendor_id)
-    stmt = stmt.order_by(models.Payment.scheduled_date.desc(), models.Payment.payment_id.desc())
+    stmt = stmt.order_by(*_PAYMENT_ORDER[sort])
     rows, total = paginate(db, stmt, limit=limit, offset=offset)
     return s.Page[s.PaymentSummary](items=views.payment_summaries(db, rows), total=total, limit=limit, offset=offset)
 

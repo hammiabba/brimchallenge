@@ -12,6 +12,7 @@ from app.api.schemas_api import (
     Page,
     PaymentDashboard,
     PaymentDetail,
+    PaymentSort,
     PaymentStatus,
     PaymentSummary,
     ScheduleIn,
@@ -27,11 +28,13 @@ IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=8, ma
                                        pattern=r"^[A-Za-z0-9._:-]+$")]
 
 
+# Newest scheduled date first unless sort=scheduled_asc (oldest first); ties by payment id, in the same direction.
 @router.get("/payments", response_model=Page[PaymentSummary], responses=READ_ERRORS)
 def list_payments(user: CurrentUser = Depends(require_role(*BACK_OFFICE_READ)),
                   status: Annotated[list[PaymentStatus] | None, Query()] = None, vendor_id: str | None = None,
+                  sort: PaymentSort = "scheduled_desc",
                   limit: Limit = 50, offset: Offset = 0, db: Session = Depends(get_session)):
-    return payments.list_payments(db, status=status, vendor_id=vendor_id, limit=limit, offset=offset)
+    return payments.list_payments(db, status=status, vendor_id=vendor_id, sort=sort, limit=limit, offset=offset)
 
 
 @router.get("/payments/summary", response_model=PaymentDashboard, responses=READ_ERRORS)

@@ -49,6 +49,9 @@ Comment = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, 
 BillStatus = Literal["needs_review", "on_hold", "pending_approval", "approved", "rejected", "scheduled", "paid",
                      "credit_open", "void"]
 PaymentStatus = Literal["scheduled", "released", "settled", "outstanding", "failed", "cancelled"]
+# GET /payments order: newest scheduled date first (the default) or oldest first. Each value maps to fixed
+# ORDER BY clauses in services/payments.py; FastAPI refuses anything else with 422 before the query runs.
+PaymentSort = Literal["scheduled_desc", "scheduled_asc"]
 PaymentMethod = Literal["EFT", "CHEQUE", "CARD"]
 VendorStatus = Literal["active", "on_hold", "pending_review"]
 Role = Literal["employee", "ap_clerk", "approver", "finance_manager", "controller_admin", "auditor"]

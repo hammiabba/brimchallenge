@@ -140,3 +140,56 @@ def test_audit_list_pages_by_seq(as_role):
     assert len(first["items"]) == 1 and first["next_after_seq"] == first["items"][0]["seq"]
     second = client.get("/audit", params={"limit": 1, "after_seq": first["next_after_seq"]}).json()
     assert second["items"][0]["seq"] > first["items"][0]["seq"]
+
+
+def _scheduled(client, **params) -> list[dict]:
+    """Every scheduled payment in one call (the seed has fewer than 200)."""
+    return client.get("/payments", params={"status": "scheduled", "limit": 200, **params}).json()["items"]
+
+
+def _date_then_id(payment: dict) -> tuple[str, str]:
+    return payment["scheduled_date"], payment["payment_id"]
+
+
+def test_payments_default_order_is_unchanged_newest_first(as_role):
+    fm = as_role("finance_manager")
+    default = _scheduled(fm)
+    newest_first = sorted(default, key=_date_then_id, reverse=True)
+    assert [p["payment_id"] for p in default] == [p["payment_id"] for p in newest_first]
+    assert [p["payment_id"] for p in _scheduled(fm, sort="scheduled_desc")] == [p["payment_id"] for p in default]
+
+
+def test_payments_sorted_oldest_first_start_at_pay_00391(as_role):
+    items = _scheduled(as_role("finance_manager"), sort="scheduled_asc")
+    assert (items[0]["payment_id"], items[0]["scheduled_date"]) == ("PAY-00391", "2026-11-01")
+    assert [p["payment_id"] for p in items] == [p["payment_id"] for p in sorted(items, key=_date_then_id)]
+
+
+def test_payment_pages_neither_overlap_nor_skip_across_a_tie(as_role):
+    fm = as_role("finance_manager")
+    for sort in ("scheduled_asc", "scheduled_desc"):
+        whole = _scheduled(fm, sort=sort)
+        paged: list[dict] = []
+        offset = 0
+        while True:
+            params = {"status": "scheduled", "sort": sort, "limit": 3, "offset": offset}
+            page = fm.get("/payments", params=params).json()
+            paged.extend(page["items"])
+            offset += 3
+            if offset >= page["total"]:
+                break
+        ids = [p["payment_id"] for p in paged]
+        assert ids == [p["payment_id"] for p in whole]
+        assert len(set(ids)) == len(ids)
+        # The payments scheduled on Nov 2 (four in the seed) straddle a page boundary of 3.
+        tie = [i for i, p in enumerate(whole) if p["scheduled_date"] == "2026-11-02"]
+        assert len(tie) >= 2 and tie[0] // 3 != tie[-1] // 3
+
+
+def test_payments_sort_refuses_an_unknown_value_without_echoing_it(as_role):
+    r = as_role("finance_manager").get("/payments", params={"sort": "bogus"})
+    assert r.status_code == 422
+    err = r.json()["error"]
+    assert err["code"] == "request.invalid"
+    assert [d["loc"] for d in err["details"]] == [["query", "sort"]]
+    assert "bogus" not in r.text
