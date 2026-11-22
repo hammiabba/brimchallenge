@@ -451,6 +451,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/early-pay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Early Pay Report
+         * @description include_pending=true adds bills not approved yet (needs_review, on_hold, pending_approval), to see what
+         *     approving them in time would save.
+         */
+        get: operations["early_pay_report_early_pay_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -686,6 +707,26 @@ export interface paths {
          *     returns the same result (header Idempotent-Replayed: true) and never pays twice.
          */
         post: operations["release_payment_payments__payment_id__release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reconciliation/bank": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Bank Reconciliation
+         * @description only_issues=true keeps just the lines and payments someone has to act on (severity "review").
+         */
+        get: operations["bank_reconciliation_reconciliation_bank_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1074,6 +1115,20 @@ export interface components {
             verified_by: string | null;
             /** Verified By Callback */
             verified_by_callback: boolean;
+        };
+        /** BankReconciliation */
+        BankReconciliation: {
+            /** Double Payments */
+            double_payments: components["schemas"]["ReconDoublePaymentOut"][];
+            /** Lines */
+            lines: components["schemas"]["ReconLineOut"][];
+            /** Payments */
+            payments: components["schemas"]["ReconPaymentOut"][];
+            /** Statement From */
+            statement_from: string | null;
+            /** Statement To */
+            statement_to: string | null;
+            summary: components["schemas"]["ReconSummaryOut"];
         };
         /** BillDetail */
         BillDetail: {
@@ -1493,6 +1548,129 @@ export interface components {
             /** Score */
             score: number;
         };
+        /** EarlyPayHistory */
+        EarlyPayHistory: {
+            /** Missed */
+            missed: number;
+            /**
+             * Missed Cad
+             * @example 742.30
+             */
+            missed_cad: string;
+            /** Missed Payments */
+            missed_payments: components["schemas"]["PastDiscountOut"][];
+            /** Taken */
+            taken: number;
+            /**
+             * Taken Cad
+             * @example 742.30
+             */
+            taken_cad: string;
+        };
+        /** EarlyPayReport */
+        EarlyPayReport: {
+            /**
+             * As Of
+             * Format: date
+             */
+            as_of: string;
+            history: components["schemas"]["EarlyPayHistory"];
+            /** Suggestions */
+            suggestions: components["schemas"]["EarlyPaySuggestionOut"][];
+            summary: components["schemas"]["EarlyPaySummary"];
+        };
+        /** EarlyPaySuggestionOut */
+        EarlyPaySuggestionOut: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "take_discount" | "pay_on_due_date" | "pay_now" | "reschedule";
+            /** Bill Id */
+            bill_id: string;
+            /**
+             * Currency
+             * @enum {string}
+             */
+            currency: "CAD" | "USD";
+            /**
+             * Discount Deadline
+             * @description Last day the money must arrive to earn the discount
+             */
+            discount_deadline?: string | null;
+            /**
+             * Due Date
+             * Format: date
+             */
+            due_date: string;
+            /**
+             * Invoice Date
+             * Format: date
+             */
+            invoice_date: string;
+            /** Method */
+            method: string;
+            /** Notes */
+            notes: string[];
+            /**
+             * Pay Amount
+             * @example 742.30
+             */
+            pay_amount: string;
+            /**
+             * Pay On
+             * Format: date
+             * @description Suggested date to send the payment
+             */
+            pay_on: string;
+            /** Reason */
+            reason: string;
+            /**
+             * Saving
+             * @description In the bill's currency, compared with paying on the due date
+             * @example 742.30
+             */
+            saving: string;
+            /**
+             * Saving Cad
+             * @example 742.30
+             */
+            saving_cad: string;
+            /** Scheduled Date */
+            scheduled_date: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Terms
+             * @description The vendor's terms in words, e.g. "2% off if paid within 10 days, net 30"
+             */
+            terms: string;
+            /**
+             * Total
+             * @example 742.30
+             */
+            total: string;
+            /** Vendor Id */
+            vendor_id: string;
+            /** Vendor Name */
+            vendor_name: string | null;
+        };
+        /** EarlyPaySummary */
+        EarlyPaySummary: {
+            /** Bills */
+            bills: number;
+            /** Pay Now */
+            pay_now: number;
+            /**
+             * Saving Cad
+             * @example 742.30
+             */
+            saving_cad: string;
+            /** To Reschedule */
+            to_reschedule: number;
+            /** With Discount Open */
+            with_discount_open: number;
+        };
         /** EmailDetail */
         EmailDetail: {
             /** Attachments */
@@ -1880,6 +2058,32 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** PastDiscountOut */
+        PastDiscountOut: {
+            /** Bill Id */
+            bill_id: string;
+            /** Days To Pay */
+            days_to_pay: number;
+            /**
+             * Discount Cad
+             * @example 742.30
+             */
+            discount_cad: string;
+            /**
+             * Invoice Date
+             * Format: date
+             */
+            invoice_date: string;
+            /**
+             * Paid Date
+             * Format: date
+             */
+            paid_date: string;
+            /** Payment Id */
+            payment_id: string;
+            /** Vendor Id */
+            vendor_id: string;
+        };
         /** PaymentDashboard */
         PaymentDashboard: {
             /**
@@ -2102,6 +2306,159 @@ export interface components {
             notes?: string | null;
             /** Required */
             required?: string | null;
+        };
+        /** ReconDoublePaymentOut */
+        ReconDoublePaymentOut: {
+            /**
+             * At Risk Cad
+             * @example 742.30
+             */
+            at_risk_cad: string;
+            /** At Risk Payment Ids */
+            at_risk_payment_ids: string[];
+            /** Bank Txn Ids */
+            bank_txn_ids: string[];
+            /** Bill Ids */
+            bill_ids: string[];
+            /** Card Txn Ids */
+            card_txn_ids: string[];
+            /** Confirmed */
+            confirmed: boolean;
+            /**
+             * Extra Paid Cad
+             * @example 742.30
+             */
+            extra_paid_cad: string;
+            /** Extra Payment Ids */
+            extra_payment_ids: string[];
+            /** Message */
+            message: string;
+            /** Payment Ids */
+            payment_ids: string[];
+        };
+        /** ReconIssueOut */
+        ReconIssueOut: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "info" | "review";
+        };
+        /** ReconLineOut */
+        ReconLineOut: {
+            /**
+             * Amount
+             * @description Debit positive, credit negative
+             * @example 742.30
+             */
+            amount: string;
+            /** Bank Txn Id */
+            bank_txn_id: string;
+            /** Bill Ids */
+            bill_ids: string[];
+            /** Description */
+            description: string;
+            /**
+             * Difference
+             * @description Bank amount minus payment amount, when they differ
+             */
+            difference?: string | null;
+            /** Issues */
+            issues: components["schemas"]["ReconIssueOut"][];
+            /** Payment Ids */
+            payment_ids: string[];
+            /**
+             * Posted Date
+             * Format: date
+             */
+            posted_date: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "matched" | "bank_fee" | "unexplained";
+            /** Vendor Id */
+            vendor_id: string | null;
+        };
+        /** ReconPaymentOut */
+        ReconPaymentOut: {
+            /**
+             * Amount Cad
+             * @example 742.30
+             */
+            amount_cad: string;
+            /** Bank Txn Id */
+            bank_txn_id: string | null;
+            /** Bill Id */
+            bill_id: string;
+            /** Issues */
+            issues: components["schemas"]["ReconIssueOut"][];
+            /** Method */
+            method: string;
+            /**
+             * On Date
+             * @description Paid date, or the scheduled date when not paid yet
+             */
+            on_date?: string | null;
+            /** Payment Id */
+            payment_id: string;
+            /** Status */
+            status: string;
+            /** Vendor Id */
+            vendor_id: string;
+        };
+        /** ReconSummaryOut */
+        ReconSummaryOut: {
+            /** Bank Fees */
+            bank_fees: number;
+            /**
+             * Bank Fees Cad
+             * @example 742.30
+             */
+            bank_fees_cad: string;
+            /**
+             * Debits Cad
+             * @example 742.30
+             */
+            debits_cad: string;
+            /**
+             * Double At Risk Cad
+             * @example 742.30
+             */
+            double_at_risk_cad: string;
+            /**
+             * Double Paid Extra Cad
+             * @example 742.30
+             */
+            double_paid_extra_cad: string;
+            /** Double Payments */
+            double_payments: number;
+            /** Issues */
+            issues: {
+                [key: string]: number;
+            };
+            /** Lines */
+            lines: number;
+            /** Matched */
+            matched: number;
+            /**
+             * Matched Cad
+             * @example 742.30
+             */
+            matched_cad: string;
+            /** Needs Review */
+            needs_review: number;
+            /** Unexplained */
+            unexplained: number;
+            /**
+             * Unexplained Cad
+             * @example 742.30
+             */
+            unexplained_cad: string;
         };
         /** RejectIn */
         RejectIn: {
@@ -4156,6 +4513,64 @@ export interface operations {
             };
         };
     };
+    early_pay_report_early_pay_get: {
+        parameters: {
+            query?: {
+                include_pending?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EarlyPayReport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_health_get: {
         parameters: {
             query?: never;
@@ -4913,6 +5328,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    bank_reconciliation_reconciliation_bank_get: {
+        parameters: {
+            query?: {
+                only_issues?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BankReconciliation"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

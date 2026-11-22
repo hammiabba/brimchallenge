@@ -566,6 +566,68 @@
         "title": "BankChangeOut",
         "type": "object"
       },
+      "BankReconciliation": {
+        "properties": {
+          "double_payments": {
+            "items": {
+              "$ref": "#/components/schemas/ReconDoublePaymentOut"
+            },
+            "title": "Double Payments",
+            "type": "array"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/ReconLineOut"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "payments": {
+            "items": {
+              "$ref": "#/components/schemas/ReconPaymentOut"
+            },
+            "title": "Payments",
+            "type": "array"
+          },
+          "statement_from": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statement From"
+          },
+          "statement_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statement To"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ReconSummaryOut"
+          }
+        },
+        "required": [
+          "statement_from",
+          "statement_to",
+          "summary",
+          "lines",
+          "payments",
+          "double_payments"
+        ],
+        "title": "BankReconciliation",
+        "type": "object"
+      },
       "BillDetail": {
         "properties": {
           "allowed_actions": {
@@ -1848,6 +1910,278 @@
         "title": "DuplicateOut",
         "type": "object"
       },
+      "EarlyPayHistory": {
+        "properties": {
+          "missed": {
+            "title": "Missed",
+            "type": "integer"
+          },
+          "missed_cad": {
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Missed Cad",
+            "type": "string"
+          },
+          "missed_payments": {
+            "items": {
+              "$ref": "#/components/schemas/PastDiscountOut"
+            },
+            "title": "Missed Payments",
+            "type": "array"
+          },
+          "taken": {
+            "title": "Taken",
+            "type": "integer"
+          },
+          "taken_cad": {
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Taken Cad",
+            "type": "string"
+          }
+        },
+        "required": [
+          "taken",
+          "taken_cad",
+          "missed",
+          "missed_cad",
+          "missed_payments"
+        ],
+        "title": "EarlyPayHistory",
+        "type": "object"
+      },
+      "EarlyPayReport": {
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "history": {
+            "$ref": "#/components/schemas/EarlyPayHistory"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/EarlyPaySuggestionOut"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/EarlyPaySummary"
+          }
+        },
+        "required": [
+          "as_of",
+          "summary",
+          "suggestions",
+          "history"
+        ],
+        "title": "EarlyPayReport",
+        "type": "object"
+      },
+      "EarlyPaySuggestionOut": {
+        "properties": {
+          "action": {
+            "enum": [
+              "take_discount",
+              "pay_on_due_date",
+              "pay_now",
+              "reschedule"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "bill_id": {
+            "title": "Bill Id",
+            "type": "string"
+          },
+          "currency": {
+            "enum": [
+              "CAD",
+              "USD"
+            ],
+            "title": "Currency",
+            "type": "string"
+          },
+          "discount_deadline": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last day the money must arrive to earn the discount",
+            "title": "Discount Deadline"
+          },
+          "due_date": {
+            "format": "date",
+            "title": "Due Date",
+            "type": "string"
+          },
+          "invoice_date": {
+            "format": "date",
+            "title": "Invoice Date",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "pay_amount": {
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Pay Amount",
+            "type": "string"
+          },
+          "pay_on": {
+            "description": "Suggested date to send the payment",
+            "format": "date",
+            "title": "Pay On",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "saving": {
+            "description": "In the bill's currency, compared with paying on the due date",
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Saving",
+            "type": "string"
+          },
+          "saving_cad": {
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Saving Cad",
+            "type": "string"
+          },
+          "scheduled_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled Date"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "terms": {
+            "description": "The vendor's terms in words, e.g. \"2% off if paid within 10 days, net 30\"",
+            "title": "Terms",
+            "type": "string"
+          },
+          "total": {
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Total",
+            "type": "string"
+          },
+          "vendor_id": {
+            "title": "Vendor Id",
+            "type": "string"
+          },
+          "vendor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Name"
+          }
+        },
+        "required": [
+          "bill_id",
+          "vendor_id",
+          "vendor_name",
+          "status",
+          "terms",
+          "method",
+          "invoice_date",
+          "due_date",
+          "pay_on",
+          "scheduled_date",
+          "currency",
+          "total",
+          "saving",
+          "saving_cad",
+          "pay_amount",
+          "action",
+          "reason",
+          "notes"
+        ],
+        "title": "EarlyPaySuggestionOut",
+        "type": "object"
+      },
+      "EarlyPaySummary": {
+        "properties": {
+          "bills": {
+            "title": "Bills",
+            "type": "integer"
+          },
+          "pay_now": {
+            "title": "Pay Now",
+            "type": "integer"
+          },
+          "saving_cad": {
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Saving Cad",
+            "type": "string"
+          },
+          "to_reschedule": {
+            "title": "To Reschedule",
+            "type": "integer"
+          },
+          "with_discount_open": {
+            "title": "With Discount Open",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bills",
+          "with_discount_open",
+          "saving_cad",
+          "to_reschedule",
+          "pay_now"
+        ],
+        "title": "EarlyPaySummary",
+        "type": "object"
+      },
       "EmailDetail": {
         "properties": {
           "attachments": {
@@ -3006,6 +3340,55 @@
         "title": "Page[VendorSummary]",
         "type": "object"
       },
+      "PastDiscountOut": {
+        "properties": {
+          "bill_id": {
+            "title": "Bill Id",
+            "type": "string"
+          },
+          "days_to_pay": {
+            "title": "Days To Pay",
+            "type": "integer"
+          },
+          "discount_cad": {
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Discount Cad",
+            "type": "string"
+          },
+          "invoice_date": {
+            "format": "date",
+            "title": "Invoice Date",
+            "type": "string"
+          },
+          "paid_date": {
+            "format": "date",
+            "title": "Paid Date",
+            "type": "string"
+          },
+          "payment_id": {
+            "title": "Payment Id",
+            "type": "string"
+          },
+          "vendor_id": {
+            "title": "Vendor Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payment_id",
+          "bill_id",
+          "vendor_id",
+          "invoice_date",
+          "paid_date",
+          "days_to_pay",
+          "discount_cad"
+        ],
+        "title": "PastDiscountOut",
+        "type": "object"
+      },
       "PaymentDashboard": {
         "properties": {
           "as_of": {
@@ -3661,6 +4044,388 @@
           }
         },
         "title": "PolicyPatch",
+        "type": "object"
+      },
+      "ReconDoublePaymentOut": {
+        "properties": {
+          "at_risk_cad": {
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "At Risk Cad",
+            "type": "string"
+          },
+          "at_risk_payment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "At Risk Payment Ids",
+            "type": "array"
+          },
+          "bank_txn_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Bank Txn Ids",
+            "type": "array"
+          },
+          "bill_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Bill Ids",
+            "type": "array"
+          },
+          "card_txn_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Card Txn Ids",
+            "type": "array"
+          },
+          "confirmed": {
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "extra_paid_cad": {
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Extra Paid Cad",
+            "type": "string"
+          },
+          "extra_payment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Extra Payment Ids",
+            "type": "array"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "payment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Payment Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "bill_ids",
+          "card_txn_ids",
+          "payment_ids",
+          "bank_txn_ids",
+          "extra_payment_ids",
+          "at_risk_payment_ids",
+          "confirmed",
+          "extra_paid_cad",
+          "at_risk_cad",
+          "message"
+        ],
+        "title": "ReconDoublePaymentOut",
+        "type": "object"
+      },
+      "ReconIssueOut": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "review"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "title": "ReconIssueOut",
+        "type": "object"
+      },
+      "ReconLineOut": {
+        "properties": {
+          "amount": {
+            "description": "Debit positive, credit negative",
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "bank_txn_id": {
+            "title": "Bank Txn Id",
+            "type": "string"
+          },
+          "bill_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Bill Ids",
+            "type": "array"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "difference": {
+            "anyOf": [
+              {
+                "examples": [
+                  "742.30"
+                ],
+                "pattern": "^-?\\d+\\.\\d{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Bank amount minus payment amount, when they differ",
+            "title": "Difference"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/ReconIssueOut"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "payment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Payment Ids",
+            "type": "array"
+          },
+          "posted_date": {
+            "format": "date",
+            "title": "Posted Date",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "matched",
+              "bank_fee",
+              "unexplained"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
+          }
+        },
+        "required": [
+          "bank_txn_id",
+          "posted_date",
+          "description",
+          "amount",
+          "status",
+          "payment_ids",
+          "bill_ids",
+          "vendor_id",
+          "issues"
+        ],
+        "title": "ReconLineOut",
+        "type": "object"
+      },
+      "ReconPaymentOut": {
+        "properties": {
+          "amount_cad": {
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Amount Cad",
+            "type": "string"
+          },
+          "bank_txn_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Txn Id"
+          },
+          "bill_id": {
+            "title": "Bill Id",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/ReconIssueOut"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "on_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Paid date, or the scheduled date when not paid yet",
+            "title": "On Date"
+          },
+          "payment_id": {
+            "title": "Payment Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "vendor_id": {
+            "title": "Vendor Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payment_id",
+          "bill_id",
+          "vendor_id",
+          "method",
+          "status",
+          "amount_cad",
+          "bank_txn_id",
+          "issues"
+        ],
+        "title": "ReconPaymentOut",
+        "type": "object"
+      },
+      "ReconSummaryOut": {
+        "properties": {
+          "bank_fees": {
+            "title": "Bank Fees",
+            "type": "integer"
+          },
+          "bank_fees_cad": {
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Bank Fees Cad",
+            "type": "string"
+          },
+          "debits_cad": {
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Debits Cad",
+            "type": "string"
+          },
+          "double_at_risk_cad": {
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Double At Risk Cad",
+            "type": "string"
+          },
+          "double_paid_extra_cad": {
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Double Paid Extra Cad",
+            "type": "string"
+          },
+          "double_payments": {
+            "title": "Double Payments",
+            "type": "integer"
+          },
+          "issues": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Issues",
+            "type": "object"
+          },
+          "lines": {
+            "title": "Lines",
+            "type": "integer"
+          },
+          "matched": {
+            "title": "Matched",
+            "type": "integer"
+          },
+          "matched_cad": {
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Matched Cad",
+            "type": "string"
+          },
+          "needs_review": {
+            "title": "Needs Review",
+            "type": "integer"
+          },
+          "unexplained": {
+            "title": "Unexplained",
+            "type": "integer"
+          },
+          "unexplained_cad": {
+            "examples": [
+              "742.30"
+            ],
+            "pattern": "^-?\\d+\\.\\d{2}$",
+            "title": "Unexplained Cad",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lines",
+          "debits_cad",
+          "matched",
+          "matched_cad",
+          "bank_fees",
+          "bank_fees_cad",
+          "unexplained",
+          "unexplained_cad",
+          "double_payments",
+          "double_paid_extra_cad",
+          "double_at_risk_cad",
+          "needs_review",
+          "issues"
+        ],
+        "title": "ReconSummaryOut",
         "type": "object"
       },
       "RejectIn": {
@@ -7113,6 +7878,80 @@
         ]
       }
     },
+    "/early-pay": {
+      "get": {
+        "description": "include_pending=true adds bills not approved yet (needs_review, on_hold, pending_approval), to see what\napproving them in time would save.",
+        "operationId": "early_pay_report_early_pay_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_pending",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Pending",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EarlyPayReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Early Pay Report",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "health_health_get",
@@ -8179,6 +9018,80 @@
         "summary": "Release Payment",
         "tags": [
           "payments"
+        ]
+      }
+    },
+    "/reconciliation/bank": {
+      "get": {
+        "description": "only_issues=true keeps just the lines and payments someone has to act on (severity \"review\").",
+        "operationId": "bank_reconciliation_reconciliation_bank_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "only_issues",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Only Issues",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BankReconciliation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Bank Reconciliation",
+        "tags": [
+          "reconciliation"
         ]
       }
     },
