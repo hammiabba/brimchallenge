@@ -106,3 +106,62 @@ describe('line coding', () => {
   })
 })
 
+
+describe('department', () => {
+  it('confirms a department that was only suggested by the coding', async () => {
+    let sent: unknown = null
+    renderReview(inReview({ department_source: 'coding' }), CLERK, (state) => ({
+      'PATCH /bills/AP-00407': async (request) => {
+        sent = await request.json()
+        state.bill = { ...state.bill, department_source: 'user', row_version: 5 }
+        return { body: state.bill }
+      },
+    }))
+    const user = userEvent.setup()
+
+    const summary = await screen.findByRole('region', { name: 'Bill summary' })
+    expect(await within(summary).findByText('Not confirmed: suggested from the line coding')).toBeInTheDocument()
+    await user.click(within(summary).getByRole('button', { name: 'Confirm' }))
+    await waitFor(() => expect(sent).toEqual({ row_version: 4, department_id: 'D01' }))
+    expect(await within(summary).findByText('Set by a person')).toBeInTheDocument()
+    expect(within(summary).queryByRole('button', { name: 'Confirm' })).not.toBeInTheDocument()
+  })
+
+  it('changes the department, and shows a refusal from the server', async () => {
+    const bodies: unknown[] = []
+    let refuse = true
+    renderReview(inReview({ department_source: 'coding' }), CLERK, (state) => ({
+      'PATCH /bills/AP-00407': async (request) => {
+        bodies.push(await request.json())
+        if (refuse) {
+          refuse = false
+          return { status: 422, body: envelope('bill.unknown_department_id', 'D09 doesn\'t exist.', 'rid-dp-1') }
+        }
+        state.bill = { ...state.bill, department_id: 'D02', department_source: 'user' }
+        return { body: state.bill }
+      },
+    }))
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: 'Change department' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Change department' })
+    await user.click(within(dialog).getByRole('combobox', { name: 'Department' }))
+    await user.click(await screen.findByRole('option', { name: 'Finance (D02)' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Save department' }))
+    expect(await within(dialog).findByText('D09 doesn\'t exist.')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Save department' }))
+    expect(await screen.findByText('Department saved')).toBeInTheDocument()
+    expect(bodies.at(-1)).toEqual({ row_version: 4, department_id: 'D02' })
+    const summary = screen.getByRole('region', { name: 'Bill summary' })
+    expect(await within(summary).findByText('Finance (D02)')).toBeInTheDocument()
+  })
+
+  it('has no department buttons without the edit action', async () => {
+    renderReview(inReview({ department_source: 'coding', allowed_actions: {} }), { role: 'finance_manager', user_id: 'U003' })
+    const summary = await screen.findByRole('region', { name: 'Bill summary' })
+    await within(summary).findByText('Not confirmed: suggested from the line coding')
+    expect(within(summary).queryByRole('button', { name: 'Confirm' })).not.toBeInTheDocument()
+    expect(within(summary).queryByRole('button', { name: 'Change department' })).not.toBeInTheDocument()
+  })
+})

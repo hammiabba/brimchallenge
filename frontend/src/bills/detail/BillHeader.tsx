@@ -1,12 +1,16 @@
-import { Group, SimpleGrid, Stack, Text, Title } from '@mantine/core'
-import { Fragment, type ReactNode } from 'react'
+import { Button, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core'
+import { notifications } from '@mantine/notifications'
+import { Fragment, useState, type ReactNode } from 'react'
 
+import { notifyError } from '../../api/notify'
 import { departmentLabel, useDepartments, useVendor } from '../../api/reference'
 import type { BillDetail } from '../../api/types'
 import { STATUS_TONES } from '../../theme'
 import { StatusBadge } from '../../ui/Badges'
 import { DateText, Id, MoneyText } from '../../ui/DataText'
 import { DEPARTMENT_SOURCES } from '../labels'
+import { useEditBill } from '../mutations'
+import { DepartmentModal } from './DepartmentModal'
 
 /** One labelled fact in the header. */
 function Fact({ label, children }: { label: string; children: ReactNode }) {
@@ -20,11 +24,45 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
+/**
+ * AP's department actions, when allowed_actions.edit allows them: confirm a department that was only suggested by
+ * the line coding (saves the same value, which marks it as set by a person) or change it.
+ */
+function DepartmentActions({ bill, unconfirmed }: { bill: BillDetail; unconfirmed: boolean }) {
+  const [open, setOpen] = useState(false)
+  const confirm = useEditBill(bill)
+
+  function confirmDepartment() {
+    confirm.mutate({ department_id: bill.department_id }, {
+      onSuccess: () => notifications.show({ title: 'Department confirmed', message: bill.bill_id }),
+      onError: (error) => notifyError(error),
+    })
+  }
+
+  return (
+    <Group gap="xs" wrap="nowrap" mt={4}>
+      {unconfirmed && bill.department_id && (
+        <Button size="xs" onClick={confirmDepartment} loading={confirm.isPending}>Confirm</Button>
+      )}
+      <Button size="xs" variant="default" onClick={() => setOpen(true)} aria-label="Change department">Change</Button>
+      <DepartmentModal bill={bill} opened={open} onClose={() => setOpen(false)} />
+    </Group>
+  )
+}
+
 /** The department with where it came from; a suggestion from line coding is marked "not confirmed". */
 function DepartmentFact({ bill }: { bill: BillDetail }) {
   const departments = useDepartments()
-  if (!bill.department_id) return <Text span c="dimmed" size="sm">No department</Text>
+  const canEdit = bill.allowed_actions?.edit?.allowed ?? false
   const source = bill.department_source ? DEPARTMENT_SOURCES[bill.department_source] : null
+  if (!bill.department_id) {
+    return (
+      <Stack gap={0}>
+        <Text span c="dimmed" size="sm">No department</Text>
+        {canEdit && <DepartmentActions bill={bill} unconfirmed={false} />}
+      </Stack>
+    )
+  }
   return (
     <Stack gap={0}>
       <Text size="sm">{departmentLabel(bill.department_id, departments.data)}</Text>
@@ -33,6 +71,7 @@ function DepartmentFact({ bill }: { bill: BillDetail }) {
           {source.unconfirmed ? `Not confirmed: ${source.label}` : source.label.charAt(0).toUpperCase() + source.label.slice(1)}
         </Text>
       )}
+      {canEdit && <DepartmentActions bill={bill} unconfirmed={source?.unconfirmed ?? false} />}
     </Stack>
   )
 }
