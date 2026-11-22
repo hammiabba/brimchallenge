@@ -45,6 +45,8 @@ describe('navigation config', () => {
   it('sends each role home to the task they come to do', () => {
     expect(homePathFor('employee')).toBe('/submit')
     expect(homePathFor('ap_clerk')).toBe('/inbox')
+    // AP can upload an invoice by hand, as the API allows (POST /submissions: employee and AP clerk).
+    expect(NAV_BY_ROLE.ap_clerk).toContain('submit')
     expect(homePathFor('approver')).toBe('/approvals')
     expect(homePathFor('finance_manager')).toBe('/approvals')
     expect(homePathFor('controller_admin')).toBe('/approvals')

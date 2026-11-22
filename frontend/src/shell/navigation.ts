@@ -290,7 +290,8 @@ export const NAV_ITEMS: Record<NavKey, NavItem> = {
 /** Each role's sidebar, in order. The first item is the role's home page. */
 export const NAV_BY_ROLE: Record<Role, readonly NavKey[]> = {
   employee: ['submit', 'submissions', 'bills'],
-  ap_clerk: ['inbox', 'review', 'bills', 'payments', 'earlyPay', 'vendors', 'bankChanges'],
+  // AP uploads paper or emailed invoices by hand too (POST /submissions allows AP), next to the inbox.
+  ap_clerk: ['inbox', 'submit', 'review', 'bills', 'payments', 'earlyPay', 'vendors', 'bankChanges'],
   approver: ['approvals', 'bills', 'spend', 'delegation'],
   finance_manager: ['approvals', 'payments', 'earlyPay', 'bills', 'vendors', 'bankChanges', 'unassigned', 'spend',
     'delegation'],
