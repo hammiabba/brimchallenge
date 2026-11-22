@@ -28,6 +28,7 @@ const UnassignedStepsPage = lazy(() => import('./approvals/UnassignedStepsPage')
 const PaymentsPage = lazy(() => import('./payments/PaymentsPage'))
 const PaymentDetailPage = lazy(() => import('./payments/PaymentDetailPage'))
 const ReconciliationPage = lazy(() => import('./reconciliation/ReconciliationPage'))
+const EarlyPayPage = lazy(() => import('./earlyPay/EarlyPayPage'))
 const SubmitPage = lazy(() => import('./intake/submit/SubmitPage'))
 const SubmissionsPage = lazy(() => import('./intake/submissions/SubmissionsPage'))
 const InboxPage = lazy(() => import('./intake/inbox/InboxPage'))
@@ -44,6 +45,7 @@ const SCREENS: Partial<Record<NavKey, LazyExoticComponent<ComponentType>>> = {
   unassigned: UnassignedStepsPage,
   payments: PaymentsPage,
   reconciliation: ReconciliationPage,
+  earlyPay: EarlyPayPage,
   vendors: VendorsPage,
   bankChanges: BankChangesPage,
   audit: AuditPage,

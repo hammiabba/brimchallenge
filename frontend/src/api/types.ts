@@ -64,6 +64,11 @@ export type ReconPayment = Schemas['ReconPaymentOut']
 export type ReconDoublePayment = Schemas['ReconDoublePaymentOut']
 export type ReconIssue = Schemas['ReconIssueOut']
 
+// Early-payment discounts
+export type EarlyPayReport = Schemas['EarlyPayReport']
+export type EarlyPaySuggestion = Schemas['EarlyPaySuggestionOut']
+export type PastDiscount = Schemas['PastDiscountOut']
+
 // Audit log
 export type AuditPage = Schemas['AuditPage']
 
