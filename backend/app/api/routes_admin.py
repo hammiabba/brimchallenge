@@ -66,6 +66,15 @@ def list_absences(user: CurrentUser = Depends(require_role(*AUDIT_READERS)), db:
     return admin.absences(db)
 
 
+@router.post("/admin/absences/{absence_id}/end", response_model=AbsenceOut, responses=WRITE_ERRORS)
+def end_absence(absence_id: int, user: CurrentUser = Depends(require_role(CONTROLLER_ADMIN)),
+                db: Session = Depends(get_write_session)):
+    """End an absence that is under way: the person is back, and approves their own steps again."""
+    absence = admin.end_absence(db, user, absence_id)
+    db.commit()
+    return absence
+
+
 @router.post("/admin/absences", response_model=AbsenceOut, status_code=201, responses=WRITE_ERRORS)
 def create_absence(body: AbsenceIn, user: CurrentUser = Depends(require_role(CONTROLLER_ADMIN)),
                    db: Session = Depends(get_write_session)):

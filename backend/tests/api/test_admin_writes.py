@@ -24,6 +24,20 @@ def test_future_absence_is_stored_without_changing_status(act_as, fresh_db):
         assert s.scalars(select(models.UserAbsence).where(models.UserAbsence.user_id == "U007")).one()
 
 
+def test_controller_ends_an_absence_under_way(act_as, fresh_db):
+    # The seed has U012 on leave since 2026-10-20 with U003 as delegate (absence 1); the as-of date is 2026-11-02.
+    r = act_as("U001").post("/admin/absences/1/end")
+    assert r.status_code == 200 and r.json()["ends_on"] == "2026-11-01"
+    with fresh_db() as s:
+        u = s.get(models.User, "U012")
+        assert (u.status, u.status_since.isoformat()) == ("active", "2026-11-02")
+        event = s.scalars(select(models.AuditEvent).where(models.AuditEvent.action == "absence.ended")).one()
+        assert event.entity_id == "U012"
+    # It's over now, so it can't be ended again.
+    again = act_as("U001").post("/admin/absences/1/end")
+    assert again.status_code == 409 and again.json()["error"]["code"] == "absence.not_in_progress"
+
+
 def test_delegate_must_be_an_active_approver(act_as):
     r = act_as("U007").put("/me/delegation", json={"delegate_user_id": "U013", "starts_on": "2026-11-05"})
     assert r.status_code == 422 and r.json()["error"]["code"] == "absence.bad_delegate"

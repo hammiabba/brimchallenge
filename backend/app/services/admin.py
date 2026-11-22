@@ -4,7 +4,7 @@ Policy and user edits change the database; controls see them once they read RefD
 (refdata_from_db), instead of the dataset CSVs."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -71,6 +71,28 @@ def set_absence(db: Session, actor: CurrentUser, *, user_id: str, delegate_user_
            entity_type="user", entity_id=user_id, before=before,
            after={"absence_id": absence.id, "delegate_user_id": delegate_user_id, "starts_on": starts_on,
                   "ends_on": ends_on, "status": user.status})
+    return absence
+
+
+def end_absence(db: Session, actor: CurrentUser, absence_id: int) -> models.UserAbsence:
+    """End an absence that is under way: its last day becomes the day before the as-of date (or its first day, for
+    one that only started today), and the person is active again, so approval routing sends their steps to them
+    instead of the delegate. An absence that is over, or hasn't started, can't be ended."""
+    absence = db.get(models.UserAbsence, absence_id)
+    if absence is None:
+        raise not_found("absence", str(absence_id))
+    as_of = get_settings().as_of_date
+    if absence.starts_on > as_of or (absence.ends_on is not None and absence.ends_on < as_of):
+        raise ApiError(409, "absence.not_in_progress", "Only an absence that is under way can be ended.")
+    user = _user(db, absence.user_id)
+    before = {"status": user.status, "ends_on": absence.ends_on}
+    absence.ends_on = max(absence.starts_on, as_of - timedelta(days=1))
+    if user.status == "on_leave":
+        user.status, user.status_since = "active", as_of
+    db.flush()
+    record(db, actor_user_id=actor.user_id, actor_role=actor.role, action=AuditAction.ABSENCE_ENDED,
+           entity_type="user", entity_id=user.user_id, before=before,
+           after={"absence_id": absence.id, "ends_on": absence.ends_on, "status": user.status})
     return absence
 
 

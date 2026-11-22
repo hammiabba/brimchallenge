@@ -114,6 +114,7 @@ CASES: list[Case] = [
     Case("GET", "/admin/absences", "X Au", ok=200),
     Case("POST", "/admin/absences", "X", ok=201, kwargs={"json": {
         "user_id": "U007", "delegate_user_id": "U003", "starts_on": "2026-11-10"}}),
+    Case("POST", "/admin/absences/1/end", "X", ok=200),  # the seeded absence: U012, on leave since 2026-10-20
     # audit
     Case("GET", "/audit", "X Au", ok=200),
     Case("GET", "/audit/bill/" + B, "X Au", ok=200),
