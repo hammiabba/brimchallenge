@@ -7,18 +7,24 @@ import { Link, Outlet, matchPath, useLocation } from 'react-router'
 import { notifyError } from '../api/notify'
 import { useDepartments } from '../api/reference'
 import { useAuth, useCurrentUser } from '../auth/context'
+import { titleRepeatsRole } from '../auth/roles'
 import { APP_NAME } from '../config'
 import { RoleBadge } from '../ui/Badges'
 import { Icon } from '../ui/Icon'
 import { ActingForBanner } from './ActingForBanner'
 import { navItemsFor } from './navigation'
 
-/** The right side of the header: who is signed in (name; title and department name), their role, and sign out. */
+/**
+ * The right side of the header: who is signed in (name; title and department name), their role, and sign out. The
+ * role is shown once, as the badge.
+ */
 function UserSummary() {
   const user = useCurrentUser()
   const { logout } = useAuth()
   const departments = useDepartments()
   const [signingOut, setSigningOut] = useState(false)
+  const departmentName =
+    departments.data?.find((d) => d.department_id === user.department_id)?.name ?? user.department_id
 
   /** Signs out; RequireAuth then shows the login page. A failure is shown as a notification. */
   const signOut = async () => {
@@ -37,9 +43,12 @@ function UserSummary() {
         <Text size="sm" fw={500} lh={1.3}>
           {user.full_name}
         </Text>
-        {/* "Title, department name": the department's name, not its code (the code until the list has loaded). */}
+        {/* "Title, department name": the department's name, not its code (the code until the list has loaded). A title
+            that only repeats the role ("Finance Manager" next to the "Finance manager" badge) is left out, so the
+            role shows once. */}
         <Text size="xs" c="dimmed" lh={1.3}>
-          {user.title}, {departments.data?.find((d) => d.department_id === user.department_id)?.name ?? user.department_id}
+          {titleRepeatsRole(user.title, user.role) ? '' : `${user.title}, `}
+          {departmentName}
         </Text>
       </Stack>
       <RoleBadge role={user.role} />

@@ -8,7 +8,8 @@ import { navItemsFor } from './shell/navigation'
 import { DEPARTMENTS, PICKER_USERS, envelope, installFakeApi, makeMe, type FakeReply } from './test/fakeApi'
 import { renderApp } from './test/renderApp'
 
-const SIGNED_OUT = { status: 401, body: envelope('auth.required', 'Sign in to continue.') }
+/** What GET /auth/me?optional=true answers when nobody is signed in: 204, no body (not a 401). */
+const SIGNED_OUT = { status: 204 }
 
 /** A fake reply that arrives after `ms` milliseconds, like a slow server, so tests can't rely on timing. */
 function later(reply: FakeReply, ms = 40): Promise<FakeReply> {
@@ -27,6 +28,24 @@ function sidebarLabels(): string[] {
 }
 
 describe('signed out', () => {
+  it('asks for the session with optional=true, so a signed-out visit is not a failed request', async () => {
+    const fake = installFakeApi({ 'GET /auth/me': SIGNED_OUT, 'GET /auth/users': { body: PICKER_USERS } })
+    renderApp('/')
+    expect(await findPicker()).toBeInTheDocument()
+    const me = fake.urls.filter((url) => url.pathname.endsWith('/auth/me'))
+    expect(me.length).toBeGreaterThan(0)
+    expect(me.every((url) => url.searchParams.get('optional') === 'true')).toBe(true)
+  })
+
+  it('still treats a 401 from /auth/me as signed out', async () => {
+    installFakeApi({
+      'GET /auth/me': { status: 401, body: envelope('auth.required', 'Sign in to continue.') },
+      'GET /auth/users': { body: PICKER_USERS },
+    })
+    renderApp('/bills')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument()
+  })
+
   it('redirects to the login page and lists people grouped by role', async () => {
     installFakeApi({ 'GET /auth/me': SIGNED_OUT, 'GET /auth/users': { body: PICKER_USERS } })
     const user = userEvent.setup()
@@ -121,6 +140,29 @@ describe('signed in', () => {
     const items = navItemsFor(role)
     expect(await screen.findByRole('heading', { name: items[0]!.label })).toBeInTheDocument()
     expect(sidebarLabels()).toEqual(items.map((item) => item.label))
+  })
+
+  it('shows the role once in the header: a title that repeats it is left out', async () => {
+    installFakeApi({
+      'GET /auth/me': { body: makeMe({ title: 'Finance Manager', role: 'finance_manager' }) },
+      'GET /reference/departments': { body: DEPARTMENTS },
+    })
+    renderApp('/')
+    const header = await screen.findByRole('banner')
+    expect(await within(header).findByText('Finance')).toBeInTheDocument()
+    expect(within(header).queryByText(/Finance Manager/)).not.toBeInTheDocument()
+    expect(within(header).getByText('Finance manager')).toBeInTheDocument()
+  })
+
+  it('keeps a title that says something the role badge does not', async () => {
+    installFakeApi({
+      'GET /auth/me': { body: makeMe({ title: 'Operations Manager', role: 'approver', department_id: 'D01' }) },
+      'GET /reference/departments': { body: DEPARTMENTS },
+    })
+    renderApp('/')
+    const header = await screen.findByRole('banner')
+    expect(await within(header).findByText('Operations Manager, Operations')).toBeInTheDocument()
+    expect(within(header).getByText('Approver')).toBeInTheDocument()
   })
 
   it('shows the delegate banner when /auth/me reports acting_for', async () => {
