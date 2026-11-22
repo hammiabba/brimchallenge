@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { BillDetail, BillSummary } from '../api/types'
 import { envelope, installFakeApi } from '../test/fakeApi'
@@ -71,6 +71,27 @@ describe('my approvals', () => {
     expect(within(own).getByText('Step 2, Finance manager')).toBeInTheDocument()
     expect(within(own).queryByText(/Acting for/)).not.toBeInTheDocument()
     expect(screen.getByText('2 bills waiting')).toBeInTheDocument()
+  })
+
+  it('shows the queue as cards on a phone, each with why it is yours and a way to open it', async () => {
+    // Below the sm breakpoint (the test setup answers every media query with "no" otherwise).
+    const media = vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
+      matches: query.includes('max-width'), media: query, onchange: null, addListener: () => {}, removeListener: () => {},
+      addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => false,
+    }))
+    installFakeApi({ ...billScreenRoutes(FINANCE), 'GET /approvals/queue': { body: [delegated(), SECOND_STEP] } })
+    renderApp('/approvals')
+
+    const list = await screen.findByRole('list', { name: 'My approvals' })
+    expect(screen.queryByRole('table', { name: 'My approvals' })).not.toBeInTheDocument()
+    const card = (await within(list).findByText('AP-00433')).closest('li')!
+    expect(within(card).getByText('Lakeshore Hydro Services')).toBeInTheDocument()
+    expect(within(card).getByText('$2,101.80')).toBeInTheDocument()
+    expect(within(card).getByText('Step 1, Department manager')).toBeInTheDocument()
+    expect(await within(card).findByText('Acting for Sam Rivera')).toBeInTheDocument()
+    expect(within(card).getByRole('link', { name: 'Open AP-00433' })).toHaveAttribute('href', '/bills/AP-00433')
+    expect(screen.getByText('2 bills waiting')).toBeInTheDocument()
+    media.mockRestore()
   })
 
   it('says when nothing is waiting', async () => {

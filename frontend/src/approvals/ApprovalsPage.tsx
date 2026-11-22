@@ -1,4 +1,5 @@
-import { Anchor, Skeleton, Stack, Table, Text, Title } from '@mantine/core'
+import { Anchor, Box, Button, Group, Skeleton, Stack, Table, Text, Title } from '@mantine/core'
+import { useMediaQuery } from '@mantine/hooks'
 import { Link } from 'react-router'
 
 import { ErrorAlert } from '../api/ErrorAlert'
@@ -14,6 +15,8 @@ const COLUMNS = ['Bill', 'Vendor', 'Invoice no.', 'Invoice date', 'Due date', 'T
   'Your step'] as const
 const NUMERIC = new Set<string>(['Total (CAD)'])
 const SKELETON_ROWS = 5
+/** Below the theme's `sm` breakpoint (48em) the eight-column table doesn't fit: the queue shows as cards instead. */
+const PHONE_QUERY = '(max-width: 47.99em)'
 
 /** "Step 1, Department manager", and "Acting for Liam O'Connor" when the step is someone else's (delegation, P08). */
 function YourStepCell({ bill }: { bill: BillSummary }) {
@@ -58,6 +61,43 @@ function QueueRow({ bill }: { bill: BillSummary }) {
 }
 
 /**
+ * One bill as a card, for phones: the bill id, vendor, amount, why it is waiting for this user (their step, or whom
+ * they act for) and any open flags, with Open to go to the bill, where Approve and Reject are.
+ */
+function QueueCard({ bill }: { bill: BillSummary }) {
+  return (
+    <Box component="li" p="sm" bg="white" style={{ border: '1px solid var(--app-border)', borderRadius: 4 }}>
+      <Group justify="space-between" align="flex-start" wrap="nowrap" gap="sm">
+        <Stack gap={4} style={{ minWidth: 0 }}>
+          <Text size="sm" fw={500}><Id>{bill.bill_id}</Id></Text>
+          <Text size="sm">{bill.vendor_name ?? <Text span c="dimmed" inherit>No vendor matched</Text>}</Text>
+          <YourStepCell bill={bill} />
+          <OpenFlagsCell bill={bill} />
+        </Stack>
+        <Stack gap="xs" align="flex-end">
+          <Text size="sm" fw={500}><MoneyText value={bill.total_cad} /></Text>
+          <Button component={Link} to={`/bills/${bill.bill_id}`} size="xs" variant="default"
+            aria-label={`Open ${bill.bill_id}`}>
+            Open
+          </Button>
+        </Stack>
+      </Group>
+    </Box>
+  )
+}
+
+/** The queue as a list of cards (phones). */
+function QueueCards({ bills, loading }: { bills: readonly BillSummary[] | undefined; loading: boolean }) {
+  if (loading) return <Skeleton animate={false} height={96} />
+  if (bills?.length === 0) return <Text size="sm" c="dimmed">No bills are waiting for your decision.</Text>
+  return (
+    <Stack component="ul" aria-label="My approvals" gap="xs" m={0} p={0} style={{ listStyle: 'none' }}>
+      {bills?.map((bill) => <QueueCard key={bill.bill_id} bill={bill} />)}
+    </Stack>
+  )
+}
+
+/**
  * /approvals: the bills whose current approval step is the signed-in user's (GET /approvals/queue), in the server's
  * order (due date first), including steps they sign as someone's delegate. Each opens the bill screen, where the
  * Approve and Reject buttons are.
@@ -66,6 +106,7 @@ export default function ApprovalsPage() {
   const user = useCurrentUser()
   const queue = useApprovalQueue()
   const bills = queue.data
+  const phone = useMediaQuery(PHONE_QUERY)
 
   return (
     <Stack gap="md">
@@ -77,9 +118,16 @@ export default function ApprovalsPage() {
       )}
       {queue.isError ? (
         <ErrorAlert error={queue.error} title="Can't load your approvals" onRetry={() => void queue.refetch()} />
+      ) : phone ? (
+        <>
+          {bills && bills.length > 0 && (
+            <Text size="sm" c="dimmed">{`${bills.length} bill${bills.length === 1 ? '' : 's'} waiting`}</Text>
+          )}
+          <QueueCards bills={bills} loading={queue.isPending} />
+        </>
       ) : (
         <>
-          <Table.ScrollContainer minWidth={960}>
+          <Table.ScrollContainer minWidth={960} type="native">
             <Table aria-label="My approvals" bg="white" withTableBorder>
               <Table.Thead>
                 <Table.Tr>
