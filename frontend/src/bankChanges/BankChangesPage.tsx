@@ -9,6 +9,7 @@ import { BANK_CHANGE_STATUS } from '../ui/statusStyles'
 import { BankChangesTable } from '../vendors/BankChangesTable'
 import { CommentActionModal } from '../vendors/CommentActionModal'
 import { useBankChangeDecision, useBankChanges } from '../vendors/queries'
+import { useMayDo } from '../vendors/roles'
 
 /** The status tabs; "all" is no filter. The queue opens on what still needs a decision. */
 const TABS = [
@@ -64,12 +65,15 @@ function DecisionButtons({ change }: { change: BankChange }) {
 
 /**
  * /bank-changes: requests to change a vendor's bank details by status, in the server's order. Finance and the controller
- * verify or reject the pending ones; AP and auditors read. The server enforces who may decide.
+ * verify or reject the pending ones (the only roles that see the buttons); AP and auditors read. The server enforces
+ * who may decide, and that nobody decides their own request.
  */
 export default function BankChangesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = tabFromSearch(searchParams)
   const changes = useBankChanges(tab === 'all' ? null : (tab as BankChangeStatus))
+  // Only finance and the controller verify or reject; AP and auditors read, with no Actions column.
+  const mayDecide = useMayDo('decideBankChange')
 
   const empty = tab === 'pending_verification'
     ? 'No bank change is waiting for verification.'
@@ -96,7 +100,7 @@ export default function BankChangesPage() {
             emptyMessage={empty}
             label="Bank changes"
             showVendor
-            actions={(change) => <DecisionButtons change={change} />}
+            actions={mayDecide ? (change) => <DecisionButtons change={change} /> : undefined}
           />
           {changes.data && changes.data.length > 0 && (
             <Text size="sm" c="dimmed">{`${changes.data.length} request${changes.data.length === 1 ? '' : 's'}`}</Text>

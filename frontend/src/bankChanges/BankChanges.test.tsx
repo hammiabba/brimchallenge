@@ -71,3 +71,23 @@ describe('bank changes', () => {
     await waitFor(() => expect(fake.calls.filter((c) => c === 'GET /bank-changes').length).toBeGreaterThan(1))
   })
 })
+
+describe('bank change buttons by role', () => {
+  for (const role of [{ role: 'ap_clerk', user_id: 'U005' }, { role: 'auditor', user_id: 'U015' }] as const) {
+    it(`${role.role} reads the queue with no Verify, Reject or Actions column`, async () => {
+      installFakeApi({ ...billScreenRoutes(role), 'GET /bank-changes': { body: [PENDING] } })
+      renderApp('/bank-changes')
+      const table = await screen.findByRole('table', { name: 'Bank changes' })
+      await within(table).findByText('BCR-0007')
+      expect(within(table).queryByRole('button', { name: /Verify|Reject/ })).not.toBeInTheDocument()
+      expect(within(table).queryByText('Actions')).not.toBeInTheDocument()
+    })
+  }
+
+  it('the controller gets Verify and Reject', async () => {
+    installFakeApi({ ...billScreenRoutes({ role: 'controller_admin', user_id: 'U002' }), 'GET /bank-changes': { body: [PENDING] } })
+    renderApp('/bank-changes')
+    expect(await screen.findByRole('button', { name: 'Verify' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeInTheDocument()
+  })
+})
