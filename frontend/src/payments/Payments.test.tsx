@@ -205,3 +205,96 @@ describe('schedule a payment', () => {
     expect(within(approved).queryByText('Actions')).not.toBeInTheDocument()
   })
 })
+
+/** Two scheduled payments: PAY-00416 (U003 approved its bill as a delegate) and PAY-00417 (U003 didn't). */
+const SCHEDULED = [payment(), payment({ payment_id: 'PAY-00417', bill_id: 'AP-00437', vendor_name: 'Brightmore Consulting Group' })]
+const P11 = 'U003 approved this bill, so they can\'t release its payment (P11).'
+
+function releaseRoutes(extra: Record<string, FakeRoute> = {}) {
+  return paymentsRoutes(FINANCE, {
+    'GET /payments': { body: { items: SCHEDULED, total: 2, limit: 50, offset: 0 } },
+    'GET /payments/PAY-00416': { body: paymentDetail({ allowed_actions: { release: { allowed: false, reason: P11 } } }) },
+    'GET /payments/PAY-00417': { body: paymentDetail({
+      payment_id: 'PAY-00417', bill_id: 'AP-00437', vendor_name: 'Brightmore Consulting Group', amount: '4407.00',
+      allowed_actions: { release: { allowed: true, reason: 'Finance manager may release up to $100,000 (P09).' } },
+    }) },
+    ...extra,
+  })
+}
+
+describe('release a payment', () => {
+  it('offers Release only where the server allows it, and says why not elsewhere', async () => {
+    installFakeApi(releaseRoutes())
+    renderApp('/payments')
+    const list = await screen.findByRole('table', { name: 'Payments' })
+    const blocked = (await within(list).findByText('PAY-00416')).closest('tr')!
+    expect(await within(blocked).findByText(P11)).toBeInTheDocument()
+    expect(within(blocked).queryByRole('button', { name: 'Release' })).not.toBeInTheDocument()
+    const open = within(list).getByText('PAY-00417').closest('tr')!
+    expect(await within(open).findByRole('button', { name: 'Release' })).toBeInTheDocument()
+  })
+
+  it('releases with an Idempotency-Key, keeps the key when retrying the same attempt, and refreshes', async () => {
+    const keys: (string | null)[] = []
+    let fail = true
+    const fake = installFakeApi(releaseRoutes({
+      'POST /payments/PAY-00417/release': (request) => {
+        keys.push(request.headers.get('Idempotency-Key'))
+        if (fail) {
+          fail = false
+          return { status: 409, body: envelope('payment.bank_account_changed',
+            'The vendor\'s bank account changed after this payment was scheduled. Cancel and reschedule.', 'rid-rel-1') }
+        }
+        return { body: paymentDetail({ payment_id: 'PAY-00417', status: 'released', released_by: 'U003' }) }
+      },
+    }))
+    const user = userEvent.setup()
+    renderApp('/payments')
+
+    await user.click(await screen.findByRole('button', { name: 'Release' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Release payment' })
+    expect(within(dialog).getByText(/to the account ending 4410/)).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Release payment' }))
+    expect(await within(dialog).findByText(/bank account changed after this payment was scheduled/)).toBeInTheDocument()
+    expect(within(dialog).getByText('Request id: rid-rel-1')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Release payment' }))
+    expect(await screen.findByText('Payment released')).toBeInTheDocument()
+    expect(keys).toHaveLength(2)
+    expect(keys[0]).toMatch(/^release-[0-9a-f-]{36}$/)
+    expect(keys[1]).toBe(keys[0])
+    await waitFor(() => expect(fake.calls.filter((c) => c === 'GET /payments/summary').length).toBeGreaterThan(1))
+  })
+
+  it('uses a new key for a new attempt after the dialog was closed', async () => {
+    const keys: (string | null)[] = []
+    installFakeApi(releaseRoutes({
+      'POST /payments/PAY-00417/release': (request) => {
+        keys.push(request.headers.get('Idempotency-Key'))
+        return { status: 403, body: envelope('payment.release_refused', 'Payment of $150,000.00 is over your release limit (P09).') }
+      },
+    }))
+    const user = userEvent.setup()
+    renderApp('/payments')
+
+    await user.click(await screen.findByRole('button', { name: 'Release' }))
+    let dialog = await screen.findByRole('dialog', { name: 'Release payment' })
+    await user.click(within(dialog).getByRole('button', { name: 'Release payment' }))
+    expect(await within(dialog).findByText(/over your release limit/)).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    await user.click(screen.getByRole('button', { name: 'Release' }))
+    dialog = await screen.findByRole('dialog', { name: 'Release payment' })
+    await user.click(within(dialog).getByRole('button', { name: 'Release payment' }))
+    await waitFor(() => expect(keys).toHaveLength(2))
+    expect(keys[1]).not.toBe(keys[0])
+  })
+
+  it('has no Actions column for an auditor', async () => {
+    installFakeApi(paymentsRoutes({ role: 'auditor', user_id: 'U015' }))
+    renderApp('/payments')
+    const list = await screen.findByRole('table', { name: 'Payments' })
+    await within(list).findByText('PAY-00416')
+    expect(within(list).queryByText('Actions')).not.toBeInTheDocument()
+  })
+})
