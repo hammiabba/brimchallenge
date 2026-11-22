@@ -57,7 +57,8 @@ describe('line coding', () => {
     await user.click(within(lines).getByRole('button', { name: 'Accept suggestion for line 2' }))
     await waitFor(() => expect(sent).toEqual({ row_version: 4, gl_account: '5040', department_id: 'D01' }))
     expect(await screen.findByText('Suggestion accepted')).toBeInTheDocument()
-    expect(await within(lines).findByText('Confirmed by clerk (Jordan Okafor)')).toBeInTheDocument()
+    // Both lines are now confirmed by the clerk.
+    await waitFor(() => expect(within(lines).getAllByText('Confirmed by clerk')).toHaveLength(2))
     expect(within(lines).queryByRole('button', { name: 'Accept suggestion for line 2' })).not.toBeInTheDocument()
   })
 

@@ -14,6 +14,12 @@ function renderBill(detail: BillDetail, role: Parameters<typeof billScreenRoutes
   return fake
 }
 
+/** Renders /bills/:id for `detail` (AP clerk) and returns the render result, for tests that render several bills. */
+function renderAppFor(detail: BillDetail) {
+  installFakeApi({ ...billScreenRoutes(), [`GET /bills/${detail.bill_id}`]: { body: detail } })
+  return renderApp(`/bills/${detail.bill_id}`)
+}
+
 /** Finds the element whose whole text (across child elements) is `text`, e.g. a sentence with a date inside. */
 function byFullText(text: string) {
   return (_content: string, element: Element | null) =>
@@ -25,16 +31,32 @@ async function flagSection(title: string): Promise<HTMLElement> {
   return (await screen.findByRole('region', { name: title }))
 }
 
+/** Audit events shaped like the services write them (app/services/intake.py, bills.py, approvals.py). */
 const AUDIT: AuditEvent[] = [
+  {
+    seq: 40, event_id: 'ev-40', at: '2026-11-02T14:00:00Z', actor_user_id: 'system', actor_role: 'system',
+    on_behalf_of: null, action: 'bill.created', entity_type: 'bill', entity_id: 'AP-00407', before: null,
+    after: { intake_item_id: 7, file_name: 'summit-804.pdf', email_id: 'EM-031', started_by: 'U013',
+      status: 'needs_review', department_id: 'D01', department_source: 'submitter', warnings: [] },
+    comment: null, request_id: 'r0',
+  },
   {
     seq: 41, event_id: 'ev-41', at: '2026-11-02T15:00:00Z', actor_user_id: 'U005', actor_role: 'ap_clerk',
     on_behalf_of: null, action: 'bill.flag_overridden', entity_type: 'bill', entity_id: 'AP-00407',
-    before: { resolution: 'open' }, after: { resolution: 'overridden' }, comment: 'Different shipment', request_id: 'r1',
+    before: { flag_id: 89, code: 'DUPLICATE_EXACT', resolution: 'open' },
+    after: { flag_id: 89, code: 'DUPLICATE_EXACT', severity: 'block', resolution: 'overridden' },
+    comment: 'Different shipment', request_id: 'r1',
   },
   {
     seq: 42, event_id: 'ev-42', at: '2026-11-02T16:00:00Z', actor_user_id: 'U003', actor_role: 'finance_manager',
     on_behalf_of: 'U012', action: 'bill.approved', entity_type: 'bill', entity_id: 'AP-00407',
-    before: { status: 'pending_approval' }, after: { status: 'approved' }, comment: null, request_id: 'r2',
+    before: { status: 'pending_approval', step_no: 1 },
+    after: { status: 'approved', step_no: 1, step_role: 'dept_manager', final: true }, comment: null, request_id: 'r2',
+  },
+  {
+    seq: 43, event_id: 'ev-43', at: '2026-11-02T17:00:00Z', actor_user_id: 'system', actor_role: 'system',
+    on_behalf_of: null, action: 'intake.already_received', entity_type: 'bill', entity_id: 'AP-00407', before: null,
+    after: { intake_item_id: 9, file_name: 'summit-804 (copy).pdf', warnings: [] }, comment: null, request_id: 'r3',
   },
 ]
 
@@ -62,7 +84,15 @@ describe('bill detail', () => {
     const lines = screen.getByRole('table', { name: 'Invoice lines' })
     expect(within(lines).getByText('Warehouse supplies')).toBeInTheDocument()
     expect(within(lines).getByText('Confirmed by clerk')).toBeInTheDocument()
-    expect(within(lines).getByText('Suggested, 86%: 5040 Packaging: 9 of 10 past lines from this vendor')).toBeInTheDocument()
+    // Each fact once: GL and name, then department name and id, then how it was set; the reason behind "Why?".
+    expect(within(lines).getByText('Packaging materials')).toBeInTheDocument()
+    expect(within(lines).getAllByText('Operations (D01)')).toHaveLength(2)
+    expect(within(lines).getByText('Suggested \u00b7 86%')).toBeInTheDocument()
+    expect(within(lines).queryByText(/9 of 10 past lines/)).not.toBeInTheDocument()
+    await userEvent.setup().click(within(lines).getByRole('button', { name: /^Why\? The reason for line 2/ }))
+    expect(await screen.findByText('5040 Packaging: 9 of 10 past lines from this vendor')).toBeInTheDocument()
+    // Unit prices read like money.
+    expect(within(lines).getByText('$42.39')).toBeInTheDocument()
     const taxes = screen.getByRole('table', { name: 'Taxes and totals' })
     expect(within(taxes).getByText('13%')).toBeInTheDocument()
     expect(within(taxes).getByText('$2,457.19')).toBeInTheDocument()
@@ -112,8 +142,8 @@ describe('bill detail', () => {
     }))
     expect(await screen.findByText('$7,024.81')).toBeInTheDocument()
     expect(screen.getByText(byFullText('US$5,124.23 at 1.3709 USD/CAD, rate of Jan 1, 2026'))).toBeInTheDocument()
-    // Line amounts and totals stay in the bill's currency.
-    expect(within(screen.getByRole('table', { name: 'Invoice lines' })).getByText('US$1,538.65')).toBeInTheDocument()
+    // Line unit prices and amounts stay in the bill's currency (line 1: quantity 1, so both read US$1,538.65).
+    expect(within(screen.getByRole('table', { name: 'Invoice lines' })).getAllByText('US$1,538.65')).toHaveLength(2)
   })
 
   it('shows a delegated step and the decision made on someone\'s behalf', async () => {
@@ -206,20 +236,119 @@ describe('bill detail', () => {
   })
 })
 
+/** A one-step route assigned to `assigned`, with one approval by `signer` (on behalf of `onBehalfOf`, if set). */
+function signedBill(assigned: string, signer: string, extra: { onBehalfOf?: string; delegatedFrom?: string } = {}) {
+  return billDetail({
+    status: 'paid', requester_user_id: 'U013',
+    latest_run: controlsRun({
+      flags: [],
+      route: [{
+        step_no: 1, role: 'dept_manager', user_id: assigned, policy_ids: ['P01', 'P07'], reason: 'Total under $10,000',
+        delegated_from: extra.delegatedFrom ?? null, escalated_from: null, decision: 'approved', decided_by: signer,
+        decided_at: '2026-03-09T15:52:00Z',
+      }],
+    }),
+    decisions: [{
+      decision_id: 'AP-A-1', step_no: 1, actor_user_id: signer, actor_role: 'approver', step_role: 'dept_manager',
+      on_behalf_of: extra.onBehalfOf ?? null, decision: 'approved', comment: null, acted_at: '2026-03-09T15:52:00Z',
+      origin: 'history',
+    }],
+  })
+}
+
+describe('who signed each step', () => {
+  it('marks the requester approving their own bill in the danger tone (AP-00092)', async () => {
+    renderBill(signedBill('U001', 'U013'))
+    const steps = await screen.findByRole('list', { name: 'Approval steps' })
+    expect(await within(steps).findByText('Signed by Avery Chen (U013), not the assigned approver Morgan Lee (U001). '
+      + 'Approved by the requester (U013) of this bill; policy P07 requires their manager.')).toBeInTheDocument()
+  })
+
+  it('marks a step signed by someone other than its assignee', async () => {
+    renderBill(signedBill('U001', 'U002'))
+    const steps = await screen.findByRole('list', { name: 'Approval steps' })
+    expect(await within(steps).findByText('Signed by Elena Duarte (U002), not the assigned approver Morgan Lee (U001).'))
+      .toBeInTheDocument()
+    expect(within(steps).queryByText(/requester/)).not.toBeInTheDocument()
+  })
+
+  it('does not mark the assignee, a delegate assigned to the step, or a delegate acting for the assignee', async () => {
+    for (const bill of [
+      signedBill('U001', 'U001'),
+      signedBill('U003', 'U003', { delegatedFrom: 'U012', onBehalfOf: 'U012' }),
+      signedBill('U012', 'U003', { onBehalfOf: 'U012' }),
+    ]) {
+      const { unmount } = renderAppFor(bill)
+      const steps = await screen.findByRole('list', { name: 'Approval steps' })
+      await within(steps).findAllByText(/^Approved by/)
+      expect(within(steps).queryByText(/not the assigned approver/)).not.toBeInTheDocument()
+      unmount()
+    }
+  })
+})
+
+describe('links', () => {
+  it('links each payment id to the payment', async () => {
+    renderBill(billDetail())
+    const payments = await screen.findByRole('table', { name: 'Payments' })
+    expect(within(payments).getByRole('link', { name: 'PAY-00398' })).toHaveAttribute('href', '/payments/PAY-00398')
+  })
+
+  it('links the original file only when view_document is allowed', async () => {
+    const fileHash = 'ab'.repeat(32)
+    const appBill = (allowed: boolean) => billDetail({
+      origin: 'app', status: 'needs_review', file_hash: fileHash,
+      extracted: { invoice_number: '000804', source: { file_name: 'summit-804.pdf', email_id: 'EM-031' } },
+      allowed_actions: { view_document: { allowed, reason: allowed ? null : "Your role can't open original files." } },
+    })
+
+    const { unmount } = renderAppFor(appBill(true))
+    const link = await screen.findByRole('link', { name: /summit-804\.pdf/ })
+    expect(link).toHaveAttribute('href', `/api/intake/files/${fileHash}`)
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    unmount()
+
+    renderAppFor(appBill(false))
+    expect(await screen.findByText(/summit-804\.pdf/)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /summit-804\.pdf/ })).not.toBeInTheDocument()
+  })
+})
+
 describe('audit trail', () => {
   it.each(['auditor', 'employee'] as const)('comes from the bill itself, collapsed, for the %s role', async (role) => {
     const user = userEvent.setup()
     const fake = renderBill(billDetail({ audit: AUDIT }), { role })
 
-    const toggle = await screen.findByRole('button', { name: 'Show 2 events' })
+    const toggle = await screen.findByRole('button', { name: 'Show 4 events' })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     await user.click(toggle)
-    expect(screen.getByRole('button', { name: 'Hide 2 events' })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: 'Hide 4 events' })).toHaveAttribute('aria-expanded', 'true')
 
     const table = screen.getByRole('table', { name: 'Audit trail' })
     expect(within(table).getByText('Flag overridden')).toBeInTheDocument()
-    expect(within(table).getByText('resolution: open → overridden; "Different shipment"')).toBeInTheDocument()
-    expect(await within(table).findByText('on behalf of Sam Rivera')).toBeInTheDocument()
+    // A sentence per common action; who acted by name and id; system work names the user it was for.
+    expect(within(table).getByText('Created from email EM-031 (summit-804.pdf).')).toBeInTheDocument()
+    expect(await within(table).findByText('System, for Avery Chen (U013)')).toBeInTheDocument()
+    expect(within(table).getByText('Overrode the "Exact duplicate" flag.')).toBeInTheDocument()
+    expect(within(table).getByText('Jordan Okafor (U005)')).toBeInTheDocument()
+    expect(within(table).getByText('Comment: Different shipment')).toBeInTheDocument()
+    expect(within(table).getByText('Approved step 1 (Department manager). Final approval: the bill is approved.'))
+      .toBeInTheDocument()
+    expect(within(table).getByText('on behalf of Sam Rivera (U012)')).toBeInTheDocument()
+    // The before/after values behind "Show changes", as label: value rows, unchanged and empty values left out.
+    const overriddenRow = within(table).getByText('Overrode the "Exact duplicate" flag.').closest('tr')!
+    const showChanges = within(overriddenRow).getByRole('button', { name: 'Show changes' })
+    expect(showChanges).toHaveAttribute('aria-expanded', 'false')
+    await user.click(showChanges)
+    expect(within(overriddenRow).getByText('Resolution:')).toBeVisible()
+    expect(within(overriddenRow).getByText('open \u2192 overridden')).toBeVisible()
+    expect(within(overriddenRow).queryByText('Flag:')).not.toBeInTheDocument()
+    // An action without a sentence shows its values directly, never a semicolon-joined dump.
+    const copyRow = within(table).getByText('Intake already received').closest('tr')!
+    expect(within(copyRow).getByText('File:')).toBeInTheDocument()
+    expect(within(copyRow).getByText('summit-804 (copy).pdf')).toBeInTheDocument()
+    expect(within(table).queryByText(/;\s*"/)).not.toBeInTheDocument()
     // Never the controller/auditor-only audit endpoints.
     expect(fake.calls.some((call) => call.startsWith('GET /audit'))).toBe(false)
   })
