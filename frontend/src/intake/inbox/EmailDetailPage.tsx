@@ -114,10 +114,19 @@ export default function EmailDetailPage() {
         </Text>
       </Stack>
 
-      <Stack gap="xs">
-        <Title order={2}>Why it was sorted this way</Title>
-        <Text>{data.triage_reason ?? 'Not triaged yet. Run the inbox to sort it.'}</Text>
-      </Stack>
+      {/* Only a sorted email explains its sorting. An unsorted one says where it gets sorted: the Inbox page's run. */}
+      {data.triage_reason ? (
+        <Stack gap="xs">
+          <Title order={2}>Why it was sorted this way</Title>
+          <Text>{data.triage_reason}</Text>
+        </Stack>
+      ) : (
+        <Text size="sm" c="dimmed">
+          {'Not sorted yet. '}
+          <Anchor component={Link} to="/inbox" inherit>Run the inbox</Anchor>
+          {' to sort it.'}
+        </Text>
+      )}
 
       {data.suggested_action && (
         <Stack gap="xs">

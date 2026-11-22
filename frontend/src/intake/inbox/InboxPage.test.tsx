@@ -256,6 +256,25 @@ describe('inbox email', () => {
     expect(await screen.findByText('Needs review')).toBeInTheDocument()
   })
 
+  it('explains the sorting of a sorted email', async () => {
+    installFakeApi(routes({ 'GET /intake/emails/EM-057': { body: EM_057 } }))
+    renderApp('/inbox/EM-057')
+    expect(await screen.findByRole('heading', { name: 'Why it was sorted this way' })).toBeInTheDocument()
+    expect(screen.getByText(EM_057.triage_reason!)).toBeInTheDocument()
+  })
+
+  it('leaves out "Why it was sorted this way" before a run, and points to the inbox run instead', async () => {
+    installFakeApi(routes({
+      'GET /intake/emails/EM-001': {
+        body: { ...EM_057, email_id: 'EM-001', email_class: null, triage_reason: null, triaged_at: null, suggested_action: null },
+      },
+    }))
+    renderApp('/inbox/EM-001')
+    expect(await screen.findByText('Not triaged')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Why it was sorted this way' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Run the inbox' })).toHaveAttribute('href', '/inbox')
+  })
+
   it('says when the email does not exist', async () => {
     installFakeApi(routes({ 'GET /intake/emails/EM-999': { status: 404, body: envelope('email.not_found', 'No email EM-999.') } }))
     renderApp('/inbox/EM-999')
