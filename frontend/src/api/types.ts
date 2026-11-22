@@ -51,6 +51,12 @@ export type BankChange = Schemas['BankChangeOut']
 export type BankChangeInput = Schemas['BankChangeIn']
 export type BankChangeChannel = BankChange['request_channel']
 
+// Payments
+export type PaymentsPage = Schemas['Page_PaymentSummary_']
+export type PaymentDetail = Schemas['PaymentDetail']
+export type PaymentDashboard = Schemas['PaymentDashboard']
+export type ScheduleInput = Schemas['ScheduleIn']
+
 // Audit log
 export type AuditPage = Schemas['AuditPage']
 
