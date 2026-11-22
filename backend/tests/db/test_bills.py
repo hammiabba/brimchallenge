@@ -23,8 +23,10 @@ from app.db.bills import (
     next_bill_id,
     route_for_bill,
     save_controls_run,
+    vendor_contract_id,
 )
 from app.db.database import as_write_engine
+from app.db.refdata_db import refdata_from_db
 from app.db.seed import seed_all
 from app.db.types import utcnow
 from app.shared.schemas import (
@@ -187,6 +189,50 @@ def test_unknown_vendor_and_non_canadian_province_are_also_kept_out(ws: Session)
     bill = ws.get(models.Bill, created.bill_id)
     assert (bill.vendor_id, bill.ship_to_province, bill.contract_id) == (None, None, None)
     assert len(created.warnings) == 3
+
+
+def _contract_draft(**changes: object) -> DraftBill:
+    """harlow_draft moved to V023, the vendor with fixed-fee contract C009 (the invoice names no contract)."""
+    vendor = harlow_draft().vendor.model_copy(update={"vendor_id": "V023"})
+    return harlow_draft(vendor=vendor, **changes)
+
+
+def test_a_bill_that_names_no_contract_gets_its_vendors_contract(ws: Session) -> None:
+    created = _create(ws, _contract_draft())
+    bill = ws.get(models.Bill, created.bill_id)
+    assert bill.contract_id == "C009"
+    # Recorded in the snapshot too, so the bill screen doesn't show the contract as changed by a person.
+    assert bill.draft_json["contract_id"] == "C009"
+    assert created.warnings == []
+
+
+def test_an_unknown_printed_contract_falls_back_to_the_vendors_and_stays_as_printed(ws: Session) -> None:
+    created = _create(ws, _contract_draft(contract_id="C999"))
+    bill = ws.get(models.Bill, created.bill_id)
+    assert (bill.contract_id, bill.draft_json["contract_id"]) == ("C009", "C999")
+    assert created.warnings == ["contract_id 'C999' not found; stored as NULL"]
+
+
+def test_a_printed_contract_is_kept(ws: Session) -> None:
+    created = _create(ws, _contract_draft(contract_id="C018"))
+    assert ws.get(models.Bill, created.bill_id).contract_id == "C018"
+
+
+def test_a_vendor_without_a_contract_leaves_it_empty(ws: Session) -> None:
+    created = _create(ws)  # V052 has no contract
+    assert ws.get(models.Bill, created.bill_id).contract_id is None
+
+
+def test_vendor_contract_id_picks_what_the_controls_pick(ws: Session) -> None:
+    # The link must be the contract RefData.contract_for falls back to, for every vendor, so linking never changes
+    # which contract the checks use.
+    ref = refdata_from_db(ws)
+    for vendor_id in ref.vendors:
+        draft = _contract_draft().model_copy(
+            update={"vendor": _contract_draft().vendor.model_copy(update={"vendor_id": vendor_id})})
+        found = ref.contract_for(draft)
+        assert vendor_contract_id(ws, vendor_id) == (found["contract_id"] if found else None), vendor_id
+    assert vendor_contract_id(ws, None) is None
 
 
 def test_a_currency_the_schema_cannot_store_is_refused_clearly(ws: Session) -> None:

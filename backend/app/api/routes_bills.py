@@ -38,9 +38,10 @@ def list_bills(user: CurrentUser = Depends(require_role(*ALL_ROLES)),
                status: Annotated[list[BillStatus] | None, Query()] = None,
                vendor_id: str | None = None, department_id: str | None = None,
                q: Annotated[str | None, Query(max_length=100)] = None,
+               mine: Annotated[bool, Query(description="Only bills where you are the requester.")] = False,
                limit: Limit = 50, offset: Offset = 0, db: Session = Depends(get_session)):
     return bills.list_bills(db, user, status=status, vendor_id=vendor_id, department_id=department_id, q=q,
-                            limit=limit, offset=offset)
+                            limit=limit, offset=offset, mine=mine)
 
 
 @router.get("/bills/{bill_id}", response_model=BillDetail, responses=READ_ERRORS)

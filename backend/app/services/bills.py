@@ -15,7 +15,7 @@ from app.coding.requester import recode_for_requester, requester_problem
 from app.controls.duplicates import norm_invoice_no
 from app.db import models
 from app.db.audit import AuditAction
-from app.db.bills import latest_controls_run
+from app.db.bills import latest_controls_run, vendor_contract_id
 from app.db.types import utcnow
 from app.extraction.recheck import recheck_bill
 from app.services import approvals, audit, controls_runner, views
@@ -30,8 +30,12 @@ AUDIT_ENTITY = "bill"
 
 
 def list_bills(db: Session, user: CurrentUser, *, status: list[str] | None, vendor_id: str | None,
-               department_id: str | None, q: str | None, limit: int, offset: int) -> s.Page[s.BillSummary]:
+               department_id: str | None, q: str | None, limit: int, offset: int,
+               mine: bool = False) -> s.Page[s.BillSummary]:
     stmt = visible_bills(user)
+    # `mine`: only the bills the caller is the requester on (an employee's own requests), inside their usual scope.
+    if mine:
+        stmt = stmt.where(models.Bill.requester_user_id == user.user_id)
     if status:
         stmt = stmt.where(models.Bill.status.in_(status))
     if vendor_id:
@@ -137,6 +141,21 @@ def _require_app_bill(bill: models.Bill) -> None:
         raise ApiError(409, "bill.history_read_only", "Bills loaded from the dataset history can't be edited.")
 
 
+def _follow_vendor_contract(db: Session, bill: models.Bill, changes: dict) -> None:
+    """A vendor change carries the bill's contract along: when the bill had no contract or the old vendor's, and the
+    same request doesn't set one, `changes` gains the new vendor's contract (or None when it has none). That is the
+    contract the checks would pick for the new vendor, so the bill keeps showing the contract its flags cite. A
+    contract that belongs to neither vendor (set on purpose) is left alone. The audit event lists the change."""
+    if "vendor_id" not in changes or "contract_id" in changes or changes["vendor_id"] == bill.vendor_id:
+        return
+    current = db.get(models.Contract, bill.contract_id) if bill.contract_id else None
+    if current is not None and current.vendor_id != bill.vendor_id:
+        return
+    new_contract = vendor_contract_id(db, changes["vendor_id"])
+    if new_contract != bill.contract_id:
+        changes["contract_id"] = new_contract
+
+
 def update_header(db: Session, user: CurrentUser, bill_id: str, patch: s.BillHeaderPatch) -> None:
     bill = _editable_bill(db, user, bill_id, patch.row_version)
     _require_app_bill(bill)
@@ -151,6 +170,7 @@ def update_header(db: Session, user: CurrentUser, bill_id: str, patch: s.BillHea
         raise ApiError(422, "bill.requester_not_allowed", problem, {"field": "requester_user_id"})
     if "ship_to_province" in changes and changes["ship_to_province"] not in (None, *models.PROVINCES):
         raise ApiError(422, "bill.bad_province", "ship_to_province must be a Canadian province or territory code.")
+    _follow_vendor_contract(db, bill, changes)
     before = {k: getattr(bill, k) for k in changes}
     for key, value in changes.items():
         setattr(bill, key, value)

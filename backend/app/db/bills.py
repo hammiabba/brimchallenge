@@ -105,6 +105,16 @@ def _canonical(evidence: Any) -> str:
     return json.dumps(evidence, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+def vendor_contract_id(session: Session, vendor_id: str | None) -> str | None:
+    """The contract the controls apply to a bill from `vendor_id` that names no contract of its own: the vendor's
+    first contract by id. RefData.contract_for falls back the same way (it walks the contracts in primary-key order,
+    as refdata_db loads them), so a bill linked here gets exactly the contract checks it got before."""
+    if vendor_id is None:
+        return None
+    return session.execute(select(models.Contract.contract_id).where(models.Contract.vendor_id == vendor_id)
+                           .order_by(models.Contract.contract_id).limit(1)).scalar()
+
+
 # ---------------------------------------------------------------- ids
 
 
@@ -125,7 +135,8 @@ def create_bill_from_draft(session: Session, draft: DraftBill, *, created_by: st
 
     Requires a write session. Never commits or logs. Extracted references that don't exist are stored as NULL with a
     warning; money with more than 2 decimals is rounded half-up with a warning; draft_json keeps the draft exactly as
-    extracted. Raises LookupError if `created_by` isn't a user, and ValueError for a currency the schema can't store.
+    extracted, plus the vendor's contract when the invoice names none (see vendor_contract_id). Raises LookupError if
+    `created_by` isn't a user, and ValueError for a currency the schema can't store.
     """
     require_write_session(session, "create_bill_from_draft")
     if not _exists(session, models.User.user_id, created_by):
@@ -150,6 +161,16 @@ def create_bill_from_draft(session: Session, draft: DraftBill, *, created_by: st
     requester = reference(draft.requester_user_id, models.User.user_id, "requester_user_id")
     po_id = reference(draft.po_number, models.PurchaseOrder.po_id, "po_number")
     contract_id = reference(draft.contract_id, models.Contract.contract_id, "contract_id")
+    # Invoices rarely print a contract number. When this one names none (or one that doesn't exist), the bill gets its
+    # vendor's contract: the one the contract checks use anyway, so the bill shows the contract its flags cite.
+    linked_contract = contract_id is None and vendor_id is not None
+    if linked_contract:
+        contract_id = vendor_contract_id(session, vendor_id)
+    snapshot = draft.model_dump(mode="json")
+    if linked_contract and contract_id is not None and not snapshot.get("contract_id"):
+        # Recorded in the intake snapshot too, like the matched vendor id, so the bill screen doesn't mark the contract
+        # as changed by a person. A contract number the invoice printed (even an unknown one) stays as printed.
+        snapshot["contract_id"] = contract_id
 
     province = draft.ship_to_province
     if province is not None and province not in models.PROVINCES:
@@ -175,7 +196,7 @@ def create_bill_from_draft(session: Session, draft: DraftBill, *, created_by: st
         fx_rate_to_cad=dec_to_text(draft.fx_rate_to_cad), fx_rate_date=fx_rate_date,
         is_credit_note=draft.is_credit_note, ship_to_province=province, department_id=department_id,
         requester_user_id=requester, po_id=po_id, contract_id=contract_id, file_hash=draft.source.file_hash,
-        source_email_id=source_email_id, draft_json=draft.model_dump(mode="json"), received_date=received_date,
+        source_email_id=source_email_id, draft_json=snapshot, received_date=received_date,
         created_at=now, created_by=created_by, updated_at=now,
     ))
 
