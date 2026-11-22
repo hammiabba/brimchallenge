@@ -26,6 +26,17 @@ export function CodingModal({ bill, line, opened, onClose }: CodingModalProps) {
   const startDepartment = line.department_id ?? line.suggested_department_id ?? bill.department_id ?? null
   const [gl, setGl] = useState<string | null>(startGl)
   const [department, setDepartment] = useState<string | null>(startDepartment)
+  const [shownOpen, setShownOpen] = useState(opened)
+  // The dialog stays mounted while the bill changes (so a save's confirmation and close still run once the new bill
+  // arrives); its form starts again from the bill as it is now each time it opens. Adjusted during render, as React
+  // recommends for state that follows a prop.
+  if (opened !== shownOpen) {
+    setShownOpen(opened)
+    if (opened) {
+      setGl(startGl)
+      setDepartment(startDepartment)
+    }
+  }
 
   function close() {
     save.reset()
@@ -57,6 +68,8 @@ export function CodingModal({ bill, line, opened, onClose }: CodingModalProps) {
           data={(accounts.data ?? []).map((a) => ({ value: a.account_number, label: `${a.account_number} ${a.name}` }))}
           value={gl}
           onChange={setGl}
+          // Picking the selected option again keeps it; clearing a required field by accident left Save disabled.
+          allowDeselect={false}
         />
         <Select
           label="Department"
@@ -64,6 +77,7 @@ export function CodingModal({ bill, line, opened, onClose }: CodingModalProps) {
           data={(departments.data ?? []).map((d) => ({ value: d.department_id, label: `${d.name} (${d.department_id})` }))}
           value={department}
           onChange={setDepartment}
+          allowDeselect={false}
         />
         {save.isError && <ErrorAlert error={save.error} />}
         <Group justify="flex-end" gap="sm">

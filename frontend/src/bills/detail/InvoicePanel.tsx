@@ -240,7 +240,7 @@ function CodingActions({ bill, line }: { bill: BillDetail; line: BillLine }) {
       <Button size="xs" variant="default" onClick={() => setOpen(true)} aria-label={`Change coding of line ${line.line_no}`}>
         Change
       </Button>
-      <CodingModal key={bill.row_version} bill={bill} line={line} opened={open} onClose={() => setOpen(false)} />
+      <CodingModal bill={bill} line={line} opened={open} onClose={() => setOpen(false)} />
     </Group>
   )
 }
@@ -288,7 +288,10 @@ function LinesTable({ bill }: { bill: BillDetail }) {
   )
 }
 
-/** The taxes table with the subtotal and total below it (extracted → current when corrected). */
+/**
+ * The subtotal, then each tax, then the total, in the order they add up (extracted → current when a person corrected
+ * an amount).
+ */
 function TaxesTable({ bill, snapshot }: { bill: BillDetail; snapshot: Snapshot | null }) {
   /** A total row: the amount, with the extracted amount first when a person corrected it. */
   const totalRow = (label: string, region: InvoiceRegion, current: string, path: string) => {
@@ -325,6 +328,7 @@ function TaxesTable({ bill, snapshot }: { bill: BillDetail; snapshot: Snapshot |
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
+          {totalRow('Subtotal', 'subtotal', bill.subtotal, 'subtotal')}
           {bill.taxes.length === 0 && (
             <Table.Tr><Table.Td colSpan={3}><Text size="sm" c="dimmed">No tax charged.</Text></Table.Td></Table.Tr>
           )}
@@ -337,7 +341,6 @@ function TaxesTable({ bill, snapshot }: { bill: BillDetail; snapshot: Snapshot |
           ))}
         </Table.Tbody>
         <Table.Tfoot>
-          {totalRow('Subtotal', 'subtotal', bill.subtotal, 'subtotal')}
           {totalRow('Total', 'total', bill.total, 'total')}
         </Table.Tfoot>
       </Table>
@@ -382,7 +385,7 @@ export function InvoicePanel({ bill }: { bill: BillDetail }) {
         )}
       </Group>
       {/* Keyed on the row version: after any write the form starts again from the bill as it now stands. */}
-      {canEdit && <HeaderEditModal key={bill.row_version} bill={bill} opened={editing} onClose={() => setEditing(false)} />}
+      {canEdit && <HeaderEditModal bill={bill} opened={editing} onClose={() => setEditing(false)} />}
 
       <SimpleGrid component="dl" cols={2} spacing="xs" verticalSpacing={6} m={0}
         style={{ gridTemplateColumns: 'max-content 1fr' }}>

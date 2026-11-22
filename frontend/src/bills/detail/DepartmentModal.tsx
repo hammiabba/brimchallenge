@@ -15,6 +15,14 @@ export function DepartmentModal({ bill, opened, onClose }: { bill: BillDetail; o
   const departments = useDepartments()
   const edit = useEditBill(bill)
   const [department, setDepartment] = useState<string | null>(bill.department_id ?? null)
+  const [shownOpen, setShownOpen] = useState(opened)
+  // The dialog stays mounted while the bill changes (so a save's confirmation and close still run once the new bill
+  // arrives); its form starts again from the bill as it is now each time it opens. Adjusted during render, as React
+  // recommends for state that follows a prop.
+  if (opened !== shownOpen) {
+    setShownOpen(opened)
+    if (opened) setDepartment(bill.department_id ?? null)
+  }
 
   function close() {
     edit.reset()

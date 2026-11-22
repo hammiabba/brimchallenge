@@ -56,6 +56,14 @@ export function HeaderEditModal({ bill, opened, onClose }: { bill: BillDetail; o
   const edit = useEditBill(bill)
   const start = formFor(bill)
   const [form, setForm] = useState<HeaderForm>(start)
+  const [shownOpen, setShownOpen] = useState(opened)
+  // The dialog stays mounted while the bill changes (so a save's confirmation and close still run once the new bill
+  // arrives); its form starts again from the bill as it is now each time it opens. Adjusted during render, as React
+  // recommends for state that follows a prop.
+  if (opened !== shownOpen) {
+    setShownOpen(opened)
+    if (opened) setForm(start)
+  }
   const changes = changesFrom(start, form)
   const changed = Object.keys(changes).length > 0
   const set = (key: keyof HeaderForm) => (value: string | null) => setForm((f) => ({ ...f, [key]: value ?? '' }))
