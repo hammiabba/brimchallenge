@@ -3,8 +3,11 @@
 The AP Automation web app: Vite + React + TypeScript (strict), Mantine, TanStack Query and React Router. It talks to
 the FastAPI backend through a typed client generated from the backend's OpenAPI spec.
 
-Chunk 1 (this state): tooling, generated API types, the API client, sign-in, and the app shell with role-based
-navigation. Every screen is a placeholder that says what will be built there.
+Every screen in the sidebar is built: intake (upload, submissions, the AP inbox), the review queue and the bill screen
+with AP's actions, approvals (including delegated steps and unassigned steps), payments (dashboard, schedule,
+release, cancel, payment detail), vendors and bank changes, spend, the audit log with CSV export, admin (users,
+policies, absences), out of office, bank reconciliation and early payment. To run the whole app with the demo data,
+see "Run the whole app" in the [root README](../README.md).
 
 ## Install
 
@@ -77,7 +80,14 @@ src/
   api/      client, ApiError, generated schema, notifications, query client defaults, reference-data hooks
   auth/     AuthProvider (GET /auth/me), LoginPage, RequireAuth, role labels
   shell/    AppLayout (header, sidebar, delegate banner), navigation.ts, placeholder and 404 pages
-  bills/    bills list and review queue (filters in the URL), the read-only bill detail, evidence renderers
+  intake/   submit an invoice, my submissions, the AP inbox run and email detail
+  bills/    bills list and review queue (filters in the URL), the bill detail with its actions, evidence renderers
+  approvals/ my approvals, unassigned steps
+  payments/ payments dashboard, schedule / release / cancel, payment detail
+  vendors/  vendor list and page, onboarding, bank change requests (and roles.ts: who sees which vendor button)
+  bankChanges/ the bank change queue (verify, reject)
+  reconciliation/ bank reconciliation; earlyPay/ early payment
+  spend/, audit/, admin/, delegation/  spend report, audit log, users / policies / absences, out of office
   lib/      money.ts, dates.ts, decimal.ts (with tests)
   ui/       shared pieces: badges, Id / MoneyText / DateText, Icon, contrast check
   styles/   self-hosted fonts and the few global CSS rules
@@ -90,9 +100,11 @@ The sidebar for each role is one config file, `src/shell/navigation.ts`. To add 
 under the roles that use it, and add its lazy-loaded component to `SCREENS` in `App.tsx` (screens load as their own
 bundle chunks on first visit).
 
-Built so far: the bills list (`/bills`) and the AP review queue (`/review`), with filters kept in the URL
-(`?status=needs_review&vendor=V011&department=D01&q=000804&page=2`, exactly what `GET /bills` supports), and the
-read-only bill detail (`/bills/:billId`). No write actions yet: `allowed_actions` is ignored until the action chunks.
+Buttons follow the server. A bill or payment answer carries `allowed_actions` (what the signed-in user may do now,
+with the reason when not); a button is shown only when it is allowed, and a refusal on submit shows the server's
+message and request id. Answers without `allowed_actions` (vendors, bank changes) use the API's role gates, kept in
+one place per area (for example `src/vendors/roles.ts`). The server checks every request either way. Lists keep
+their filters and page in the URL (`?status=needs_review&vendor=V011&department=D01&q=000804&page=2`).
 
 ## Design
 
