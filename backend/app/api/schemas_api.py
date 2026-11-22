@@ -622,3 +622,129 @@ class EmailOut(ApiModel):
     triaged_at: UtcDateTime | None
     items: list[IntakeItemOut] = []
     suggested_action: SuggestedAction | None = None  # intake lane: app.intake.review.action_for
+
+
+# ---------------------------------------------------------------- early-payment discounts (controls.early_pay)
+
+class EarlyPaySuggestionOut(ApiModel):
+    bill_id: str
+    vendor_id: str
+    vendor_name: str | None
+    status: str
+    terms: str = Field(description='The vendor\'s terms in words, e.g. "2% off if paid within 10 days, net 30"')
+    method: str
+    invoice_date: date
+    due_date: date
+    discount_deadline: date | None = Field(None, description="Last day the money must arrive to earn the discount")
+    pay_on: date = Field(description="Suggested date to send the payment")
+    scheduled_date: date | None
+    currency: Literal["CAD", "USD"]
+    total: Money
+    saving: Money = Field(description="In the bill's currency, compared with paying on the due date")
+    saving_cad: Money
+    pay_amount: Money
+    action: Literal["take_discount", "pay_on_due_date", "pay_now", "reschedule"]
+    reason: str
+    notes: list[str]
+
+
+class PastDiscountOut(ApiModel):
+    payment_id: str
+    bill_id: str
+    vendor_id: str
+    invoice_date: date
+    paid_date: date
+    days_to_pay: int
+    discount_cad: Money
+
+
+class EarlyPaySummary(ApiModel):
+    bills: int
+    with_discount_open: int
+    saving_cad: Money
+    to_reschedule: int
+    pay_now: int
+
+
+class EarlyPayHistory(ApiModel):
+    taken: int
+    taken_cad: Money
+    missed: int
+    missed_cad: Money
+    missed_payments: list[PastDiscountOut]
+
+
+class EarlyPayReport(ApiModel):
+    as_of: date
+    summary: EarlyPaySummary
+    suggestions: list[EarlyPaySuggestionOut]
+    history: EarlyPayHistory
+# ---------------------------------------------------------------- bank reconciliation (controls.reconciliation)
+
+class ReconIssueOut(ApiModel):
+    code: str
+    severity: Literal["info", "review"]
+    message: str
+
+
+class ReconLineOut(ApiModel):
+    bank_txn_id: str
+    posted_date: date
+    description: str
+    amount: Money = Field(description="Debit positive, credit negative")
+    status: Literal["matched", "bank_fee", "unexplained"]
+    payment_ids: list[str]
+    bill_ids: list[str]
+    vendor_id: str | None
+    difference: Money | None = Field(None, description="Bank amount minus payment amount, when they differ")
+    issues: list[ReconIssueOut]
+
+
+class ReconPaymentOut(ApiModel):
+    payment_id: str
+    bill_id: str
+    vendor_id: str
+    method: str
+    status: str
+    amount_cad: Money
+    on_date: date | None = Field(None, description="Paid date, or the scheduled date when not paid yet")
+    bank_txn_id: str | None
+    issues: list[ReconIssueOut]
+
+
+class ReconDoublePaymentOut(ApiModel):
+    bill_ids: list[str]
+    card_txn_ids: list[str]
+    payment_ids: list[str]
+    bank_txn_ids: list[str]
+    extra_payment_ids: list[str]
+    at_risk_payment_ids: list[str]
+    confirmed: bool
+    extra_paid_cad: Money
+    at_risk_cad: Money
+    message: str
+
+
+class ReconSummaryOut(ApiModel):
+    lines: int
+    debits_cad: Money
+    matched: int
+    matched_cad: Money
+    bank_fees: int
+    bank_fees_cad: Money
+    unexplained: int
+    unexplained_cad: Money
+    double_payments: int
+    double_paid_extra_cad: Money
+    double_at_risk_cad: Money
+    needs_review: int
+    issues: dict[str, int]
+
+
+class BankReconciliation(ApiModel):
+    statement_from: date | None
+    statement_to: date | None
+    summary: ReconSummaryOut
+    lines: list[ReconLineOut]
+    payments: list[ReconPaymentOut]
+    double_payments: list[ReconDoublePaymentOut]

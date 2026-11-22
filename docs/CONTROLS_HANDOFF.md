@@ -81,6 +81,8 @@ result.recommendation     # "Hold: This bill is on V052 Harlow and Stern LLP, ..
 | `history.replay(ref)` | Replays all historical invoices, each judged as of its own date, plus checks on `approvals.csv` and `payments.csv`. Printed by `backend/scripts/replay_history.py`. |
 | `flag_help.help_for(code)` / `flag_help.FLAG_HELP` | **For the UI team.** A short title and one plain-English help sentence (what it means, what to do) for every code in `FLAG_CODES`, plus its severity. Show the title as the badge, the flag's own `message` for this bill's details, and the help as a tooltip or help panel. A test fails if a code has no help. |
 | `refdata.history_taxes(ref, invoice, lines)` | Tax lines for a historical invoice, with the same tax codes the engine uses. Public now, so the DB seed uses it directly (`_history_taxes` still works as an alias). |
+| `early_pay.suggest_pay_dates(ref, payments)` / `early_pay.discount_history(ref, payments)` / `early_pay.parse_terms(text, days)` | **Early-payment discounts.** Best pay date and saving for approved and scheduled bills, and the discounts history took and missed. Payments are CSV-shaped rows (`payments.csv`), so the DB adapter (`services/early_pay.py`) feeds it the same way. See "Early-payment discounts" below. |
+| `reconciliation.reconcile(bank_rows, payment_rows, ref)` | **Bank reconciliation.** Matches every bank statement line to its payment and explains the rest. Rows are CSV-shaped dicts (`bank_statement.csv`, `payments.csv`), so the CSV loader (`load_bank_and_payments()`) and the DB adapter (`services/reconciliation.py`) feed it the same way. Returns `Reconciliation` (lines, payments, double payments, `summary()`). See "Bank reconciliation" below. |
 
 `controls.permissions` re-exports `can_approve` / `can_release` (the API guide refers to that module).
 
@@ -107,6 +109,8 @@ shows what the server allows. File paths are under `backend/app/`.
 | `can_approve(user, step, bill, ref, route=, amount_cad=)` | `services/approvals.py` `decision_check()`, used by `approve`, `reject` and the allowed-actions check in `services/actions.py` | Before an approval or rejection is recorded | The stored `route` (`db/bills.py` `route_for_bill`). A manually assigned approver replaces the step's user. `amount_cad` is the split's combined amount when controls saw a split (`controls_runner.routed_amount`). A delegate's decision is stored with `on_behalf_of`. |
 | `can_release(user, amount_cad, approver_ids, flags, approval_complete, ref, bill=)` | `services/payments.py` `release_check()`, used by `release` and the allowed-actions check | Before a scheduled payment is released (simulated EFT) | `approver_ids` = everyone who approved, plus everyone a delegate approved for (`db/bills.py` `approver_ids_for_bill`). `flags` = only the flags still open in the latest stored run (`controls_runner.open_flags`), so an overridden flag no longer holds the payment. `approval_complete` = the bill's status is `approved` or `scheduled` (a bill only reaches `approved` through its final step). `bill` = the current `DraftBill`. |
 | `flag_help.help_for(code)` | `api/routes_reference.py`: `GET /reference/flag-help`, every role | Loaded by the UI | Title, help and severity for every code in `FLAG_CODES`. |
+| `early_pay.suggest_pay_dates` / `discount_history` | `api/routes_early_pay.py`: `GET /early-pay` (`?include_pending=true` adds bills not approved yet), same roles as the payments list (`BACK_OFFICE_READ`: AP clerk, finance manager, controller, auditor), via `services/early_pay.py` `early_pay_report()` | On request (read-only) | Payments read from the database in CSV row shape, and `ref` from `refdata_from_db()`. Response models are at the end of `api/schemas_api.py` (`EarlyPayReport` and friends). |
+| `reconciliation.reconcile(bank_rows, payment_rows, ref)` | `api/routes_reconciliation.py`: `GET /reconciliation/bank` (`?only_issues=true` for just what needs review), controller and auditor only (`AUDIT_READERS`), via `services/reconciliation.py` `bank_reconciliation()` | On request (read-only) | Statement lines and payments read from the database in CSV row shape, and `ref` from `refdata_from_db()`. The response models are at the end of `api/schemas_api.py` (`BankReconciliation` and the `Recon*` models). |
 
 Checks the API adds around these: the payment's preparer can't release it, a bank change after scheduling blocks
 release, release needs an `Idempotency-Key`, and one person can't sign two steps of the same bill. Every write
@@ -452,6 +456,100 @@ moved from can proceed to review. Cascadia `scan_8049.png` was already on hold f
 is flagged: Evergreen's weak total is left to `TOTAL_MISMATCH`, and Blue Heron's and Zephyr's weak vendor to
 `VENDOR_NOT_FOUND`. History replay: identical, because history bills have no confidence scores. The coverage map
 now lists the scans under this flag.
+
+## Early-payment discounts (`controls/early_pay.py`)
+
+**Terms in the data.** `vendors.csv` has two columns: `early_pay_discount` and `payment_terms_days`.
+- `early_pay_discount` is blank for 53 vendors. For the other 3 it's `2/10 net 30`: V010 Ironwood Pallet, V024 Paper
+  Trail Office Supply and V033 Lumen Print & Signage.
+- `payment_terms_days` is 30, 21, 15 or 0 (0 = due on receipt).
+
+`parse_terms(text, days)` reads the dataset's format, plus the common variants a hidden dataset might use: `2/10 n/30`,
+`2/10, net 30`, `2% 10 net 30`, `1.5/15 net 45`, `net 45`, `n/60` and `due on receipt`.
+- **Blank text:** no discount, and `payment_terms_days` is the net days.
+- **The text and `payment_terms_days` disagree:** the written term wins, with a note.
+- **Text that can't be read** (e.g. `2/10 EOM`) or that makes no sense (`2/30 net 30`): no discount, with a note,
+  never a guess.
+
+A test checks every vendor in the dataset parses with no note.
+
+**How the discount works**, checked on all 19 payments to the three vendors:
+- It's **2% of the pre-tax subtotal**. Taxes are never discounted. All 9 discounts taken match this to the cent
+  (a test checks each one).
+- The **10 days count from the invoice date**. Every discount taken was paid on day 9, the day before the deadline,
+  because an EFT posts the next day.
+
+**Best pay date** (`suggest_pay_dates`, for `approved` and `scheduled` bills by default):
+- **The discount is still open:** pay on the last day that still earns it. That's the deadline minus the method's
+  lead days (EFT 1, cheque 3, card 0), never before today. The saving is the discount, compared with paying on the
+  due date. Skipping 2/10 net 30 costs about 37% a year (2/98 for 20 days).
+- **No discount, or it has ended:** pay on the due date. Paying earlier saves nothing. If it's already due, pay
+  today. An ended discount is named in the reason.
+- **Reschedule:** the action is `reschedule` when a scheduled payment falls after the discount ends, or after the
+  due date.
+
+Due dates use the invoice's own due date and get a note if it disagrees with the terms. Paying on the due date uses no
+lead days, because in this data a payment's scheduled date is its due date. Credit notes are skipped.
+
+**Results.**
+- **Approved and scheduled bills:** none of the 20 is from a discount vendor, so the saving today is $0.00.
+  - AP-00399 (Quillpad, due 2026-11-01) is overdue: pay now.
+  - 4 bills are due today, and the rest are due on their dates.
+- **Incoming batch, once approved:**
+  - **Paper Trail 2217** ($542.16 subtotal, dated 2026-10-26) can proceed. Paying by 2026-11-04 saves **$10.84**.
+  - **Ironwood INV-02210** would save $18.31 if paid by 2026-11-08, but it's on hold (missing PO, no tax charged).
+  - **Lumen FA-001761**'s window closed in April.
+
+  `?include_pending=true` shows these bills before they're approved.
+- **History** (`discount_history`): **9 discounts taken, $296.18. 10 missed, $827.77.** The 10 missed were paid 30 to
+  33 days after the invoice, so 7 of them were also late. The biggest is AP-00180, Ironwood's $10,096.40 subtotal,
+  $201.93 missed.
+## Bank reconciliation (`controls/reconciliation.py`)
+
+`reconcile(bank_rows, payment_rows, ref)` matches each line of `bank_statement.csv` (the CAD operating account) to the
+payment behind it and classifies everything else. API: `GET /reconciliation/bank`, controller and auditor only.
+
+**Matching**
+- **EFT** (`EFT PMT <payee> <ref>`): the line's reference is the last 6 digits of the payment's `BRIM-EFT-` reference.
+  If the reference matches nothing, the line is matched by amount and payee to an EFT paid within 5 days, and says so
+  (`MATCHED_WITHOUT_REFERENCE`). A payee that isn't the payment's vendor is `PAYEE_DIFFERS`.
+- **Cheques** (`CHEQUE <no> CLEARED`): the payment record doesn't carry the cheque number, so each cleared cheque goes
+  to the cheque payment issued closest before it, within 60 days. Exact amounts are paired first, then amounts within
+  $1.00 (reported as `AMOUNT_DIFFERS`). This matters for the 10 identical $6,990.48 rent cheques: each month's
+  clearing goes to that month's cheque.
+- **Fees** (`... FEE`, `SERVICE CHARGE`): `bank_fee`. A wire fee on a day no payment went by wire is
+  `WIRE_FEE_WITHOUT_WIRE`.
+- **Anything else** is `unexplained` (`UNEXPLAINED_DEBIT` / `UNEXPLAINED_CREDIT`).
+
+**Payments with no bank line**:
+- `PAID_BY_CARD` (info): the payment settles on the card account.
+- `SCHEDULED` (info): not sent yet.
+- `IN_TRANSIT` (info): sent in the last 3 days.
+- `OUTSTANDING_CHEQUE` (info), or `STALE_CHEQUE` (review) after 90 days.
+- `NOT_ON_STATEMENT` (review): settled in the records but missing from the statement.
+
+**Double payments** use the duplicate checks' rules: the same vendor and normalized invoice number, or an AP payment
+plus an employee card charge for the same amount. Instalments of one invoice don't count. A test checks the groups
+equal the history replay's. The extra copy's bank line gets `DOUBLE_PAYMENT`, and a scheduled extra copy gets
+`DOUBLE_PAYMENT_AT_RISK`. Payments sent after an unverified bank change get `PAID_AFTER_UNVERIFIED_BANK_CHANGE`.
+
+**Results on the dataset** (statement 2026-01-05 to 2026-11-02, 354 lines, $1,742,643.22 out). The API reading the
+seeded database gives exactly the same answer (`tests/api/test_reconciliation.py`).
+- **Matched: 333 lines, $1,740,825.21.** That's all 313 EFTs and all 20 cheques. Every settled EFT and every cheque in
+  `payments.csv` is on the statement.
+- **Bank fees: 16, $385.00.** 10 monthly account fees ($29.50) and 6 wire fees ($15.00). **No payment in the data was
+  sent by wire**, so the 6 wire fees need an explanation from the bank.
+- **Unexplained: 5 pre-authorized debits, $1,433.01** (BK-00064, BK-00088, BK-00192, BK-00193, BK-00207). They match no
+  payment, bill or card charge, and no vendor pays by pre-authorized debit. Someone authorized a pull from the account,
+  or nobody did.
+- **Double payments: 10 bills, $23,536.76 paid out extra, and $2,457.19 scheduled to go out again** (Summit
+  AP-00394/AP-00407, `PAY-00399`: cancel it). 7 of the extra copies are bank lines. The other 3 extra copies were card
+  charges.
+- **Amounts that differ: 4.** Cheque 5018 (BK-00296) cleared for $6,990.53 against a $6,990.48 cheque, 5 cents over.
+  Three EFTs took one cent more than the payment (BK-00121, BK-00190, BK-00230).
+- **Records not updated: 20.** All 20 cheques cleared the bank, but every one is still `outstanding` in `payments.csv`.
+- **Paid after an unverified bank change: 1.** Cascadia AP-00388 (BK-00347, $3,290.01) went out 2 days after the
+  email-requested change.
 
 ## Bugs not fixed yet
 

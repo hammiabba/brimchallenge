@@ -7,12 +7,13 @@ Input: the stored Email row (and its intake items). Output: SuggestedAction / Em
 """
 from __future__ import annotations
 
-from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.schemas_api import UtcDateTime
 from app.db import models
 from app.intake.actions import SuggestedAction, suggest_action
 from app.reference.csv_repository import default_repository
@@ -25,7 +26,7 @@ class EmailItem(BaseModel):
     item_id: int
     file_name: str
     file_hash: str | None
-    status: str
+    status: Literal["ok", "llm_skipped", "failed", "queued", "processing"]  # db.models.INTAKE_STATUSES
     error: str | None
     warnings: list[str]
     bill_id: str | None
@@ -37,12 +38,12 @@ class EmailDetail(BaseModel):
     from_address: str
     to_address: str | None
     subject: str
-    received_at: datetime
+    received_at: UtcDateTime      # sent as ISO 8601 UTC with Z, like GET /intake/emails
     body: str
     attachments: list[str]
     email_class: str | None          # None until the inbox job has triaged it
     triage_reason: str | None
-    triaged_at: datetime | None
+    triaged_at: UtcDateTime | None
     suggested_action: SuggestedAction | None
     bill_ids: list[str]
     items: list[EmailItem]

@@ -82,6 +82,7 @@ CASES: list[Case] = [
     # payments
     Case("GET", "/payments", "C F X Au", ok=200),
     Case("GET", "/payments/summary", "C F X Au", ok=200),
+    Case("GET", "/early-pay", "C F X Au", ok=200),
     Case("GET", "/payments/PAY-00001", "C F X Au", ok=200),
     Case("GET", "/payments/PAY-99999", "C F X Au", ok=404),
     Case("POST", f"/bills/{B}/payments", "C", ok=STATE, kwargs={"json": {"scheduled_date": "2026-11-10"}}),
@@ -117,6 +118,8 @@ CASES: list[Case] = [
     Case("GET", "/audit", "X Au", ok=200),
     Case("GET", "/audit/bill/" + B, "X Au", ok=200),
     Case("GET", "/audit/export", "X Au", ok=200),
+    # bank reconciliation (read-only, same roles as the audit log)
+    Case("GET", "/reconciliation/bank", "X Au", ok=200),
     # reference data and the inbox
     Case("GET", "/reference/flag-help", ALL, ok=200),
     Case("GET", "/reference/departments", ALL, ok=200),
