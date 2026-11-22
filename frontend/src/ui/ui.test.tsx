@@ -72,6 +72,13 @@ describe('badges', () => {
     expect(badge.style.backgroundColor).toBe(rgb(STATUS_TONES.attention.background))
   })
 
+  it('shows an open flag in the neutral tone, leaving urgency to the severity badge', () => {
+    renderUi(<StatusBadge kind="flag" status="open" />)
+    const badge = screen.getByText('Open').closest('.mantine-Badge-root') as HTMLElement
+    expect(badge.style.color).toBe(rgb(STATUS_TONES.neutral.color))
+    expect(badge.style.backgroundColor).toBe(rgb(STATUS_TONES.neutral.background))
+  })
+
   it('renders block and warn severities solid, info as a tint', () => {
     renderUi(
       <>

@@ -1,11 +1,12 @@
-import { Button, Group, List, SimpleGrid, Stack, Table, Text, Title, Tooltip, VisuallyHidden } from '@mantine/core'
+import { Anchor, Button, Group, List, Popover, SimpleGrid, Stack, Table, Text, Title, Tooltip, VisuallyHidden } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { Fragment, useState, type ReactNode } from 'react'
 
+import { API_PREFIX } from '../../api/client'
 import { departmentLabel, glAccountName, personName, useDepartments, useGlAccounts, usePeople } from '../../api/reference'
 import type { BillDetail, BillLine } from '../../api/types'
 import { parseDateOnly } from '../../lib/dates'
-import { decimalToPercent } from '../../lib/decimal'
+import { decimalToPercent, formatUnitPrice } from '../../lib/decimal'
 import { isMoney, parseMoneyInput } from '../../lib/money'
 import { notifyError } from '../../api/notify'
 import { DateText, Id, MoneyText } from '../../ui/DataText'
@@ -104,31 +105,61 @@ function Field({ label, region, kind, current, extractedPath, confidenceKey, dis
   )
 }
 
-/** The coding cell of a line: GL (mono) and name, department name, and how the coding was set. */
+/**
+ * "Why?": the coding suggestion's reason, exactly as the server wrote it (plain text, not parsed), in a small popover.
+ * The popover floats, so it carries the theme's one shadow.
+ */
+function WhyReason({ reason, lineNo }: { reason: string; lineNo: number }) {
+  return (
+    <Popover width={300} position="bottom-start" shadow="md">
+      <Popover.Target>
+        <Button variant="subtle" size="compact-xs" px={4} aria-label={`Why? The reason for line ${lineNo}'s coding`}>
+          Why?
+        </Button>
+      </Popover.Target>
+      <Popover.Dropdown>
+        <Text size="sm" style={{ overflowWrap: 'anywhere' }}>{reason}</Text>
+      </Popover.Dropdown>
+    </Popover>
+  )
+}
+
+/** How a line's coding was set: "Suggested · 97%", "Confirmed by clerk" or "Changed by clerk"; null when not coded. */
+function codingStatusText(line: BillLine): string | null {
+  if (line.coding_status === 'accepted') return 'Confirmed by clerk'
+  if (line.coding_status === 'overridden') return 'Changed by clerk'
+  if (line.coding_status === 'suggested') {
+    const confidence = line.suggestion_confidence
+    return confidence !== null && confidence !== undefined ? `Suggested \u00b7 ${confidencePercent(confidence)}` : 'Suggested'
+  }
+  return null
+}
+
+/**
+ * The coding cell of a line, each fact once: the GL number (mono) and account name on one line, the department
+ * name with its id on the next, then how the coding was set in secondary text, with the suggestion's reason behind
+ * "Why?".
+ */
 function CodingCell({ line }: { line: BillLine }) {
   const gl = useGlAccounts()
   const departments = useDepartments()
-  const people = usePeople()
   if (!line.gl_account && !line.suggested_gl_account) {
     return <Text size="sm" c="dimmed">Not coded</Text>
   }
   const glNumber = line.gl_account ?? line.suggested_gl_account ?? ''
+  const glName = glAccountName(glNumber, gl.data)
   const department = line.department_id ?? line.suggested_department_id
-  let how: ReactNode = null
-  if (line.coding_status === 'accepted') {
-    how = line.coded_by ? `Confirmed by clerk (${personName(line.coded_by, people.data)})` : 'Confirmed by clerk'
-  } else if (line.coding_status === 'overridden') {
-    how = `Changed by clerk${line.suggested_gl_account ? `; suggested ${line.suggested_gl_account}` : ''}`
-  } else if (line.coding_status === 'suggested') {
-    const confidence = line.suggestion_confidence !== null && line.suggestion_confidence !== undefined
-      ? `, ${confidencePercent(line.suggestion_confidence)}` : ''
-    how = `Suggested${confidence}${line.suggestion_reason ? `: ${line.suggestion_reason}` : ''}`
-  }
+  const status = codingStatusText(line)
   return (
     <Stack gap={0}>
-      <Text size="sm"><Id>{glNumber}</Id> {glAccountName(glNumber, gl.data) ?? ''}</Text>
+      <Text size="sm"><Id>{glNumber}</Id>{glName ? ` ${glName}` : ''}</Text>
       {department && <Text size="xs">{departmentLabel(department, departments.data)}</Text>}
-      {how && <Text size="xs" c="dimmed">{how}</Text>}
+      {(status || line.suggestion_reason) && (
+        <Group gap={4} wrap="wrap" align="center">
+          {status && <Text size="xs" c="dimmed">{status}</Text>}
+          {line.suggestion_reason && <WhyReason reason={line.suggestion_reason} lineNo={line.line_no} />}
+        </Group>
+      )}
     </Stack>
   )
 }
@@ -199,7 +230,7 @@ function CodingActions({ bill, line }: { bill: BillDetail; line: BillLine }) {
   }
 
   return (
-    <Group gap="xs" wrap="nowrap" mt={4}>
+    <Group gap="xs" wrap="wrap" mt={4}>
       {canAccept && (
         <Button size="xs" onClick={acceptSuggestion} loading={accept.isPending}
           aria-label={`Accept suggestion for line ${line.line_no}`}>
@@ -214,13 +245,17 @@ function CodingActions({ bill, line }: { bill: BillDetail; line: BillLine }) {
   )
 }
 
-/** The lines table: quantities and unit prices as sent, amounts as money, and the coding (with AP's actions). */
+/**
+ * The lines table: quantities as sent, unit prices and amounts as money (unit prices keep any decimals beyond two),
+ * and the coding (with AP's actions). Long words wrap anywhere (app-wrap-cells), so no text runs out of a cell; the
+ * minimum width leaves room for the numbers and the coding buttons before the table scrolls sideways.
+ */
 function LinesTable({ bill }: { bill: BillDetail }) {
   const canCode = bill.allowed_actions?.code_lines?.allowed ?? false
   return (
     <FieldRegion name="lines">
-      <Table.ScrollContainer minWidth={640}>
-        <Table aria-label="Invoice lines" withTableBorder bg="white" stickyHeader={false}>
+      <Table.ScrollContainer minWidth={540}>
+        <Table aria-label="Invoice lines" withTableBorder bg="white" stickyHeader={false} className="app-wrap-cells">
           <Table.Thead>
             <Table.Tr>
               <Table.Th data-numeric>Line</Table.Th>
@@ -237,7 +272,7 @@ function LinesTable({ bill }: { bill: BillDetail }) {
                 <Table.Td data-numeric>{line.line_no}</Table.Td>
                 <Table.Td>{line.description}</Table.Td>
                 <Table.Td data-numeric>{line.quantity}</Table.Td>
-                <Table.Td data-numeric>{line.unit_price}</Table.Td>
+                <Table.Td data-numeric>{formatUnitPrice(line.unit_price, bill.currency)}</Table.Td>
                 <Table.Td data-numeric><MoneyText value={line.amount} currency={bill.currency} /></Table.Td>
                 <Table.Td>
                   <CodingCell line={line} />
@@ -318,10 +353,10 @@ export function InvoicePanel({ bill }: { bill: BillDetail }) {
   const snapshot = (bill.extracted ?? null) as Snapshot | null
   const warnings = extractionWarnings(snapshot)
   const common = { snapshot, currency: bill.currency }
-  const source = snapshot
-    ? [snapshotText(snapshot, 'source.file_name'), snapshotText(snapshot, 'source.email_id')]
-      .filter(Boolean).join(', from email ')
-    : null
+  const fileName = snapshot ? snapshotText(snapshot, 'source.file_name') : null
+  const emailId = snapshot ? snapshotText(snapshot, 'source.email_id') : null
+  // The original file opens only when the server says this user may open it (view_document) and there is one.
+  const canViewFile = (bill.allowed_actions?.view_document?.allowed ?? false) && Boolean(bill.file_hash)
   const canEdit = bill.allowed_actions?.edit?.allowed ?? false
   const [editing, setEditing] = useState(false)
 
@@ -332,7 +367,18 @@ export function InvoicePanel({ bill }: { bill: BillDetail }) {
           <Title order={2}>Invoice</Title>
           {canEdit && <Button size="xs" variant="default" onClick={() => setEditing(true)}>Edit details</Button>}
         </Group>
-        {source && <Text size="xs" c="dimmed">{source}</Text>}
+        {(fileName || emailId) && (
+          <Text size="xs" c="dimmed">
+            {fileName && (canViewFile ? (
+              <Anchor href={`${API_PREFIX}/intake/files/${bill.file_hash}`} target="_blank" rel="noopener noreferrer"
+                size="xs">
+                {fileName}
+                <VisuallyHidden> (original file, opens in a new tab)</VisuallyHidden>
+              </Anchor>
+            ) : fileName)}
+            {emailId && `${fileName ? ', ' : ''}from email ${emailId}`}
+          </Text>
+        )}
       </Group>
       {/* Keyed on the row version: after any write the form starts again from the bill as it now stands. */}
       {canEdit && <HeaderEditModal key={bill.row_version} bill={bill} opened={editing} onClose={() => setEditing(false)} />}

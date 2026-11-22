@@ -2,7 +2,7 @@
  * Words for the codes the bill screens show: approval step roles, payment methods, vendor match methods,
  * department sources, duplicate kinds, bank-change channels and audit actions.
  */
-import type { AuditEvent, DepartmentSource } from '../api/types'
+import type { DepartmentSource } from '../api/types'
 import { codeAsWords } from '../api/reference'
 
 /** Approval step roles (RouteStepOut.role), which are policy step names, not user roles. */
@@ -77,21 +77,4 @@ export function auditActionLabel(action: string): string {
   const [entity, ...rest] = action.split('.')
   const words = (entity === 'bill' && rest.length > 0 ? rest.join(' ') : action.replace('.', ' ')).replace(/_/g, ' ')
   return words.charAt(0).toUpperCase() + words.slice(1)
-}
-
-/** A before/after value as short text (objects and lists as JSON, which the server already redacted). */
-function short(value: unknown): string {
-  if (value === null || value === undefined) return 'none'
-  return typeof value === 'object' ? JSON.stringify(value) : String(value)
-}
-
-/** "status: pending_approval -> approved; comment" for one event, from its before/after and comment. */
-export function auditDetails(event: AuditEvent): string {
-  const before = event.before ?? {}
-  const after = event.after ?? {}
-  const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])]
-  const changes = keys.map((key) => (key in before
-    ? `${key}: ${short(before[key])} → ${short(after[key])}`
-    : `${key}: ${short(after[key])}`))
-  return [...changes, ...(event.comment ? [`"${event.comment}"`] : [])].join('; ')
 }

@@ -59,7 +59,8 @@ export const USER_STATUS: Record<UserStatus, StatusStyle> = {
 
 /** Whether a flag still needs a person: open, or overridden / resolved (with who, when and why). */
 export const FLAG_RESOLUTION: Record<FlagResolution, StatusStyle> = {
-  open: { label: 'Open', tone: 'attention' },
+  // Neutral, not attention: the severity badge beside it already says how urgent the flag is.
+  open: { label: 'Open', tone: 'neutral' },
   overridden: { label: 'Overridden', tone: 'neutral' },
   resolved: { label: 'Resolved', tone: 'success' },
 }

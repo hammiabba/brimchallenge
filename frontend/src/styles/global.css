@@ -62,6 +62,18 @@
   white-space: nowrap;
 }
 
+/* Footer rows (subtotal, total): the row-header label shares the white of its row, with no page-grey band behind it. */
+.mantine-Table-tfoot .mantine-Table-th {
+  background-color: transparent;
+}
+
+/* Tables whose cells hold free text (the invoice lines): long words wrap anywhere instead of running out of the
+   cell. Numeric cells keep nowrap (data-numeric above). */
+.app-wrap-cells .mantine-Table-td,
+.app-wrap-cells .mantine-Table-th {
+  overflow-wrap: anywhere;
+}
+
 /* The selected row is Sand, with ink text; it stays Sand on hover. */
 .mantine-Table-tr[data-selected],
 .mantine-Table-tr[data-selected]:hover {
