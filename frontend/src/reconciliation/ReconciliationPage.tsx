@@ -50,8 +50,18 @@ function CountAndTotal({ count, noun, total }: { count: number; noun: string; to
 const DOUBLE_COLUMNS = ['Bills', 'Card charges', 'Payments', 'Extra paid', 'Still to go out', 'What happened']
 const OFF_STATEMENT_COLUMNS = ['Payment', 'Bill', 'Method', 'Status', 'Date', 'Amount (CAD)', 'Issues']
 
-/** A line's or payment's issues: the ones that need review in ink, notes in the secondary colour. */
-function Issues({ issues, skip = [] }: { issues: readonly ReconIssue[]; skip?: readonly string[] }) {
+/** Issues that ask for something to be done on the payment itself; they link to it, where the action is. */
+const PAYMENT_ACTION_CODES = new Set(['DOUBLE_PAYMENT_AT_RISK'])
+
+/**
+ * A line's or payment's issues: the ones that need review in ink, notes in the secondary colour. With `paymentId`, an
+ * issue that asks for something to be done on that payment ("Cancel PAY-00399 before it is sent.") links to it.
+ */
+function Issues({ issues, skip = [], paymentId }: {
+  issues: readonly ReconIssue[]
+  skip?: readonly string[]
+  paymentId?: string
+}) {
   const shown = issues.filter((i) => !skip.includes(i.code))
   if (shown.length === 0) return null
   return (
@@ -60,6 +70,12 @@ function Issues({ issues, skip = [] }: { issues: readonly ReconIssue[]; skip?: r
         <Text key={`${issue.code}-${index}`} size="sm" c={issue.severity === 'review' ? undefined : 'dimmed'}
           fw={issue.severity === 'review' ? 500 : undefined}>
           {issue.message}
+          {paymentId && PAYMENT_ACTION_CODES.has(issue.code) && (
+            <>
+              {' '}
+              <Anchor component={Link} to={`/payments/${paymentId}`} underline="always" inherit>{`Open ${paymentId}`}</Anchor>
+            </>
+          )}
         </Text>
       ))}
     </Stack>
@@ -197,7 +213,7 @@ function PaymentRow({ payment }: { payment: ReconPayment }) {
       <Table.Td>{PAYMENT_STATUS[status] ? <StatusBadge kind="payment" status={status} /> : payment.status}</Table.Td>
       <Table.Td>{payment.on_date ? <DateText value={payment.on_date} /> : <Text span c="dimmed" size="sm">None</Text>}</Table.Td>
       <Table.Td data-numeric><MoneyText value={payment.amount_cad} align="right" /></Table.Td>
-      <Table.Td><Issues issues={payment.issues} skip={[CARD_NOTE]} /></Table.Td>
+      <Table.Td><Issues issues={payment.issues} skip={[CARD_NOTE]} paymentId={payment.payment_id} /></Table.Td>
     </Table.Tr>
   )
 }

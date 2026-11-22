@@ -35,7 +35,7 @@ const REPORT: BankReconciliation = {
   payments: [
     { payment_id: 'PAY-00399', bill_id: 'AP-00407', vendor_id: 'V011', method: 'EFT', status: 'scheduled', amount_cad: '2457.19',
       on_date: '2026-11-02', bank_txn_id: null,
-      issues: [info('SCHEDULED', 'Scheduled for 2026-11-02, not sent yet.'), review('DOUBLE_PAYMENT_AT_RISK', 'Summit Packaging Supply: AP-00394 / AP-00407 are one bill. Cancel it.')] },
+      issues: [info('SCHEDULED', 'Scheduled for 2026-11-02, not sent yet.'), review('DOUBLE_PAYMENT_AT_RISK', 'Summit Packaging Supply: AP-00394 / AP-00407 are one bill. Cancel PAY-00399 before it is sent.')] },
     { payment_id: 'PAY-00201', bill_id: 'AP-00210', vendor_id: 'V020', method: 'CARD', status: 'settled', amount_cad: '120.00',
       on_date: '2026-06-01', bank_txn_id: null, issues: [info('PAID_BY_CARD', CARD_NOTE)] },
   ],
@@ -95,6 +95,13 @@ describe('bank reconciliation', () => {
     expect(within(off).queryByText(CARD_NOTE)).not.toBeInTheDocument()
     const section = screen.getByRole('region', { name: 'Payments not on the statement' })
     expect(within(section).getByText(CARD_NOTE, { exact: false })).toBeInTheDocument()
+  })
+
+  it('links a payment that should be cancelled to its page, where Cancel is', async () => {
+    installFakeApi({ ...billScreenRoutes(CONTROLLER), 'GET /reconciliation/bank': { body: REPORT } })
+    renderApp('/reconciliation?view=all')
+    const note = await screen.findByText(/Cancel PAY-00399 before it is sent\./)
+    expect(within(note).getByRole('link', { name: 'Open PAY-00399' })).toHaveAttribute('href', '/payments/PAY-00399')
   })
 
   it('opens on only issues, switches to all lines through the URL and asks the server for each', async () => {
