@@ -1,10 +1,12 @@
-import { AppShell, Burger, Button, Group, NavLink, ScrollArea, Stack, Text } from '@mantine/core'
+import { AppShell, Box, Burger, Button, Group, NavLink, ScrollArea, Stack, Text } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { IconLogout } from '@tabler/icons-react'
 import { useState } from 'react'
 import { Link, Outlet, matchPath, useLocation } from 'react-router'
 
 import { notifyError } from '../api/notify'
+// The Robin's Egg wordmark on a transparent background (177 x 59), as supplied; see DESIGN.md "Logo".
+import brimLogo from '../assets/brand/brim_clear.png'
 import { useDepartments } from '../api/reference'
 import { useAuth, useCurrentUser } from '../auth/context'
 import { titleRepeatsRole } from '../auth/roles'
@@ -12,7 +14,7 @@ import { APP_NAME } from '../config'
 import { RoleBadge } from '../ui/Badges'
 import { Icon } from '../ui/Icon'
 import { ActingForBanner } from './ActingForBanner'
-import { navItemsFor } from './navigation'
+import { homePathFor, navItemsFor } from './navigation'
 
 /**
  * The right side of the header: who is signed in (name; title and department name), their role, and sign out. The
@@ -94,9 +96,44 @@ function Navigation({ onNavigate }: { onNavigate: () => void }) {
 }
 
 /**
- * The signed-in layout: a white header with the Robin's Egg top bar (app name, user, role, sign out), the role's
- * sidebar (a burger menu on narrow screens), the delegate banner when it applies, and the current page on the page
- * background.
+ * The logo's size in the header: 24 CSS px tall. The file is exactly 3:1, so it is 72 px wide (the width follows from
+ * the file; nothing is stretched), and 59 file pixels over 24 CSS px keeps it sharp on 2x screens.
+ */
+const LOGO_HEIGHT = 24
+const LOGO_WIDTH = 72
+/**
+ * The logo's clear space (DESIGN.md "Logo"): at least the height of the wordmark's letters. The "b" runs nearly the
+ * full height of the file, about 23.6 px at this size, so the clear space is the logo's height, 24 px.
+ */
+const LOGO_CLEAR_SPACE = LOGO_HEIGHT
+/** From the divider to the product name. The divider sits outside the logo's clear space. */
+const DIVIDER_TO_NAME = 12
+
+/**
+ * The left of the header: the Brim logo, its clear space, a 1 px divider in the border colour, then the product name
+ * in smaller secondary text; together one link to the signed-in user's home page. On phones (below the xs breakpoint)
+ * the divider and the name are left out: beside the burger and the user summary there is room for the logo only.
+ * The spacing is inline, in px, so the clear space is exact and a test can check it.
+ */
+function HeaderBrand() {
+  const user = useCurrentUser()
+  return (
+    <Link to={homePathFor(user.role)} className="app-header-brand">
+      <img src={brimLogo} alt="Brim" width={LOGO_WIDTH} height={LOGO_HEIGHT}
+        style={{ display: 'block', height: LOGO_HEIGHT, width: 'auto' }} />
+      <Box component="span" visibleFrom="xs" aria-hidden="true" data-testid="header-brand-divider" style={{
+        display: 'block', flex: 'none', width: 1, height: LOGO_HEIGHT, backgroundColor: 'var(--app-border)',
+        marginLeft: LOGO_CLEAR_SPACE, marginRight: DIVIDER_TO_NAME,
+      }} />
+      <Text span size="sm" c="dimmed" visibleFrom="xs">{APP_NAME}</Text>
+    </Link>
+  )
+}
+
+/**
+ * The signed-in layout: a white header with the Robin's Egg top bar (logo and app name, user, role, sign out), the
+ * role's sidebar (a burger menu on narrow screens), the delegate banner when it applies, and the current page on the
+ * page background.
  */
 export function AppLayout() {
   const [navOpen, { toggle, close }] = useDisclosure(false)
@@ -111,9 +148,7 @@ export function AppLayout() {
         <Group h="100%" px="md" justify="space-between" wrap="nowrap">
           <Group gap="sm" wrap="nowrap">
             <Burger opened={navOpen} onClick={toggle} hiddenFrom="sm" size="sm" aria-label="Toggle navigation" />
-            <Text component={Link} to="/" fw={600} size="lg" c="var(--app-ink)" td="none">
-              {APP_NAME}
-            </Text>
+            <HeaderBrand />
           </Group>
           <UserSummary />
         </Group>

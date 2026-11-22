@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest'
 
 import { api, unwrap } from './api/client'
 import { ROLES } from './auth/roles'
-import { navItemsFor } from './shell/navigation'
+import { APP_NAME } from './config'
+import { homePathFor, navItemsFor } from './shell/navigation'
 import { DEPARTMENTS, PICKER_USERS, envelope, installFakeApi, makeMe, type FakeReply } from './test/fakeApi'
 import { renderApp } from './test/renderApp'
 
@@ -140,6 +141,32 @@ describe('signed in', () => {
     const items = navItemsFor(role)
     expect(await screen.findByRole('heading', { name: items[0]!.label })).toBeInTheDocument()
     expect(sidebarLabels()).toEqual(items.map((item) => item.label))
+  })
+
+  it('shows the Brim logo and the product name in the header, as one link to the home page', async () => {
+    installFakeApi({ 'GET /auth/me': { body: makeMe({ role: 'approver' }) }, 'GET /reference/departments': { body: DEPARTMENTS } })
+    renderApp('/bills')
+    const header = await screen.findByRole('banner')
+    const logo = within(header).getByRole('img', { name: 'Brim' })
+    // 24 px tall, width from the file (3:1), never stretched.
+    expect(logo).toHaveAttribute('height', '24')
+    expect(logo).toHaveStyle({ height: '24px', width: 'auto' })
+    const name = within(header).getByText(APP_NAME)
+    expect(name.tagName).toBe('SPAN') // real text, not part of the image
+    const link = logo.closest('a')!
+    expect(link).toBe(name.closest('a'))
+    expect(link).toHaveAttribute('href', homePathFor('approver'))
+    expect(link).toHaveAccessibleName(`Brim ${APP_NAME}`)
+    // Between the logo and the name: the logo's clear space (24 px, DESIGN.md "Logo"), then a 1 px divider in the
+    // border colour, hidden from screen readers. In document order: logo, divider, name.
+    const divider = within(header).getByTestId('header-brand-divider')
+    expect(divider).toHaveAttribute('aria-hidden', 'true')
+    // Read from the inline style: jsdom's computed style drops CSS variables.
+    const { marginLeft, width, height, backgroundColor } = divider.style
+    expect({ marginLeft, width, height, backgroundColor }).toEqual(
+      { marginLeft: '24px', width: '1px', height: '24px', backgroundColor: 'var(--app-border)' })
+    expect(logo.compareDocumentPosition(divider) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(divider.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
   it('shows the role once in the header: a title that repeats it is left out', async () => {

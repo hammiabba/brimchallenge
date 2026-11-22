@@ -15,6 +15,16 @@
   border-top: 3px solid var(--app-accent);
 }
 
+/* The header's brand link: the logo, a divider and the product name on one line, centred, no underline. The spacing
+   between them (the logo's clear space) is set on the divider in AppLayout.tsx. The focus ring comes from the
+   :focus-visible rule below; the small radius rounds it. */
+.app-header-brand {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  border-radius: 4px;
+}
+
 /* Sidebar items. The active one is bold Blumine text on the lightest tint, plus a Robin's Egg bar on its left
    edge: colour is never the only signal. */
 .app-nav-link {

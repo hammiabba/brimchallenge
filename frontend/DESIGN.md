@@ -160,7 +160,7 @@ The logo files are in `src/assets/brand/`, unchanged from Brim's originals. Thei
 
 | File | What it is | Size | Use |
 |---|---|---|---|
-| `brim_clear.png` | Robin's Egg wordmark (`#00C1D5`) on a transparent background | 177 x 59 | On Blumine: the sign-in brand panel. 3.69:1 on Blumine, the most contrast any of the files has on a brand surface |
+| `brim_clear.png` | Robin's Egg wordmark (`#00C1D5`) on a transparent background | 177 x 59 | On Blumine: the sign-in brand panel. 3.69:1 on Blumine, the most contrast any of the files has on a brand surface. On white: the app header |
 | `brim_blue.png` | White wordmark on its own Robin's Egg square, fully opaque (an app icon) | 400 x 400 | The favicon. Always the whole square |
 | `brim_white.png` | Robin's Egg wordmark on an opaque white rectangle | 1024 x 512 | Only on pure white, if ever; on the page background its white box shows. 2.19:1 on white, so it reads faintly. Not used now |
 
@@ -171,10 +171,16 @@ The logo files are in `src/assets/brand/`, unchanged from Brim's originals. Thei
   Sand.
 - Clear space on every side of at least the height of the wordmark's letters; minimum width 72px. Show
   `brim_clear.png` at no more than half its pixel size (88px wide) so it stays sharp on 2x screens.
-- Alt text "Brim". The logo is not a link.
-- Where: the sign-in brand panel and the favicon. Not in the app header: the header's Robin's Egg bar already carries
-  the brand, the only light-background wordmark is faint on white, and the header's space is for the task and the
-  signed-in user.
+- Alt text "Brim".
+- Where: the sign-in brand panel, the favicon and the app header.
+- The app header: `brim_clear.png` 24px tall (72px wide, from the file's 3:1). Next to it, in order:
+  - the clear space: 24px, the height of the wordmark's letters at this size (the "b" is about 23.6px of the 24);
+  - a 1px vertical divider in the border colour (`--app-border`), 24px tall, just outside the clear space;
+  - 12px, then the product name (`APP_NAME`) as real text in the small size and the secondary text colour.
+
+  The logo, divider and name are one link to the signed-in user's home page. Below the xs breakpoint only the logo
+  shows; the divider and the name are left out. The header stays 56px tall, so above and below the logo there is
+  about 14px, less than the clear space; at its left edge there is 16px (12px from the menu button on phones).
 
 ## Never
 
