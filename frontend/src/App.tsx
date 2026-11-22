@@ -23,6 +23,8 @@ const PoliciesPage = lazy(() => import('./admin/PoliciesPage'))
 const AbsencesPage = lazy(() => import('./admin/AbsencesPage'))
 const DelegationPage = lazy(() => import('./delegation/DelegationPage'))
 const SpendPage = lazy(() => import('./spend/SpendPage'))
+const ApprovalsPage = lazy(() => import('./approvals/ApprovalsPage'))
+const UnassignedStepsPage = lazy(() => import('./approvals/UnassignedStepsPage'))
 const SubmitPage = lazy(() => import('./intake/submit/SubmitPage'))
 const SubmissionsPage = lazy(() => import('./intake/submissions/SubmissionsPage'))
 const InboxPage = lazy(() => import('./intake/inbox/InboxPage'))
@@ -35,6 +37,8 @@ const SCREENS: Partial<Record<NavKey, LazyExoticComponent<ComponentType>>> = {
   inbox: InboxPage,
   bills: BillsPage,
   review: ReviewQueuePage,
+  approvals: ApprovalsPage,
+  unassigned: UnassignedStepsPage,
   vendors: VendorsPage,
   bankChanges: BankChangesPage,
   audit: AuditPage,

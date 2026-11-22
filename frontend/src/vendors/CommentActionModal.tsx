@@ -13,6 +13,8 @@ interface CommentActionModalProps {
   description: string
   /** The mutation to run with the comment (null when left empty). */
   mutation: UseMutationResult<unknown, Error, string | null>
+  /** The comment can't be left empty (rejecting a bill). */
+  commentRequired?: boolean
   /** Called after the server accepted the action. */
   onDone: () => void
   /** A red confirm button, for refusing actions (reject, hold). */
@@ -20,10 +22,13 @@ interface CommentActionModalProps {
 }
 
 /**
- * A confirm dialog with an optional comment, for the one-click decisions (approve or hold a vendor, verify or reject a
- * bank change). The server decides who may do it: a refusal (403, 409) shows its message here, with the request id.
+ * A confirm dialog with a comment, for the one-click decisions (approve or hold a vendor, verify or reject a bank
+ * change, approve or reject a bill). The comment is optional unless `commentRequired`. The server decides who may do
+ * it: a refusal (403, 409) shows its message here, with the request id.
  */
-export function CommentActionModal({ opened, onClose, title, description, mutation, onDone, danger }: CommentActionModalProps) {
+export function CommentActionModal({
+  opened, onClose, title, description, mutation, onDone, danger, commentRequired,
+}: CommentActionModalProps) {
   const [comment, setComment] = useState('')
 
   function close() {
@@ -47,7 +52,8 @@ export function CommentActionModal({ opened, onClose, title, description, mutati
         <Text size="sm">{description}</Text>
         <Textarea
           label="Comment"
-          description="Optional. Kept in the audit log."
+          description={commentRequired ? 'Required. Kept in the audit log.' : 'Optional. Kept in the audit log.'}
+          required={commentRequired}
           value={comment}
           onChange={(event) => setComment(event.currentTarget.value)}
           maxLength={2000}
@@ -56,7 +62,14 @@ export function CommentActionModal({ opened, onClose, title, description, mutati
         {mutation.isError && <ErrorAlert error={mutation.error} />}
         <Group justify="flex-end" gap="sm">
           <Button variant="default" onClick={close}>Cancel</Button>
-          <Button color={danger ? 'red' : undefined} onClick={confirm} loading={mutation.isPending}>{title}</Button>
+          <Button
+            color={danger ? 'red' : undefined}
+            onClick={confirm}
+            loading={mutation.isPending}
+            disabled={commentRequired && comment.trim() === ''}
+          >
+            {title}
+          </Button>
         </Group>
       </Stack>
     </Modal>

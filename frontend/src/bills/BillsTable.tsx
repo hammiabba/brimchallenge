@@ -26,8 +26,8 @@ function CurrentStepCell({ step }: { step: CurrentStep | null | undefined }) {
   )
 }
 
-/** The open-flag counts as small severity badges; nothing when no flag is open. */
-function OpenFlagsCell({ bill }: { bill: BillSummary }) {
+/** The open-flag counts as small severity badges; nothing when no flag is open. Also used by the approval queues. */
+export function OpenFlagsCell({ bill }: { bill: BillSummary }) {
   const counts = bill.open_flags ?? { block: 0, warn: 0, info: 0 }
   return (
     <Group gap={4} wrap="nowrap">

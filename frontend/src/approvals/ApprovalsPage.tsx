@@ -1,0 +1,117 @@
+import { Anchor, Skeleton, Stack, Table, Text, Title } from '@mantine/core'
+import { Link } from 'react-router'
+
+import { ErrorAlert } from '../api/ErrorAlert'
+import { personName, usePeople } from '../api/reference'
+import type { BillSummary } from '../api/types'
+import { useCurrentUser } from '../auth/context'
+import { OpenFlagsCell } from '../bills/BillsTable'
+import { stepRoleLabel } from '../bills/labels'
+import { DateText, Id, MoneyText } from '../ui/DataText'
+import { useApprovalQueue } from './queries'
+
+const COLUMNS = ['Bill', 'Vendor', 'Invoice no.', 'Invoice date', 'Due date', 'Total (CAD)', 'Open flags',
+  'Your step'] as const
+const NUMERIC = new Set<string>(['Total (CAD)'])
+const SKELETON_ROWS = 5
+
+/** "Step 1, Department manager", and "Acting for Liam O'Connor" when the step is someone else's (delegation, P08). */
+function YourStepCell({ bill }: { bill: BillSummary }) {
+  const people = usePeople()
+  const step = bill.current_step
+  if (!step) return null
+  return (
+    <Stack gap={0}>
+      <Text size="sm">{`Step ${step.step_no}, ${stepRoleLabel(step.role)}`}</Text>
+      {step.delegated_from && (
+        <Text size="xs" fw={600}>{`Acting for ${personName(step.delegated_from, people.data)}`}</Text>
+      )}
+    </Stack>
+  )
+}
+
+/** One bill waiting for the signed-in user. */
+function QueueRow({ bill }: { bill: BillSummary }) {
+  return (
+    <Table.Tr>
+      <Table.Td>
+        <Anchor component={Link} to={`/bills/${bill.bill_id}`} underline="hover" fw={500}>
+          <Id>{bill.bill_id}</Id>
+        </Anchor>
+      </Table.Td>
+      <Table.Td>{bill.vendor_name ?? <Text span c="dimmed" size="sm">No vendor matched</Text>}</Table.Td>
+      <Table.Td><Id>{bill.vendor_invoice_number}</Id></Table.Td>
+      <Table.Td><DateText value={bill.invoice_date} /></Table.Td>
+      <Table.Td>{bill.due_date ? <DateText value={bill.due_date} /> : <Text span c="dimmed" size="sm">None</Text>}</Table.Td>
+      <Table.Td data-numeric>
+        <MoneyText value={bill.total_cad} align="right" />
+        {bill.currency !== 'CAD' && (
+          <Text size="xs" c="dimmed" ta="right">
+            <MoneyText value={bill.total} currency={bill.currency} />
+          </Text>
+        )}
+      </Table.Td>
+      <Table.Td><OpenFlagsCell bill={bill} /></Table.Td>
+      <Table.Td><YourStepCell bill={bill} /></Table.Td>
+    </Table.Tr>
+  )
+}
+
+/**
+ * /approvals: the bills whose current approval step is the signed-in user's (GET /approvals/queue), in the server's
+ * order (due date first), including steps they sign as someone's delegate. Each opens the bill screen, where the
+ * Approve and Reject buttons are.
+ */
+export default function ApprovalsPage() {
+  const user = useCurrentUser()
+  const queue = useApprovalQueue()
+  const bills = queue.data
+
+  return (
+    <Stack gap="md">
+      <Title order={1}>My approvals</Title>
+      {user.approval_limit_cad && (
+        <Text size="sm" c="dimmed">
+          {'Your approval limit is '}<MoneyText value={user.approval_limit_cad} />{'.'}
+        </Text>
+      )}
+      {queue.isError ? (
+        <ErrorAlert error={queue.error} title="Can't load your approvals" onRetry={() => void queue.refetch()} />
+      ) : (
+        <>
+          <Table.ScrollContainer minWidth={960}>
+            <Table aria-label="My approvals" bg="white" withTableBorder>
+              <Table.Thead>
+                <Table.Tr>
+                  {COLUMNS.map((column) => (
+                    <Table.Th key={column} data-numeric={NUMERIC.has(column) || undefined}>{column}</Table.Th>
+                  ))}
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {queue.isPending && Array.from({ length: SKELETON_ROWS }, (_, row) => (
+                  <Table.Tr key={`skeleton-${row}`} aria-hidden>
+                    {COLUMNS.map((column) => (
+                      <Table.Td key={column}><Skeleton animate={false} height={12} radius="sm" /></Table.Td>
+                    ))}
+                  </Table.Tr>
+                ))}
+                {bills?.length === 0 && (
+                  <Table.Tr>
+                    <Table.Td colSpan={COLUMNS.length}>
+                      <Text size="sm" c="dimmed" py="xs">No bills are waiting for your decision.</Text>
+                    </Table.Td>
+                  </Table.Tr>
+                )}
+                {bills?.map((bill) => <QueueRow key={bill.bill_id} bill={bill} />)}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+          {bills && bills.length > 0 && (
+            <Text size="sm" c="dimmed">{`${bills.length} bill${bills.length === 1 ? '' : 's'} waiting`}</Text>
+          )}
+        </>
+      )}
+    </Stack>
+  )
+}
