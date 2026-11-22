@@ -204,7 +204,11 @@ function PaymentRow({ payment, actions }: { payment: Payment; actions: boolean }
   const people = usePeople()
   return (
     <Table.Tr>
-      <Table.Td><Id>{payment.payment_id}</Id></Table.Td>
+      <Table.Td>
+        <Anchor component={Link} to={`/payments/${payment.payment_id}`} underline="hover" fw={500}>
+          <Id>{payment.payment_id}</Id>
+        </Anchor>
+      </Table.Td>
       <Table.Td>
         <Anchor component={Link} to={`/bills/${payment.bill_id}`} underline="hover"><Id>{payment.bill_id}</Id></Anchor>
       </Table.Td>

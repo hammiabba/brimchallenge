@@ -26,6 +26,7 @@ const SpendPage = lazy(() => import('./spend/SpendPage'))
 const ApprovalsPage = lazy(() => import('./approvals/ApprovalsPage'))
 const UnassignedStepsPage = lazy(() => import('./approvals/UnassignedStepsPage'))
 const PaymentsPage = lazy(() => import('./payments/PaymentsPage'))
+const PaymentDetailPage = lazy(() => import('./payments/PaymentDetailPage'))
 const SubmitPage = lazy(() => import('./intake/submit/SubmitPage'))
 const SubmissionsPage = lazy(() => import('./intake/submissions/SubmissionsPage'))
 const InboxPage = lazy(() => import('./intake/inbox/InboxPage'))
@@ -89,6 +90,10 @@ export function App() {
           <Route
             path="/vendors/:vendorId"
             element={<Suspense fallback={<ScreenLoading />}><VendorDetailPage /></Suspense>}
+          />
+          <Route
+            path="/payments/:paymentId"
+            element={<Suspense fallback={<ScreenLoading />}><PaymentDetailPage /></Suspense>}
           />
           <Route path="/inbox/:emailId" element={<Suspense fallback={<ScreenLoading />}><EmailDetailPage /></Suspense>} />
           <Route path="*" element={<NotFoundPage />} />
