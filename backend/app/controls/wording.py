@@ -35,6 +35,17 @@ def money_text(amount: Decimal, currency: str = "CAD") -> str:
     return f"{sign}{prefix}{abs(amount):,.2f}"
 
 
+def account_ending(last4: str | None) -> str:
+    """A bank account the one way the app shows it, inside a sentence: "ending 9679" (the screens write "Ending 9679"
+    at the start of a field). Never the full number, and never "…9679"."""
+    return f"ending {last4}" if last4 else "not on file"
+
+
+def account_change(old_last4: str | None, new_last4: str | None) -> str:
+    """A bank-account change in one phrase: "ending 7504 → ending 9679"."""
+    return f"{account_ending(old_last4)} → {account_ending(new_last4)}"
+
+
 # Payment and bill statuses, as the app's badges word them (lower case, to sit inside a sentence).
 _STATUSES = {
     "needs_review": "needs review",

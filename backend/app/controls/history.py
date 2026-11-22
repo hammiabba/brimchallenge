@@ -24,7 +24,7 @@ from app.shared.schemas import ControlsResult, Severity
 
 from .engine import run_controls
 from .refdata import RefData, bill_from_history, d, money
-from .wording import channel_phrase, human_date, status_label
+from .wording import account_change, channel_phrase, human_date, status_label
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +143,7 @@ def check_unverified_bank_changes(ref: RefData, payments: list[dict]) -> list[Fi
                                    f"{p['invoice_id']} ({name}) was paid on {human_date(paid)}, {days} days after its "
                                    f"bank account changed on {human_date(changed)} by "
                                    f"{channel_phrase(c['request_channel'])}, without a callback "
-                                   f"(…{c['old_account_last4']} → …{c['new_account_last4']}).",
+                                   f"({account_change(c['old_account_last4'], c['new_account_last4'])}).",
                                    money(p["amount_cad"]),
                                    {"change": c["change_id"], "payment": p["payment_id"], "days_after": days}))
             elif not paid and p["status"] in ("scheduled", "outstanding"):

@@ -240,7 +240,8 @@ def test_invoice_before_bank_change_showing_new_account_is_flagged(ref, make_bil
     assert bill.vendor.bank.account.endswith("9679")
     [f] = _account_flags(bill, ref)
     assert f.severity == Severity.BLOCK and f.evidence["change_id"] == "BC-009"
-    assert "…9679" in f.message and "…7504" in f.message and "2026-10-24" in f.message
+    assert "ending 9679" in f.message and "ending 7504" in f.message and "2026-10-24" in f.message
+    assert "…" not in f.message  # one account format everywhere: "ending 9679"
 
 
 def test_invoice_on_or_after_the_change_is_not_flagged(ref, make_bill):

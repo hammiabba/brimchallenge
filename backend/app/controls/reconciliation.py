@@ -418,7 +418,9 @@ def reconcile(bank_rows: list[dict], payment_rows: list[dict], ref: RefData) -> 
                 line_by_id[line_of_payment[pid]].issues.append(_issue("DOUBLE_PAYMENT", g.message))
         for pid in g.at_risk_payment_ids:
             if pid in pay_by_id:
-                pay_by_id[pid].issues.append(_issue("DOUBLE_PAYMENT_AT_RISK", g.message + " Cancel it."))
+                # Says which payment to cancel; the reconciliation screen links to it, where Cancel is.
+                pay_by_id[pid].issues.append(_issue("DOUBLE_PAYMENT_AT_RISK",
+                                                    g.message + f" Cancel {pid} before it is sent."))
 
     # Money sent after an unverified bank change (the payment-time check from the history replay).
     for f in check_unverified_bank_changes(ref, payments):

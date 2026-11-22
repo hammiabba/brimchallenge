@@ -8,8 +8,11 @@ from app.api import schemas_api as s
 from app.api.errors import ApiError, not_found
 from app.auth.deps import CurrentUser
 from app.config import get_settings
+from app.controls.refdata import RefData
+from app.controls.validate import suspicious_lookalikes
 from app.db import models
 from app.db.audit import AuditAction
+from app.db.refdata_db import refdata_from_db
 from app.db.types import utcnow
 from app.services import controls_runner, views
 from app.services.events import record
@@ -27,8 +30,19 @@ def list_vendors(db: Session, *, status: list[str] | None, q: str | None, limit:
         stmt = stmt.where(or_(models.Vendor.legal_name.ilike(like), models.Vendor.vendor_id.ilike(like),
                               models.Vendor.category.ilike(like)))
     rows, total = paginate(db, stmt.order_by(models.Vendor.legal_name), limit=limit, offset=offset)
-    return s.Page[s.VendorSummary](items=[views.vendor_summary(v) for v in rows], total=total, limit=limit,
-                                   offset=offset)
+    ref = refdata_from_db(db)
+    items = [views.vendor_summary(v).model_copy(update={"lookalike_of": lookalikes(ref, v.vendor_id)}) for v in rows]
+    return s.Page[s.VendorSummary](items=items, total=total, limit=limit, offset=offset)
+
+
+def lookalikes(ref: RefData, vendor_id: str) -> list[s.LookalikeOut]:
+    """The vendor records `vendor_id` is a suspicious copy of, by the VENDOR_LOOKALIKE control's own rule
+    (controls.validate.suspicious_lookalikes), so the vendor screens mark exactly the records whose bills get flagged.
+    Empty for a vendor the controls' reference data doesn't know yet."""
+    if vendor_id not in ref.vendors:
+        return []
+    return [s.LookalikeOut(vendor_id=other, legal_name=ref.vendors[other]["legal_name"], why=why)
+            for other, why in suspicious_lookalikes(ref, vendor_id)]
 
 
 def open_account(db: Session, vendor_id: str) -> models.VendorBankAccount | None:
@@ -42,8 +56,10 @@ def vendor_detail(db: Session, role: str, vendor_id: str) -> s.VendorDetail:
         raise not_found("vendor", vendor_id)
     changes = db.scalars(select(models.BankChangeRequest).where(models.BankChangeRequest.vendor_id == vendor_id)
                          .order_by(models.BankChangeRequest.requested_at.desc()))
+    summary = views.vendor_summary(v).model_dump(exclude={"lookalike_of"})
     return s.VendorDetail(
-        **views.vendor_summary(v).model_dump(), address=v.address, gst_hst_number=v.gst_hst_number,
+        **summary, lookalike_of=lookalikes(refdata_from_db(db), v.vendor_id), address=v.address,
+        gst_hst_number=v.gst_hst_number,
         qst_number=v.qst_number, default_gl_account=v.default_gl_account, early_pay_discount=v.early_pay_discount,
         accepts_card_payment=v.accepts_card_payment, ap_contact_email=v.ap_contact_email,
         onboarded_at=v.onboarded_at, origin=v.origin,

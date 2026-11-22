@@ -446,6 +446,13 @@ class PaymentDashboard(ApiModel):
 
 # ---------------------------------------------------------------- vendors and bank changes
 
+class LookalikeOut(ApiModel):
+    """An existing vendor record this one looks like (the VENDOR_LOOKALIKE control's own rule), and why."""
+    vendor_id: str
+    legal_name: str
+    why: str
+
+
 class VendorSummary(ApiModel):
     vendor_id: str
     legal_name: str
@@ -456,6 +463,9 @@ class VendorSummary(ApiModel):
     preferred_payment_method: PaymentMethod
     payment_terms_days: int
     requires_po: bool
+    # Filled by GET /vendors and GET /vendors/{id}: the records this one is a suspicious copy of (empty for the real
+    # vendor). Bills on such a record get the VENDOR_LOOKALIKE flag.
+    lookalike_of: list[LookalikeOut] = []
 
 
 class BankChangeOut(ApiModel):

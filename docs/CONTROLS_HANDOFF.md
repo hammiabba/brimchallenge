@@ -675,3 +675,22 @@ document where they quote the old wording.
   - `GET /early-pay` (`services/early_pay.py`) leaves out bills whose latest controls run has an open blocking flag,
     so a held duplicate is never "Pay now".
 - **Reconciliation and history findings** use human dates and words for statuses and request channels.
+
+## UI audit, final batch
+
+Wording and one shared rule; flags, severities and decisions are unchanged for the same input.
+
+- **`validate.suspicious_lookalikes(ref, vid)`** is the lookalike rule `check_vendor` already used, moved into its own
+  function: the records `vid` is a suspicious copy of (fewer past invoices than the record it resembles, or not
+  active). `check_vendor` flags `VENDOR_LOOKALIKE` once per entry, as before. `GET /vendors` and `GET /vendors/{id}`
+  call it for their new `lookalike_of` field, so the vendor screens mark the same records.
+- **Bank accounts in messages** read "ending 9679", never "…9679" (`wording.account_ending`, `wording.account_change`):
+  - `BANK_CHANGE_UNVERIFIED`: "… by email request (ending 7504 → ending 9679). Nobody has confirmed it by phone."
+  - `BANK_DETAILS_MISMATCH` (account before the change): "shows the bank account ending 9679 … On the invoice date the
+    account was the one ending 7504 …".
+  - The history finding `paid_after_unverified_bank_change`: "(ending 7504 → ending 9679)".
+- **Reconciliation:** `DOUBLE_PAYMENT_AT_RISK` ends "Cancel PAY-00399 before it is sent." instead of "Cancel it.". The
+  reconciliation screen links the payment.
+- **Contracts:** `RefData.contract_for` is unchanged. App bills now store the vendor's contract when the invoice names
+  none (`db.bills.vendor_contract_id`, the same first-by-id fallback), so `contract_for` finds the same contract
+  through `contract_id` instead of through the vendor.

@@ -181,6 +181,11 @@ def test_double_payment_extra_copies_are_marked_on_the_bank(real):
     assert "DOUBLE_PAYMENT_AT_RISK" not in codes(payment(real, "PAY-00386"))  # the first copy is fine
 
 
+def test_the_at_risk_note_names_the_payment_to_cancel(real):
+    [note] = [i.message for i in payment(real, "PAY-00399").issues if i.code == "DOUBLE_PAYMENT_AT_RISK"]
+    assert note.endswith(" Cancel PAY-00399 before it is sent.")
+
+
 def test_instalments_are_not_double_payments(real):
     # AP-00117 was paid in two parts (PAY-00113 + PAY-00114): one bill, one payment.
     assert not any("AP-00117" in g.invoice_ids for g in real.double_payments)

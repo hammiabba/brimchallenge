@@ -20,6 +20,19 @@ def test_employee_cannot_widen_scope_with_a_filter(as_role):
     assert page["total"] == 0
 
 
+def test_mine_lists_only_the_callers_own_requests(as_role):
+    # U013 (the employee) is the requester on some D01 bills; mine=true keeps exactly those, inside the usual scope.
+    everything = as_role("employee").get("/bills", params={"limit": 200}).json()
+    mine = as_role("employee").get("/bills", params={"limit": 200, "mine": "true"}).json()
+    own = {b["bill_id"] for b in everything["items"] if b["requester_user_id"] == "U013"}
+    assert own and {b["bill_id"] for b in mine["items"]} == own
+    assert mine["total"] == len(own)
+
+
+def test_mine_is_off_by_default(as_role):
+    assert as_role("employee").get("/bills", params={"limit": 1, "mine": "false"}).json()["total"] == 148
+
+
 def test_approver_sees_own_department(as_role):
     page = as_role("approver").get("/bills", params={"limit": 1}).json()
     assert page["total"] == 148
@@ -193,3 +206,16 @@ def test_payments_sort_refuses_an_unknown_value_without_echoing_it(as_role):
     assert err["code"] == "request.invalid"
     assert [d["loc"] for d in err["details"]] == [["query", "sort"]]
     assert "bogus" not in r.text
+
+
+def test_vendors_mark_the_suspicious_copy_of_a_lookalike_pair(as_role):
+    # The VENDOR_LOOKALIKE control's own rule: V051/V052/V053 copy V001/V026/V002 by name; the real vendors are clean.
+    page = as_role("ap_clerk").get("/vendors", params={"limit": 200}).json()
+    marked = {v["vendor_id"]: [(o["vendor_id"], o["why"]) for o in v["lookalike_of"]]
+              for v in page["items"] if v["lookalike_of"]}
+    same_name = "same name once 'Ltd/Inc/&' are ignored"
+    assert marked == {"V051": [("V001", same_name)], "V052": [("V026", same_name)], "V053": [("V002", same_name)]}
+    detail = as_role("employee").get("/vendors/V053").json()
+    assert detail["lookalike_of"] == [
+        {"vendor_id": "V002", "legal_name": "Great Lakes Carriers Inc.", "why": same_name}]
+    assert as_role("employee").get("/vendors/V002").json()["lookalike_of"] == []

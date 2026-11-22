@@ -26,7 +26,7 @@ from .refdata import (
     tax_amounts,
     vendor_id,
 )
-from .wording import channel_phrase, human_date, money_text
+from .wording import account_change, account_ending, channel_phrase, human_date, money_text
 
 TOL = Decimal("0.02")        # rounding tolerance per amount (2 cents)
 TAX_TOL = Decimal("0.05")    # tax is rounded per line on some invoices, allow 5 cents
@@ -147,6 +147,16 @@ def _invoice_count(ref: RefData, vid: str) -> int:
     return sum(1 for i in ref.invoices.values() if i["vendor_id"] == vid)
 
 
+def suspicious_lookalikes(ref: RefData, vid: str) -> list[tuple[str, str]]:
+    """The lookalike records (other vendor id, why) for which `vid` is the suspicious copy: it has fewer past
+    invoices than the record it resembles, or it isn't active (on hold, pending review). The real vendor gets an
+    empty list. check_vendor flags a bill on `vid` once per entry; the vendor screens mark the record with it."""
+    n_this = _invoice_count(ref, vid)
+    status = ref.vendors[vid]["status"]
+    return [(other_id, why) for other_id, why in lookalike_vendors(ref, vid)
+            if n_this < _invoice_count(ref, other_id) or status != "active"]
+
+
 def name_lookalikes(name: str, ref: RefData) -> list[tuple[str, float]]:
     """Master vendors whose normalized legal name is >= NAME_LOOKALIKE similar to `name`, best first."""
     me = _norm_name(name or "")
@@ -201,9 +211,11 @@ def _account_from_after_the_invoice(bill: DraftBill, ref: RefData, vid: str) -> 
     if change is None:
         return []
     return [flag("BANK_DETAILS_MISMATCH",
-                 f"Invoice dated {bill.invoice_date} shows bank account …{printed}, but that account was only set up "
+                 f"Invoice dated {bill.invoice_date} shows the bank account {account_ending(printed)}, but that "
+                 f"account was only set up "
                  f"on {change['changed_at']} ({change['change_id']}, via {change['request_channel']}). On the invoice "
-                 f"date the account was …{later[0]['old_account_last4']}, so the invoice was likely edited or forged. "
+                 f"date the account was the one {account_ending(later[0]['old_account_last4'])}, so the invoice was "
+                 f"likely edited or forged. "
                  f"Verify by calling the vendor on a known number before paying.",
                  evidence={"kind": "account_before_change", "invoice_date": str(bill.invoice_date),
                            "printed_last4": printed, "change_id": change["change_id"],
@@ -292,25 +304,25 @@ def check_vendor(bill: DraftBill, ref: RefData) -> list[Flag]:
         last = changes[-1]
         flags.append(flag("BANK_CHANGE_UNVERIFIED",
                           f"The bank account changed on {human_date(last['changed_at'])} by "
-                          f"{channel_phrase(last['request_channel'])} (…{last['old_account_last4']} → "
-                          f"…{last['new_account_last4']}). Nobody has confirmed it by phone.",
+                          f"{channel_phrase(last['request_channel'])} "
+                          f"({account_change(last['old_account_last4'], last['new_account_last4'])}). "
+                          f"Nobody has confirmed it by phone.",
                           evidence=last, field="vendor.bank"))
 
-    # Lookalike records: only flag the bill when it sits on the suspicious copy, never on the real vendor.
-    # Suspicious = fewer past invoices than the record it resembles, or not active (on hold, pending review).
+    # Lookalike records: only flag the bill when it sits on the suspicious copy, never on the real vendor
+    # (suspicious_lookalikes decides which copy that is).
     n_this = _invoice_count(ref, vid)
-    for other_id, why in lookalike_vendors(ref, vid):
-        if n_this < _invoice_count(ref, other_id) or v["status"] != "active":
-            o = ref.vendors[other_id]
-            ev = {"similar_vendor": other_id, "why": why, "this_status": v["status"],
-                  "this_invoices": n_this, "similar_invoices": _invoice_count(ref, other_id)}
-            if bill.source.sender_address:
-                ev["sender_domain"] = bill.source.sender_address.split("@")[-1].lower()
-                ev["known_domain"] = o["ap_contact_email"].split("@")[-1].lower()
-            flags.append(flag("VENDOR_LOOKALIKE",
-                              f"This bill is on {vid} {v['legal_name']}, which looks like existing vendor "
-                              f"{other_id} {o['legal_name']} ({why}). Verify by phone before approving.",
-                              evidence=ev, field="vendor"))
+    for other_id, why in suspicious_lookalikes(ref, vid):
+        o = ref.vendors[other_id]
+        ev = {"similar_vendor": other_id, "why": why, "this_status": v["status"],
+              "this_invoices": n_this, "similar_invoices": _invoice_count(ref, other_id)}
+        if bill.source.sender_address:
+            ev["sender_domain"] = bill.source.sender_address.split("@")[-1].lower()
+            ev["known_domain"] = o["ap_contact_email"].split("@")[-1].lower()
+        flags.append(flag("VENDOR_LOOKALIKE",
+                          f"This bill is on {vid} {v['legal_name']}, which looks like existing vendor "
+                          f"{other_id} {o['legal_name']} ({why}). Verify by phone before approving.",
+                          evidence=ev, field="vendor"))
     return flags
 
 
