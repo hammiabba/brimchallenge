@@ -262,3 +262,29 @@ contradiction. The suffix now says "(replaces D08)".
   docstrings ("Generated with `alembic revision --autogenerate`", a tool, not attribution) and the team's
   `docs/HACKATHON_PLAN.md`. The branch's own diff adds none.
 - Not tracked: `.env`, `.cache/`, `output/`, `files/`, `*.db`, `CLAUDE_CODE_PROMPT_*.md` (left untracked).
+
+# Intake UI run (2026-11-21)
+
+## 1. Sync
+
+- `a/extraction` is merged (PR #27). Since then main gained PR #28 `ui/bills` (the bills pages), #29 controls
+  coverage map, #30 low-confidence flag. `frontend/openapi.json` on main predates the intake endpoints from #27;
+  `npm run gen:api` regenerates it (each page branch carries the same regenerated, byte-identical files).
+- **Found and fixed outside git:** 228 iCloud sync-conflict copies (`README 2.md`, `backend/app/main 2.py`,
+  `frontend/src 2/`, a second `0002_audit_chain_unique 2.py` migration that gave alembic two heads, `.git/index 2`,
+  …) plus 3 numbered copies (`tests/fixtures/raw/Invoice 288.json` = `Invoice 287.json`, 4444 = 4443,
+  854 = 853). All were untracked, byte-identical or older than the originals. They broke `pytest` (duplicate tests,
+  alembic "multiple heads"). **Decision:** moved, not deleted, to `../brimchallenge-sync-duplicates/` with their
+  paths kept. The repo sits in an iCloud-synced Desktop folder, so this can recur. Moving the repo out of
+  Desktop/Documents (or turning off "Desktop & Documents" sync) stops it.
+- Backend on main: `alembic upgrade head`, seed (4167 rows), `pytest`: **1332 passed, 1 xfailed**; ruff clean.
+- Frontend on main (Node 24 via nvm, per `.nvmrc`; the default `node` is 20): `npm ci`, `gen:api`, typecheck,
+  lint, **162 tests in 13 files**, build: all pass.
+
+## 2. Voyageur: exact duplicate by design (branch `a/voyageur-exact-test`)
+
+Person B keeps `000903-A` vs `000903` as `DUPLICATE_EXACT`: `DUPLICATE_LIKELY` is only `warn`, so the bill
+wouldn't be held although the original (AP-00277) is paid; the Redline `1655-A` vs `FA-001655` double payment in
+history is caught only because the suffix is stripped. The strict xfail became
+`test_suffixed_number_is_an_exact_duplicate` (block, matched against AP-00277). `ISSUES_FOR_B.md` #2 is closed by
+design; the handoff and the HACKATHON_PLAN §4 row now say exact duplicate. `pytest`: 1332 passed, 0 xfailed.
