@@ -1,6 +1,6 @@
 # auth/
 
-**Owner:** API lane. **Status:** demo sign-in, signed session cookie, role gate.
+**Owner:** the API module. **Status:** demo sign-in, signed session cookie, role gate.
 
 Authentication and **server-side** role enforcement for six roles: `employee`, `ap_clerk`, `approver`,
 `finance_manager`, `controller_admin`, `auditor` (users come from the `users` table, seeded from users.csv).

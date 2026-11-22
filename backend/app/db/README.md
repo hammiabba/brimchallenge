@@ -1,6 +1,6 @@
 # db/
 
-**Owner:** DB team. **Status:** schema, baseline migration, seed and audit log done; DB adapters come next.
+**Status:** schema, baseline migration, seed and audit log done; DB adapters come next.
 
 The app database: SQLAlchemy 2.0 models, engine and session setup, value helpers, and Alembic migrations.
 Importing anything here never connects to or creates a database.
@@ -125,11 +125,11 @@ The seed loads the 426 history bills without controls runs. `backfill.py` adds o
 with its flags and route steps) so the UI shows them like app bills. It never changes a bill's status, approval
 decisions or payments.
 
-- **Point in time.** Each bill is replayed with Hamid's `controls.history.replay_bill`, not re-implemented: it sees only
-  invoices before it (by invoice date, then id), bank changes made before its invoice date, user absences already
-  started, and its received date as "today". So a duplicate is flagged on the later invoice only, and no history bill
-  carries `BANK_CHANGE_UNVERIFIED` (BC-009 was requested after the last V004 invoice). App bills are left out of the
-  replay's RefData: a history bill couldn't have known about them.
+- **Point in time.** Each bill is replayed with the controls module's `controls.history.replay_bill`, not
+  re-implemented: it sees only invoices before it (by invoice date, then id), bank changes made before its invoice
+  date, user absences already started, and its received date as "today". So a duplicate is flagged on the later
+  invoice only, and no history bill carries `BANK_CHANGE_UNVERIFIED` (BC-009 was requested after the last V004
+  invoice). App bills are left out of the replay's RefData: a history bill couldn't have known about them.
 - **Idempotent.** By default bills that already have a run are skipped, so a second run replays 0. `--all`
   (`only_missing=False`) replays every history bill and is refused once any has a run, since it would add version-2
   runs next to the first.
@@ -236,7 +236,7 @@ session.commit()  # the caller commits: the change and its event land together, 
 - A `DbReferenceRepository` implementing `app.reference.repository.ReferenceRepository` for extraction and coding
   (see `app/reference/README.md`). The controls side is done: `refdata_db.refdata_from_db`.
 - Storage for `EmailTriage` (the `emails` triage columns) and `intake_items`, and wiring `api/routes_intake.py`
-  (Person A's file) to `bills.create_bill_from_draft` in place of its TEMP dict.
+  (the intake module's file) to `bills.create_bill_from_draft` in place of its TEMP dict.
 - Recording approval decisions, and deriving what `can_approve` / `can_release` need beyond `bills.py`: the step
   being signed, `approval_complete`, the CAD amount the route was built for (a split's combined amount), and the
   flags still blocking (stored flags whose resolution is open).

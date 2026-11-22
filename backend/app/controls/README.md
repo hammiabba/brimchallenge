@@ -1,7 +1,5 @@
 # controls/
 
-**Owner:** Person B.
-
 Validation, duplicate detection, approval routing and payment release rules.
 Pure Python, no database, no web framework, no LLM. Bill in, flags out.
 
@@ -27,8 +25,8 @@ Reference data is read from the repo dataset (`get_settings().dataset_dir / "dat
 | `approvals.py` | `route(...) -> [ApprovalStep]`, `can_approve(...)` / `can_release(...) -> PermissionDecision` |
 | `incoming.py` | `run_batch(items)` / `render_report(...)`: controls on the extracted incoming batch as one batch, problem bills first (used by `scripts/run_incoming.py`) |
 | `history.py` | `replay(ref)`: point-in-time replay of the history, plus approvals/payments checks (used by `scripts/replay_history.py`) |
-| `early_pay.py` | Vendor payment terms (`parse_terms`), the best pay date and saving for approved and scheduled bills (`suggest_pay_dates`), and discounts taken and missed in the history (`discount_history`). Served by `GET /early-pay` (see docs/CONTROLS_HANDOFF.md, "Early-payment discounts"). |
-| `reconciliation.py` | `reconcile(bank_rows, payment_rows, ref)`: bank statement lines matched to payments; fees, unexplained debits, double payments and amount differences explained. Served by `GET /reconciliation/bank` (see docs/CONTROLS_HANDOFF.md, "Bank reconciliation"). |
+| `early_pay.py` | Vendor payment terms (`parse_terms`), the best pay date and saving for approved and scheduled bills (`suggest_pay_dates`), and discounts taken and missed in the history (`discount_history`). Served by `GET /early-pay` (see docs/CONTROLS.md, "Early-payment discounts"). |
+| `reconciliation.py` | `reconcile(bank_rows, payment_rows, ref)`: bank statement lines matched to payments; fees, unexplained debits, double payments and amount differences explained. Served by `GET /reconciliation/bank` (see docs/CONTROLS.md, "Bank reconciliation"). |
 | `flag_help.py` | `help_for(code)` / `FLAG_HELP`: short title and one help sentence for every flag code, for the UI |
 | `permissions.py` | Re-exports `can_approve` / `can_release` from `approvals.py` (the API guide refers to `controls.permissions`) |
 | `wording.py` | Plain words for the text the controls write: `human_date` ("Nov 2, 2026"), `money_text`, `status_label`, `channel_phrase`, `role_group`, `flag_title` / `flag_titles`. Used by the messages, reasons and notes in the other modules and by `services/actions.py` and `services/guards.py`. |
@@ -50,7 +48,7 @@ A split is routed at the combined amount.
 
 Flag severity (from `FLAG_CODES`): `block` holds the payment until someone resolves it, `warn` needs a human look, `info` is context.
 
-## For Person A: what to put in a DraftBill
+## For the extraction module: what to put in a DraftBill
 
 Fill `schemas.DraftBill`. The engine uses `source.file_hash` as the bill's id (the schema has no bill id).
 Required by the checks: `vendor.vendor_id` (None if no match), `invoice_number`, `invoice_date`, `currency`, `subtotal`,
@@ -85,8 +83,8 @@ Money is `Decimal`, not float.
 
 - `can_release` checks the approver list; the backend must pass who **actually** acted, including delegates.
 - A missing FX rate holds the bill (`CURRENCY_UNSUPPORTED`, block) and routing uses the face amount.
-  Full list of fixes and open items: `docs/CONTROLS_HANDOFF.md`.
+  Full list of known limits: `docs/CONTROLS.md`.
 - Card duplicate check skips AP virtual card payments (they belong to other invoices). Employee card charges only.
 - Signatures differ from the original stubs: functions take a `RefData` (from `load_refdata()`), not a `ReferenceRepository`.
 - Run on the real incoming batch (all 56 files, `cd backend && python scripts/run_incoming.py`). Results, the
-  check against HACKATHON_PLAN §4, false alarms and misses: "Incoming batch results" in `docs/CONTROLS_HANDOFF.md`.
+  check against the known dataset traps, false alarms and misses: "Incoming batch results" in `docs/CONTROLS.md`.

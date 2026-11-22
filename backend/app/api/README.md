@@ -1,6 +1,6 @@
 # api/
 
-**Owner:** API lane. Exception: `routes_intake.py` belongs to the intake lane.
+**Owner:** the API module. Exception: `routes_intake.py` belongs to the intake module.
 
 Every router is a thin wrapper: check the role with `require_role`, call one function in `app/services`, return a
 model from `schemas_api.py`. No business logic in routes.
@@ -47,7 +47,7 @@ The permission matrix (`tests/api/matrix.py`) lists every endpoint x role.
 3. Put the logic in `app/services/`, including the audit event for writes.
 
 ## Intake routes
-`routes_intake.py` (intake lane) holds two reads, `GET /intake/emails/{email_id}` and `GET /intake/files/{file_hash}`,
+`routes_intake.py` (intake module) holds two reads, `GET /intake/emails/{email_id}` and `GET /intake/files/{file_hash}`,
 each behind `require_role(*BACK_OFFICE_READ)` like `/intake/emails`. It is mounted without a router-wide guard. The
 old in-memory `/intake/upload`, `/intake/inbox/run` and `/intake/drafts` are gone: use `POST /submissions` and the
 inbox job. See `app/intake/README.md`.

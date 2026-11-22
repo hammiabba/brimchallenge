@@ -1,6 +1,6 @@
 # intake/
 
-**Owner:** Person A. Feature 1: emails and uploads in, triage + draft bills out.
+Feature 1: emails and uploads in, triage + draft bills out.
 
 ## Public API
 | Function | Returns |
@@ -49,7 +49,7 @@ EM-057 (Torque, invoice 1743) answers: paid 2026-03-09 by EFT, reference BRIM-EF
 | `GET /intake/emails/{email_id}` | ap_clerk, finance_manager, controller_admin, auditor | 404 `email.not_found` |
 | `GET /intake/files/{file_hash}` | same | content type sniffed from the bytes; PDF/images `inline`, anything else a download; `nosniff`; only hashes an intake item references; falls back to the dataset inbox (hash checked) |
 
-The list `GET /intake/emails` is the API lane's; it shows `suggested_action` through `review.action_for`.
+The list `GET /intake/emails` belongs to the API module; it shows `suggested_action` through `review.action_for`.
 
 ## Original files
 `files.keep` stores every file the pipeline reads under `backend/files/<sha256>` (gitignored, written atomically,

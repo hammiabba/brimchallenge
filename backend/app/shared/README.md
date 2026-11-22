@@ -2,7 +2,8 @@
 
 **Owner:** whole team. **Changes need agreement from all four people.**
 
-`schemas.py` is the data contract between intake/extraction (A), controls (B) and the DB/API team.
+`schemas.py` is the data contract between the intake and extraction modules, the controls module and the database
+and API modules.
 Everyone imports these models; nobody defines a parallel version.
 
 | Model | Produced by | Consumed by |
@@ -10,7 +11,7 @@ Everyone imports these models; nobody defines a parallel version.
 | `EmailTriage` | `intake.classifier.classify` | API, UI inbox view |
 | `DraftBill` (+ `VendorOnInvoice`, `InvoiceLine`, `TaxLine`, `CodingSuggestion`, `SourceInfo`) | `extraction.pipeline.extract` + `coding.suggest` | controls, DB, UI |
 | `Flag`, `DuplicateMatch`, `ApprovalStep`, `ControlsResult`, `PermissionDecision` | controls | DB, UI |
-| `AuditEvent` | DB team's `log_event()` | auditor UI |
+| `AuditEvent` | the db module's `log_event()` | auditor UI |
 | `FLAG_CODES` | agreed catalogue | controls, UI icons/help text |
 
 ## Conventions

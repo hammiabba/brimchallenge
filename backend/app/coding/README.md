@@ -1,6 +1,6 @@
 # coding/
 
-**Owner:** Person A. Feature 3: suggest a GL account and department for every invoice line, with a reason a clerk can trust.
+Feature 3: suggest a GL account and department for every invoice line, with a reason a clerk can trust.
 
 ## Public API
 | Function | Returns |

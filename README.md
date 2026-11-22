@@ -76,7 +76,7 @@ Dependencies are declared in `backend/pyproject.toml` (one file; `[dev]` adds py
 | `LLM_MODEL` / `LLM_EFFORT` | Extraction model and effort level. |
 | `AS_OF_DATE` | Business "today" (2026-11-02). |
 | `DATASET_DIR` | Empty → `dataset/brim_ap_dataset`. |
-| `DATABASE_URL` | For the DB team; SQLite by default (`backend/ap.db`). |
+| `DATABASE_URL` | Database connection; SQLite by default (`backend/ap.db`). |
 | `AUDIT_HMAC_KEY` | **Required.** Protects bank account numbers in audit events (stored as the last 4 digits plus an HMAC fingerprint). It doesn't sign the audit chain, which is plain SHA-256. Without it, any audit write that includes a bank account number fails. Keep it once the database has events. |
 | `SESSION_SECRET` | Signs session cookies. Empty → a random one, so everyone is signed out when the backend restarts. |
 

@@ -1,6 +1,6 @@
 # extraction/
 
-**Owner:** Person A. Feature 2: turn an invoice file (PDF, scan, French, credit note, USD) into a `DraftBill`.
+Feature 2: turn an invoice file (PDF, scan, French, credit note, USD) into a `DraftBill`.
 
 ## Public API
 | Function | Returns |

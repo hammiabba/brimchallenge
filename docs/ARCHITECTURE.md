@@ -21,9 +21,9 @@ flowchart LR
 ```
 
 ## Boundaries
-- **Person A** returns a `DraftBill` (or an `ExtractionOutcome` saying why not). Stops before any judgement.
-- **Person B** takes a `DraftBill` + reference data and returns a `ControlsResult`. Pure functions, no LLM.
-- **DB team** stores everything, enforces roles on every endpoint, and writes an `AuditEvent` per state change.
+- **Intake and extraction** return a `DraftBill` (or an `ExtractionOutcome` saying why not). They stop before any judgement.
+- **Controls** take a `DraftBill` + reference data and return a `ControlsResult`. Pure functions, no LLM.
+- **Database and API** store everything, enforce roles on every endpoint, and write an `AuditEvent` per state change.
 
 ## Data flow details
 | Step | Module | Input → Output |

@@ -6,20 +6,20 @@ approvers by role/policy, paid (simulated EFT) and logged in a full audit trail.
 employee, ap_clerk, approver, finance_manager, controller_admin, auditor. Role rules are enforced
 **server-side**. Judges run a **hidden batch** of unseen invoices, so build for generality, not the 56 samples.
 
-Full plan and known dataset traps: [`docs/HACKATHON_PLAN.md`](docs/HACKATHON_PLAN.md). Design decisions: [`docs/DECISIONS.md`](docs/DECISIONS.md).
+Known dataset traps and the flag that catches each: [`docs/DETECTION_COVERAGE.md`](docs/DETECTION_COVERAGE.md). Design decisions: [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 ## Repo map
 
 | Folder | Owner | Purpose |
 |---|---|---|
 | `backend/app/shared/` | everyone | `schemas.py` = the data contract |
-| `backend/app/reference/` | Person A | Read-only master data (CSV now, DB later) behind `ReferenceRepository` |
-| `backend/app/intake/` | Person A | Email classification, inbox processing, uploads |
-| `backend/app/extraction/` | Person A | PDF/OCR text → LLM → normalize → self-check → vendor match → `DraftBill` |
-| `backend/app/coding/` | Person A | GL/department suggestions from history |
-| `backend/app/controls/` | Person B | Validation, duplicates, approval routing, payment-release rules (deterministic) |
-| `backend/app/db/`, `backend/app/auth/` | DB team | Schema, seeding, auth, role middleware, audit log, state machines |
-| `backend/app/api/` | DB team (A owns `routes_intake.py`) | HTTP endpoints |
+| `backend/app/reference/` | Intake and extraction | Read-only master data (CSV now, DB later) behind `ReferenceRepository` |
+| `backend/app/intake/` | Intake and extraction | Email classification, inbox processing, uploads |
+| `backend/app/extraction/` | Intake and extraction | PDF/OCR text → LLM → normalize → self-check → vendor match → `DraftBill` |
+| `backend/app/coding/` | Intake and extraction | GL/department suggestions from history |
+| `backend/app/controls/` | Controls | Validation, duplicates, approval routing, payment-release rules (deterministic) |
+| `backend/app/db/`, `backend/app/auth/` | Database and API | Schema, seeding, auth, role middleware, audit log, state machines |
+| `backend/app/api/` | Database and API (`routes_intake.py`: intake and extraction) | HTTP endpoints |
 | `frontend/` | everyone, later | React + TS UI |
 | `dataset/brim_ap_dataset/` | nobody | Provided data. **Never modified by code.** |
 
@@ -51,7 +51,7 @@ cd backend && python scripts/eval_extraction.py  # accuracy vs tests/golden/
 
 ## Adding a feature
 1. Work in your own folder on your own branch.
-2. Write the test first (`backend/tests/<area>/`). Use the known cases in HACKATHON_PLAN §4.
+2. Write the test first (`backend/tests/<area>/`). Use the cases in docs/DETECTION_COVERAGE.md.
 3. Implement it, then run `pytest` and `ruff check .`.
 4. Update that folder's `README.md` (public functions, how to change it).
 5. Add one line to `docs/DECISIONS.md` if you made a design choice.
