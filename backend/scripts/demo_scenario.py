@@ -12,7 +12,10 @@ What it leaves behind (all as of 2026-11-02):
   can't be scheduled, and a new Cascadia bill is held by BANK_CHANGE_UNVERIFIED (submit is refused);
 - a delegated approval: U003 approved a Facilities bill acting for U012, recorded with on_behalf_of=U012;
 - payments approved and ready to release: three bills approved by their department managers and scheduled by the
-  AP clerk (U004). The delegated one can't be released by U003 (P11: they approved it); the controller (U002) can.
+  AP clerk (U004). The delegated one can't be released by U003 (P11: they approved it); the controller (U002) can;
+- line coding as intake leaves it: every demo line gets the history-based suggestion (app.coding, no LLM), the clerk
+  accepts it on each bill before submitting, and the held Cascadia bill keeps its suggestion pending, so "Accept" is
+  there to try.
 
 Every step goes through app.services (intake, bills, approvals, payments): the same code the API runs, with the same
 checks and one audit event per action. Invoices are typed in as DraftBills (the extraction step is skipped, so no
@@ -39,12 +42,14 @@ from sqlalchemy.orm import Session  # noqa: E402
 from app.api import schemas_api as s  # noqa: E402
 from app.api.errors import ApiError  # noqa: E402
 from app.auth.deps import CurrentUser, load_current_user  # noqa: E402
+from app.coding.suggest import suggest as suggest_coding  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.db import models  # noqa: E402
 from app.db.database import as_write_engine, make_engine, resolve_database_url  # noqa: E402
 from app.db.refdata_db import refdata_from_db  # noqa: E402
 from app.extraction.pipeline import ExtractionOutcome  # noqa: E402
 from app.intake.received import existing_bill_for_file  # noqa: E402
+from app.reference.csv_repository import default_repository  # noqa: E402
 from app.services import approvals, bills, intake, payments  # noqa: E402
 from app.shared.schemas import (  # noqa: E402
     BankDetails,
@@ -137,7 +142,7 @@ def _draft(engine: Engine, b: DemoBill) -> DraftBill:
     code, rate = TAX[b.province]
     amount = D(b.amount)
     tax = (amount * rate).quantize(D("0.01"))
-    return DraftBill(
+    draft = DraftBill(
         source=SourceInfo(file_name=b.file_name, file_hash=b.file_hash),
         vendor=VendorOnInvoice(name_on_invoice=v["legal_name"], gst_number=v["gst_hst_number"] or None,
                                bank=BankDetails(institution=v["bank_institution"] or None,
@@ -150,6 +155,9 @@ def _draft(engine: Engine, b: DemoBill) -> DraftBill:
                            line_type=LineType.SERVICES)],
         subtotal=amount, taxes=[TaxLine(code=TaxCode(code), rate=rate, amount=tax)], total=amount + tax,
         total_cad=amount + tax)
+    # The same coding step the extraction pipeline runs last (history-based, deterministic), so the lines arrive with
+    # their suggestions as an extracted invoice's would.
+    return suggest_coding(draft, default_repository())
 
 
 def _bill(engine: Engine, b: DemoBill) -> models.Bill | None:
@@ -179,9 +187,35 @@ def _create(engine: Engine, b: DemoBill, report: DemoReport) -> str:
     return bill_id
 
 
+def _code_lines(engine: Engine, b: DemoBill, bill_id: str, report: DemoReport) -> None:
+    """The clerk codes every line still uncoded before submitting: the suggested GL account (or the vendor's
+    default) with the bill's department. Only bills still in review; a bill past review was coded already."""
+    with _write(engine) as db:
+        bill = db.get(models.Bill, bill_id)
+        if bill.status not in ("needs_review", "on_hold"):
+            return
+        default_gl = db.get(models.Vendor, b.vendor_id).default_gl_account
+        lines = db.scalars(select(models.BillLine).where(
+            models.BillLine.bill_id == bill_id, models.BillLine.coding_status.in_(("none", "suggested")))
+            .order_by(models.BillLine.line_no)).all()
+        for line in lines:
+            gl = line.suggested_gl_account or default_gl
+            if gl is None:
+                continue
+            bills.code_line(db, _user(db, CLERK), bill_id, line.line_no,
+                            s.LineCodingPatch(row_version=bill.row_version, gl_account=gl,
+                                              department_id=b.department_id))
+            db.flush()
+            db.refresh(bill)
+        if lines:
+            db.commit()
+            report.did.append(f"{b.key}: coded {bill_id}")
+
+
 def _advance(engine: Engine, b: DemoBill, bill_id: str, report: DemoReport) -> None:
     if not b.submit:
         return
+    _code_lines(engine, b, bill_id, report)
     with _write(engine) as db:
         bill = db.get(models.Bill, bill_id)
         if bill.status in ("needs_review", "on_hold"):

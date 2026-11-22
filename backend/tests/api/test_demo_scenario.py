@@ -77,7 +77,8 @@ def bill_of(first, key: str) -> str:
 
 def test_second_run_changes_nothing(demo_db):
     engine, first, second, after_first = demo_db
-    assert len(first.did) == 30 and second.did == []
+    # 30 steps, plus the clerk coding each of the 11 bills it submits.
+    assert len(first.did) == 41 and second.did == []
     assert second.bills == first.bills and len(set(first.bills.values())) == len(demo.BILLS) == 12
     assert _counts(engine) == after_first  # no new bills, intake items, decisions, payments, runs or audit events
 
@@ -90,6 +91,7 @@ def test_audit_log_is_genuine_and_intact(demo_db):
             models.AuditEvent.entity_id.in_(list(first.bills.values())))).all()
     assert actions.count("bill.created") == 12
     assert actions.count("bill.submitted") == 11   # the Cascadia bill is held, never submitted
+    assert actions.count("bill.coding_changed") == 11   # coded before each submit
     assert actions.count("bill.approved") == 4   # U007 (step 1 of the finance-queue bill), U003, U008, U011
     with Session(engine) as db:
         scheduled = db.scalar(select(func.count()).select_from(models.AuditEvent).where(
@@ -146,6 +148,17 @@ def test_payments_are_ready_to_release_by_the_right_people(demo_db):
         assert "P11" in refused.value.message
         payments.release_check(db, load_current_user(db, "U002"), delegated)  # the controller can
         payments.release_check(db, load_current_user(db, "U003"), sales)      # U003 didn't approve this one
+
+
+def test_lines_are_coded_except_on_the_held_bill_which_keeps_its_suggestion(demo_db):
+    engine, first, _, _ = demo_db
+    with Session(engine) as db:
+        for key, bill_id in first.bills.items():
+            statuses = set(db.scalars(select(models.BillLine.coding_status).where(models.BillLine.bill_id == bill_id)))
+            if key == "v004-hold":
+                assert statuses == {"suggested"}, key   # "Accept" is there to try on the held Cascadia bill
+            else:
+                assert statuses <= {"accepted", "overridden"}, key
 
 
 def test_cascadia_is_held(demo_db):
