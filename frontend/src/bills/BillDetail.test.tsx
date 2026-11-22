@@ -256,12 +256,48 @@ function signedBill(assigned: string, signer: string, extra: { onBehalfOf?: stri
   })
 }
 
+/** The icon in a step's timeline bullet ("circle-check", "alert-triangle", ...), from its Tabler class. */
+function bulletIcon(steps: HTMLElement): string | undefined {
+  const svg = steps.querySelector('.app-timeline-bullet svg')
+  return [...(svg?.classList ?? [])].find((c) => c.startsWith('tabler-icon-'))?.replace('tabler-icon-', '')
+}
+
+describe('bill header and panels', () => {
+  it('warns when blocking flags are open but a payment is still scheduled, and links to it', async () => {
+    renderBill(billDetail())
+    const warning = await screen.findByRole('status')
+    expect(warning).toHaveTextContent('2 blocking flags are open, but PAY-00398 is scheduled for Nov 2, 2026. Cancel the payment if the flags hold.')
+    expect(within(warning).getByRole('link', { name: 'PAY-00398' })).toHaveAttribute('href', '/payments/PAY-00398')
+  })
+
+  it('links the vendor to its page', async () => {
+    renderBill(billDetail())
+    const summary = await screen.findByRole('region', { name: 'Bill summary' })
+    expect(within(summary).getByRole('link', { name: 'Summit Packaging Supply' })).toHaveAttribute('href', '/vendors/V011')
+  })
+
+  it('says a flag on a paid bill was found after payment', async () => {
+    renderBill(billDetail({ status: 'paid', payments: [] }))
+    expect((await screen.findAllByText(/^Found after payment: this bill was already paid/)).length).toBeGreaterThan(0)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument() // nothing scheduled, so no banner
+  })
+
+  it('lists the subtotal, then each tax, then the total', async () => {
+    renderBill(billDetail({ taxes: [{ tax_code: 'HST13', rate: '0.13', amount: '282.69' }] }))
+    const taxes = await screen.findByRole('table', { name: 'Taxes and totals' })
+    const rows = within(taxes).getAllByRole('row').slice(1).map((row) => row.textContent)
+    expect(rows).toEqual(['Subtotal$2,174.50', 'HST1313%$282.69', 'Total$2,457.19'])
+  })
+})
+
 describe('who signed each step', () => {
-  it('marks the requester approving their own bill in the danger tone (AP-00092)', async () => {
+  it('marks the requester approving their own bill in the danger tone, with a warning bullet (AP-00092)', async () => {
     renderBill(signedBill('U001', 'U013'))
     const steps = await screen.findByRole('list', { name: 'Approval steps' })
-    expect(await within(steps).findByText('Signed by Avery Chen (U013), not the assigned approver Morgan Lee (U001). '
-      + 'Approved by the requester (U013) of this bill; policy P07 requires their manager.')).toBeInTheDocument()
+    expect(await within(steps).findByText('Avery Chen approved their own bill; policy P07 needed their manager, '
+      + 'Morgan Lee, to sign.')).toBeInTheDocument()
+    // Not a green check: the step is broken.
+    expect(bulletIcon(steps)).toBe('alert-triangle')
   })
 
   it('marks a step signed by someone other than its assignee', async () => {
@@ -269,7 +305,8 @@ describe('who signed each step', () => {
     const steps = await screen.findByRole('list', { name: 'Approval steps' })
     expect(await within(steps).findByText('Signed by Elena Duarte (U002), not the assigned approver Morgan Lee (U001).'))
       .toBeInTheDocument()
-    expect(within(steps).queryByText(/requester/)).not.toBeInTheDocument()
+    expect(within(steps).queryByText(/their own bill/)).not.toBeInTheDocument()
+    expect(bulletIcon(steps)).toBe('alert-triangle')
   })
 
   it('does not mark the assignee, a delegate assigned to the step, or a delegate acting for the assignee', async () => {
@@ -282,6 +319,7 @@ describe('who signed each step', () => {
       const steps = await screen.findByRole('list', { name: 'Approval steps' })
       await within(steps).findAllByText(/^Approved by/)
       expect(within(steps).queryByText(/not the assigned approver/)).not.toBeInTheDocument()
+      expect(bulletIcon(steps)).toBe('circle-check')
       unmount()
     }
   })
@@ -354,9 +392,14 @@ describe('audit trail', () => {
   })
 
   it('says so when the bill has no audit events', async () => {
-    renderBill(billDetail({ audit: [] }))
+    const { unmount } = renderAppFor(billDetail({ audit: [], origin: 'app' }))
     expect(await screen.findByText('No audit events for this bill yet.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /events/ })).not.toBeInTheDocument()
+    unmount()
+    // A bill imported from the history: its earlier events were never logged, which is not the same as "none yet".
+    renderBill(billDetail({ audit: [], origin: 'history' }))
+    expect(await screen.findByText("Imported from the dataset history: what happened before the import isn't in the audit log."))
+      .toBeInTheDocument()
   })
 })
 

@@ -16,6 +16,9 @@ import { InvoicePanel } from './detail/InvoicePanel'
 import { PaymentsTable } from './detail/PaymentsTable'
 import { useBill } from './queries'
 
+/** The audit trail's empty line for a bill imported from the history: its earlier events were never recorded. */
+const HISTORY_AUDIT_MESSAGE = "Imported from the dataset history: what happened before the import isn't in the audit log."
+
 /** Placeholder blocks while the bill loads (static, no pulse). */
 function DetailSkeleton() {
   return (
@@ -86,7 +89,9 @@ export default function BillDetailPage() {
         <Divider />
         <PaymentsTable bill={data} />
         <Divider />
-        <AuditTrail bill={data} />
+        {/* A bill imported from the dataset history has no events from before the import: say so, rather than
+            "no events yet" on a bill that was approved and paid. */}
+        <AuditTrail bill={data} emptyMessage={data.origin === 'history' ? HISTORY_AUDIT_MESSAGE : undefined} />
       </Stack>
     </HighlightContext.Provider>
   )

@@ -1,6 +1,8 @@
-import { Button, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core'
+import { Anchor, Box, Button, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
+import { IconAlertTriangle } from '@tabler/icons-react'
 import { Fragment, useState, type ReactNode } from 'react'
+import { Link } from 'react-router'
 
 import { notifyError } from '../../api/notify'
 import { departmentLabel, useDepartments, useVendor } from '../../api/reference'
@@ -8,6 +10,7 @@ import type { BillDetail } from '../../api/types'
 import { STATUS_TONES } from '../../theme'
 import { StatusBadge } from '../../ui/Badges'
 import { DateText, Id, MoneyText } from '../../ui/DataText'
+import { Icon } from '../../ui/Icon'
 import { DEPARTMENT_SOURCES } from '../labels'
 import { useEditBill, useVoidBill } from '../mutations'
 import { CommentActionModal } from '../../vendors/CommentActionModal'
@@ -46,7 +49,7 @@ function DepartmentActions({ bill, unconfirmed }: { bill: BillDetail; unconfirme
         <Button size="xs" onClick={confirmDepartment} loading={confirm.isPending}>Confirm</Button>
       )}
       <Button size="xs" variant="default" onClick={() => setOpen(true)} aria-label="Change department">Change</Button>
-      <DepartmentModal key={bill.row_version} bill={bill} opened={open} onClose={() => setOpen(false)} />
+      <DepartmentModal bill={bill} opened={open} onClose={() => setOpen(false)} />
     </Group>
   )
 }
@@ -124,6 +127,33 @@ function VoidAction({ bill }: { bill: BillDetail }) {
 }
 
 /**
+ * A warning when a bill still has a payment scheduled while blocking flags are open (a history bill scheduled before
+ * the controls flagged it, such as a duplicate): the payment would go out unless someone cancels it, so the banner
+ * names it and links to it. Nothing otherwise.
+ */
+function ScheduledWhileBlocked({ bill }: { bill: BillDetail }) {
+  const blocking = (bill.latest_run?.flags ?? []).filter((f) => f.severity === 'block' && f.resolution === 'open')
+  const scheduled = bill.payments.filter((p) => p.status === 'scheduled')
+  if (blocking.length === 0 || scheduled.length === 0) return null
+  return (
+    <Group gap={6} wrap="nowrap" align="flex-start" role="status">
+      <Box pt={2} c={STATUS_TONES.attention.color}><Icon icon={IconAlertTriangle} size={16} /></Box>
+      <Text size="sm" fw={500}>
+        {`${blocking.length} blocking flag${blocking.length === 1 ? ' is' : 's are'} open, but `}
+        {scheduled.map((payment, index) => (
+          <Fragment key={payment.payment_id}>
+            {index > 0 && ', '}
+            <Anchor component={Link} to={`/payments/${payment.payment_id}`} inherit><Id>{payment.payment_id}</Id></Anchor>
+            {' is scheduled for '}<DateText value={payment.scheduled_date} />
+          </Fragment>
+        ))}
+        {'. Cancel the payment if the flags hold.'}
+      </Text>
+    </Group>
+  )
+}
+
+/**
  * The bill's header row: id and status, then vendor (with its status), invoice number, dates, total and department.
  */
 export function BillHeader({ bill }: { bill: BillDetail }) {
@@ -138,10 +168,14 @@ export function BillHeader({ bill }: { bill: BillDetail }) {
         </Group>
         <VoidAction bill={bill} />
       </Group>
+      <ScheduledWhileBlocked bill={bill} />
       <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="md" verticalSpacing="xs">
         <Fact label="Vendor">
           <Group gap={6} wrap="wrap">
-            <span>{bill.vendor_name ?? 'No vendor matched'}</span>
+            {/* The vendor's page, like vendor names elsewhere in the app. */}
+            {bill.vendor_id && bill.vendor_name
+              ? <Anchor component={Link} to={`/vendors/${bill.vendor_id}`} underline="hover" inherit>{bill.vendor_name}</Anchor>
+              : <span>{bill.vendor_name ?? 'No vendor matched'}</span>}
             {bill.vendor_id && <Id>{bill.vendor_id}</Id>}
             {vendor.data && <StatusBadge kind="vendor" status={vendor.data.status} />}
           </Group>

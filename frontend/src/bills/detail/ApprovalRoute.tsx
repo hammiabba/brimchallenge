@@ -32,34 +32,60 @@ function personWithId(userId: string, people: ReturnType<typeof usePeople>['data
 }
 
 /**
- * Who actually signed, when it wasn't the step's assigned approver. A decision is the assignee's own when they made it,
- * or when it was made on their behalf (a delegate). Anyone else gets an attention marker; the bill's requester signing
- * their own bill gets the danger tone (policy P07).
+ * How a decision's signer differs from the step's assigned approver: the bill's requester approving their own bill
+ * (policy P07), someone else, or not at all. A decision is the assignee's own when they made it, or when it was made
+ * on their behalf (a delegate).
+ */
+function signerMismatch(step: RouteStep, decision: Decision, requesterId: string | null): 'requester' | 'other' | null {
+  const assigned = step.user_id
+  if (!assigned || decision.actor_user_id === assigned || decision.on_behalf_of === assigned) return null
+  return decision.decision === 'approved' && requesterId !== null && decision.actor_user_id === requesterId
+    ? 'requester'
+    : 'other'
+}
+
+/**
+ * Who actually signed, when it wasn't the step's assigned approver: an attention marker for someone else, the danger
+ * tone for the requester approving their own bill. The decision line above already names the signer with their id.
  */
 function SignerCheck({ step, decision, requesterId }: { step: RouteStep; decision: Decision; requesterId: string | null }) {
   const people = usePeople()
-  const assigned = step.user_id
-  if (!assigned || decision.actor_user_id === assigned || decision.on_behalf_of === assigned) return null
-  const signer = personWithId(decision.actor_user_id, people.data)
-  const mismatch = `Signed by ${signer}, not the assigned approver ${personWithId(assigned, people.data)}.`
-  const byRequester = decision.decision === 'approved' && requesterId !== null && decision.actor_user_id === requesterId
-  const tone = byRequester ? STATUS_TONES.danger : STATUS_TONES.attention
+  const mismatch = signerMismatch(step, decision, requesterId)
+  if (!mismatch || !step.user_id) return null
+  const tone = mismatch === 'requester' ? STATUS_TONES.danger : STATUS_TONES.attention
+  const signer = personName(decision.actor_user_id, people.data)
+  const assigned = personName(step.user_id, people.data)
   return (
     <Group gap={6} wrap="nowrap" align="flex-start" c={tone.color}>
       <Box pt={2}><Icon icon={IconAlertTriangle} size={14} /></Box>
       <Text size="sm" fw={500} c={tone.color}>
-        {byRequester
-          ? `${mismatch} Approved by the requester (${decision.actor_user_id}) of this bill; policy P07 requires their manager.`
-          : mismatch}
+        {mismatch === 'requester'
+          ? `${signer} approved their own bill; policy P07 needed their manager, ${assigned}, to sign.`
+          : `Signed by ${personWithId(decision.actor_user_id, people.data)}, not the assigned approver ${personWithId(step.user_id, people.data)}.`}
       </Text>
     </Group>
   )
 }
 
-/** The bullet for a step: approved, rejected, or no decision yet. */
-function StepBullet({ decisions }: { decisions: readonly Decision[] }) {
+/**
+ * The bullet for a step: rejected, approved, or no decision yet. An approval signed by someone other than the
+ * assigned approver gets the warning triangle in the same tone as its marker, not a green check, so the timeline
+ * never shows a broken step as a clean one.
+ */
+function StepBullet({ step, decisions, requesterId }: {
+  step: RouteStep
+  decisions: readonly Decision[]
+  requesterId: string | null
+}) {
   if (decisions.some((d) => d.decision === 'rejected')) {
     return <Text span c={STATUS_TONES.danger.color}><Icon icon={IconCircleX} size={18} /></Text>
+  }
+  const mismatches = decisions.map((d) => signerMismatch(step, d, requesterId))
+  if (mismatches.includes('requester')) {
+    return <Text span c={STATUS_TONES.danger.color}><Icon icon={IconAlertTriangle} size={18} /></Text>
+  }
+  if (mismatches.includes('other')) {
+    return <Text span c={STATUS_TONES.attention.color}><Icon icon={IconAlertTriangle} size={18} /></Text>
   }
   if (decisions.some((d) => d.decision === 'approved')) {
     return <Text span c={STATUS_TONES.success.color}><Icon icon={IconCircleCheck} size={18} /></Text>
@@ -79,7 +105,7 @@ function StepItem({ step, decisions, requesterId }: {
   const people = usePeople()
   return (
     <Box component="li" className="app-timeline-item">
-      <span className="app-timeline-bullet"><StepBullet decisions={decisions} /></span>
+      <span className="app-timeline-bullet"><StepBullet step={step} decisions={decisions} requesterId={requesterId} /></span>
       <Stack gap={2}>
         <Text size="sm" fw={600}>{`Step ${step.step_no}: ${stepRoleLabel(step.role)}`}</Text>
         <Text size="sm">
