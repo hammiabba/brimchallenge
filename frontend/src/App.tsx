@@ -16,6 +16,8 @@ const ReviewQueuePage = lazy(() => import('./bills/ReviewQueuePage'))
 const BillDetailPage = lazy(() => import('./bills/BillDetailPage'))
 const SubmitPage = lazy(() => import('./intake/submit/SubmitPage'))
 const SubmissionsPage = lazy(() => import('./intake/submissions/SubmissionsPage'))
+const InboxPage = lazy(() => import('./intake/inbox/InboxPage'))
+const EmailDetailPage = lazy(() => import('./intake/inbox/EmailDetailPage'))
 
 /** The screens built so far, by navigation item. Every other item still shows its placeholder. */
 const SCREENS: Partial<Record<NavKey, LazyExoticComponent<ComponentType>>> = {
@@ -23,6 +25,7 @@ const SCREENS: Partial<Record<NavKey, LazyExoticComponent<ComponentType>>> = {
   review: ReviewQueuePage,
   submit: SubmitPage,
   submissions: SubmissionsPage,
+  inbox: InboxPage,
 }
 
 /** Shown while a screen's code loads. */
@@ -60,6 +63,7 @@ export function App() {
             path="/bills/:billId"
             element={<Suspense fallback={<ScreenLoading />}><BillDetailPage /></Suspense>}
           />
+          <Route path="/inbox/:emailId" element={<Suspense fallback={<ScreenLoading />}><EmailDetailPage /></Suspense>} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>

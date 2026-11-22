@@ -26,6 +26,11 @@ export const EMAIL_CLASS: Record<string, IntakeStyle> = {
   not_ap: { label: 'Not AP', tone: 'neutral' },
 }
 
+/** A status string from the API as an intake status, or null if it isn't one. */
+export function asIntakeStatus(value: string): IntakeItemStatus | null {
+  return Object.hasOwn(INTAKE_STATUS, value) ? (value as IntakeItemStatus) : null
+}
+
 /** Statuses that won't change any more, so polling can stop. */
 export function isFinalStatus(status: IntakeItemStatus): boolean {
   return status !== 'queued' && status !== 'processing'
