@@ -9,6 +9,7 @@ import type { PaymentDetail } from '../api/types'
 import { useCurrentUser } from '../auth/context'
 import { AuditTrail } from '../bills/detail/AuditTrail'
 import { PAYMENT_METHOD_LABELS, stepRoleLabel } from '../bills/labels'
+import { accountEnding } from '../lib/accounts'
 import { asMoney, fromCents, sumMoney, toCents } from '../lib/money'
 import { isInNavigation } from '../shell/navigation'
 import { StatusBadge } from '../ui/Badges'
@@ -72,7 +73,7 @@ function PaymentFacts({ payment }: { payment: PaymentDetail }) {
       <Field label="Bank account">
         {account ? (
           <>
-            {account.masked ? `Ending ${account.account_last4}` : <Id>{account.account}</Id>}
+            {accountEnding(account.account_last4)}
             <Text size="xs" c="dimmed">{`Institution ${account.institution}, transit ${account.transit}`}</Text>
           </>
         ) : 'None (not an EFT payment, or no account on file)'}

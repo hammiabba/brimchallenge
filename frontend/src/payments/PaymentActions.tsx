@@ -5,6 +5,7 @@ import { ErrorAlert } from '../api/ErrorAlert'
 import type { PaymentDetail, Role } from '../api/types'
 import { useCurrentUser } from '../auth/context'
 import { PAYMENT_METHOD_LABELS } from '../bills/labels'
+import { accountEnding } from '../lib/accounts'
 import { MoneyText } from '../ui/DataText'
 import { CommentActionModal } from '../vendors/CommentActionModal'
 import { newIdempotencyKey, useCancelPayment, usePayment, useReleasePayment } from './queries'
@@ -39,7 +40,7 @@ function ReleaseModal({ payment, opened, onClose }: { payment: PaymentDetail; op
         <Text size="sm">
           {'Send '}<MoneyText value={payment.amount} currency={payment.currency} />
           {` to ${payment.vendor_name ?? payment.vendor_id} by ${PAYMENT_METHOD_LABELS[payment.method] ?? payment.method}`}
-          {payment.method === 'EFT' && account ? `, to the account ending ${account.account_last4}` : ''}
+          {payment.method === 'EFT' && account ? `, to the account ${accountEnding(account.account_last4, true)}` : ''}
           {'. The payment is simulated, and it can\'t be undone here.'}
         </Text>
         {release.isError && <ErrorAlert error={release.error} />}

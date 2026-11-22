@@ -15,7 +15,7 @@ const PENDING: BankChange = {
 }
 
 describe('bank changes', () => {
-  it('opens on the pending requests with the full new account when the server sends it', async () => {
+  it('opens on the pending requests, showing the new account by its last four digits even when sent in full', async () => {
     const fake = installFakeApi({ ...billScreenRoutes({ role: 'finance_manager', user_id: 'U003' }), 'GET /bank-changes': { body: [PENDING] } })
     renderApp('/bank-changes')
 
@@ -27,7 +27,7 @@ describe('bank changes', () => {
     const row = (await within(table).findByText('BCR-0007')).closest('tr')!
     const cells = within(row).getAllByRole('cell')
     expect(within(cells[0]!).getByRole('link', { name: 'V011' })).toHaveAttribute('href', '/vendors/V011')
-    expect(within(row).getByText('0004821')).toBeInTheDocument()
+    expect(within(row).queryByText('0004821')).not.toBeInTheDocument()
     expect(within(row).getByText('Institution 010, transit 54321')).toBeInTheDocument()
     expect(await within(cells[1]!).findByText('Jordan Okafor')).toBeInTheDocument()
     expect(within(cells[1]!).getByText('Email request')).toBeInTheDocument()
@@ -35,7 +35,7 @@ describe('bank changes', () => {
     expect(within(cells[2]!).getByText('Ending 1111')).toBeInTheDocument()
     expect(within(cells[2]!).getByText('→').closest('[aria-hidden="true"]')).not.toBeNull()
     expect(within(cells[2]!).getByText('changed to')).toBeInTheDocument()
-    expect(cells[2]).toHaveTextContent('Ending 1111→ changed to 0004821')
+    expect(cells[2]).toHaveTextContent('Ending 1111→ changed to Ending 4821')
     // Verify above Reject, stacked in the Actions cell.
     const actions = cells[5]!
     const [verify, reject] = within(actions).getAllByRole('button')

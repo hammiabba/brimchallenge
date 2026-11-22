@@ -4,6 +4,7 @@ import { Link } from 'react-router'
 
 import { personName, usePeople } from '../api/reference'
 import type { BankChange } from '../api/types'
+import { accountEnding } from '../lib/accounts'
 import { StatusBadge } from '../ui/Badges'
 import { DateText, Id } from '../ui/DataText'
 import { CHANNEL_LABELS } from './labels'
@@ -18,21 +19,22 @@ const MIN_WIDTH = 720
 
 /**
  * The old account, then the new one under it: "Ending 7504" / "→ Ending 9679". The arrow is decoration; a screen
- * reader hears "Ending 7504 changed to Ending 9679". The new account is the full number, with its institution and
- * transit, when the server sent it unmasked. Each account is its own text element.
+ * reader hears "Ending 7504 changed to Ending 9679". Accounts are always shown by their last four digits (lib/accounts),
+ * even when the server sent the full number; the new account's institution and transit follow when it sent them.
+ * Each account is its own text element.
  */
 function AccountCell({ change }: { change: BankChange }) {
   // Each account line stays on one line ("→ Ending 9679", never "→ Ending" / "9679"); the column grows to fit it.
   const oneLine = { whiteSpace: 'nowrap' } as const
   return (
     <Stack gap={0}>
-      <Text size="sm" style={oneLine}>{change.old_account_last4 ? `Ending ${change.old_account_last4}` : 'None on file'}</Text>
+      <Text size="sm" style={oneLine}>{accountEnding(change.old_account_last4)}</Text>
       <Text size="sm" style={oneLine}>
         <span aria-hidden="true">{'→ '}</span>
         <VisuallyHidden component="span">changed to </VisuallyHidden>
-        {change.new_account ? <Id>{change.new_account}</Id> : <Text span inherit>{`Ending ${change.new_account_last4}`}</Text>}
+        <Text span inherit>{accountEnding(change.new_account_last4)}</Text>
       </Text>
-      {change.new_account && (
+      {(change.new_institution || change.new_transit) && (
         <Text size="xs" c="dimmed">{`Institution ${change.new_institution ?? '?'}, transit ${change.new_transit ?? '?'}`}</Text>
       )}
     </Stack>

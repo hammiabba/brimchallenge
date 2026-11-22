@@ -494,7 +494,9 @@ describe('payment detail', () => {
     expect(within(summary).getByRole('link', { name: 'AP-00436' })).toHaveAttribute('href', '/bills/AP-00436')
     expect(within(summary).getByRole('link', { name: 'V040' })).toHaveAttribute('href', '/vendors/V040')
     expect(within(summary).getByText('$1,604.60')).toBeInTheDocument()
-    expect(within(summary).getByText('0094410')).toBeInTheDocument()
+    // Sent in full to this role, but shown like everywhere else: the last four digits.
+    expect(within(summary).getByText('Ending 4410')).toBeInTheDocument()
+    expect(within(summary).queryByText('0094410')).not.toBeInTheDocument()
     expect(within(summary).getByText('Institution 004, transit 55123')).toBeInTheDocument()
     expect(await within(summary).findByText('Jordan Okafor')).toBeInTheDocument() // prepared by
     // Finance sees why they can't release (P11) and may still cancel.
