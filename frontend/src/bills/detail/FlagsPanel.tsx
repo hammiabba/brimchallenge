@@ -173,7 +173,7 @@ export function FlagsPanel({ bill }: { bill: BillDetail }) {
   return (
     <Stack gap="md">
       <Title order={2}>Flags</Title>
-      {!run && <Text size="sm">No controls run yet, so this bill has no flags.</Text>}
+      {!run && <Text size="sm">Not checked yet, so this bill has no flags.</Text>}
       {run && flags.length === 0 && <Text size="sm">No flags on this bill.</Text>}
       {flags.map((flag, index) => (
         <Stack key={flag.id} gap="md">

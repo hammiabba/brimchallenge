@@ -107,7 +107,7 @@ export function AuditTrail({ bill, emptyMessage = 'No audit events for this bill
       {events.length > 0 && (
         <Box id="bill-audit-trail" hidden={!open}>
           <Table.ScrollContainer minWidth={720}>
-            <Table aria-label="Audit trail" withTableBorder bg="white" stickyHeader={false}>
+            <Table aria-label="Audit trail" withTableBorder bg="white">
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>When</Table.Th>

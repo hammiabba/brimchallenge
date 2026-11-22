@@ -161,13 +161,15 @@ export function ApprovalRoute({ bill }: { bill: BillDetail }) {
       <Title order={2}>Approval route</Title>
       {run ? (
         <Text size="sm" c="dimmed">
-          {`Controls run version ${run.version}, evaluated `}<DateText value={run.evaluated_at} kind="timestamp" />.
+          {/* When the checks last ran, and how many times in all (they run again after each edit). */}
+          {'Last checked '}<DateText value={run.evaluated_at} kind="timestamp" />
+          {run.version > 1 ? `, ${run.version} checks in all.` : '.'}
         </Text>
       ) : (
-        <Text size="sm">No controls run yet, so this bill has no approval route.</Text>
+        <Text size="sm">Not checked yet, so this bill has no approval route.</Text>
       )}
       {run?.recommendation && <Text size="sm">{`Recommendation: ${run.recommendation}`}</Text>}
-      {run && steps.length === 0 && <Text size="sm">This controls run produced no approval steps.</Text>}
+      {run && steps.length === 0 && <Text size="sm">The checks gave this bill no approval steps.</Text>}
       {steps.length > 0 && (
         <Box component="ol" className="app-timeline" aria-label="Approval steps">
           {steps.map((step) => (

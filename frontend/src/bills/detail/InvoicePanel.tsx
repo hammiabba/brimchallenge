@@ -5,6 +5,7 @@ import { Fragment, useState, type ReactNode } from 'react'
 import { API_PREFIX } from '../../api/client'
 import { departmentLabel, glAccountName, personName, useDepartments, useGlAccounts, usePeople } from '../../api/reference'
 import type { BillDetail, BillLine } from '../../api/types'
+import { accountEnding } from '../../lib/accounts'
 import { parseDateOnly } from '../../lib/dates'
 import { decimalToPercent, formatUnitPrice } from '../../lib/decimal'
 import { isMoney, parseMoneyInput } from '../../lib/money'
@@ -172,7 +173,7 @@ function VendorBlock({ bill, snapshot }: { bill: BillDetail; snapshot: Snapshot 
         <Text size="sm">
           {bill.vendor_name ?? 'No vendor'} {bill.vendor_id && <Id>{bill.vendor_id}</Id>}
         </Text>
-        <Text size="sm" c="dimmed">Loaded from the dataset history: there is no extraction snapshot for this bill.</Text>
+        <Text size="sm" c="dimmed">Imported from the dataset history, so there is no record of what the invoice itself showed.</Text>
       </FieldRegion>
     )
   }
@@ -203,7 +204,8 @@ function VendorBlock({ bill, snapshot }: { bill: BillDetail; snapshot: Snapshot 
               : bank.map(([key, value], index) => (
                 <Fragment key={key}>
                   {index > 0 && ', '}
-                  {key} <Id>{value ?? ''}</Id>
+                  {/* The account by its last four digits, as on every page; institution and transit as printed. */}
+                  {key === 'account' ? `account ${accountEnding(value, true)}` : <>{key} <Id>{value ?? ''}</Id></>}
                 </Fragment>
               ))}
           </Text>
@@ -256,7 +258,7 @@ function LinesTable({ bill }: { bill: BillDetail }) {
   return (
     <FieldRegion name="lines">
       <Table.ScrollContainer minWidth={540}>
-        <Table aria-label="Invoice lines" withTableBorder bg="white" stickyHeader={false} className="app-wrap-cells">
+        <Table aria-label="Invoice lines" withTableBorder bg="white" className="app-wrap-cells">
           <Table.Thead>
             <Table.Tr>
               <Table.Th data-numeric>Line</Table.Th>
@@ -319,7 +321,7 @@ function TaxesTable({ bill, snapshot }: { bill: BillDetail; snapshot: Snapshot |
   }
   return (
     <FieldRegion name="taxes">
-      <Table aria-label="Taxes and totals" withTableBorder bg="white" stickyHeader={false} maw={420}>
+      <Table aria-label="Taxes and totals" withTableBorder bg="white" maw={420}>
         <Table.Thead>
           <Table.Tr>
             <Table.Th>Tax</Table.Th>

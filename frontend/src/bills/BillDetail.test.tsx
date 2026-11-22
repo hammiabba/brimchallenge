@@ -76,7 +76,7 @@ describe('bill detail', () => {
     expect(within(duplicate).getByText(/Possible duplicate of AP-00394/)).toBeInTheDocument()
     expect(within(duplicate).getByText(/check whether it was paid before approving/)).toBeInTheDocument()
     expect(within(duplicate).getByRole('link', { name: 'AP-00394' })).toHaveAttribute('href', '/bills/AP-00394')
-    expect(within(duplicate).getByText('score 100%')).toBeInTheDocument()
+    expect(within(duplicate).getByText('100% alike')).toBeInTheDocument()
     expect(within(duplicate).getByText('same vendor and number')).toBeInTheDocument()
     expect(within(duplicate).getByText('Open')).toBeInTheDocument()
 
@@ -170,13 +170,19 @@ describe('bill detail', () => {
     expect(within(steps).getByText(byFullText(
       'Approved by Priya Natarajan U003, on behalf of Sam Rivera, Nov 2, 2026, 11:00 AM EST'))).toBeInTheDocument()
     expect(within(steps).getByText('Comment: Fine while Sam is away')).toBeInTheDocument()
-    expect(screen.getByText(byFullText('Controls run version 1, evaluated Nov 2, 2026, 10:00 AM EST.'))).toBeInTheDocument()
+    expect(screen.getByText(byFullText('Last checked Nov 2, 2026, 10:00 AM EST.'))).toBeInTheDocument()
+  })
+
+  it('says how many times the checks have run once they ran again after an edit', async () => {
+    renderBill(billDetail({ latest_run: controlsRun({ version: 3, flags: [] }) }))
+    expect(await screen.findByText(byFullText('Last checked Nov 2, 2026, 10:00 AM EST, 3 checks in all.'))).toBeInTheDocument()
+    expect(screen.queryByText(/Controls run version/)).not.toBeInTheDocument()
   })
 
   it('says plainly when a bill has no controls run', async () => {
     renderBill(billDetail({ latest_run: null }))
-    expect(await screen.findByText('No controls run yet, so this bill has no flags.')).toBeInTheDocument()
-    expect(screen.getByText('No controls run yet, so this bill has no approval route.')).toBeInTheDocument()
+    expect(await screen.findByText('Not checked yet, so this bill has no flags.')).toBeInTheDocument()
+    expect(screen.getByText('Not checked yet, so this bill has no approval route.')).toBeInTheDocument()
   })
 
   it('shows "Bill not found" for a 404, which also covers bills outside the user\'s scope', async () => {
@@ -187,7 +193,17 @@ describe('bill detail', () => {
     renderApp('/bills/AP-00300')
     expect(await screen.findByRole('heading', { name: 'Bill not found' })).toBeInTheDocument()
     expect(screen.getByText(byFullText('There is no bill AP-00300 that you can see.'))).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Back to bills' })).toHaveAttribute('href', '/bills')
+    // An employee has no Bills list in the sidebar, so the way back is My submissions.
+    expect(screen.getByRole('link', { name: 'Back to my submissions' })).toHaveAttribute('href', '/submissions')
+  })
+
+  it('sends a role with the Bills list back to it from "Bill not found"', async () => {
+    installFakeApi({
+      ...billScreenRoutes({ role: 'ap_clerk' }),
+      'GET /bills/AP-00300': { status: 404, body: envelope('bill.not_found', 'No bill AP-00300.') },
+    })
+    renderApp('/bills/AP-00300')
+    expect(await screen.findByRole('link', { name: 'Back to bills' })).toHaveAttribute('href', '/bills')
   })
 
   it('marks fields a person corrected, low extraction confidence, and an unconfirmed department', async () => {
@@ -213,8 +229,11 @@ describe('bill detail', () => {
     // "2174.5" and "2174.50" are the same amount: not marked as changed.
     expect(screen.getByText('$2,174.50').closest('.app-changed')).toBeNull()
     expect(screen.getByText('subtotal + taxes != total')).toBeInTheDocument()
-    expect(screen.getByText('Matched by GST number (score 1.00)')).toBeInTheDocument()
-    expect(screen.getByText('*****4216')).toBeInTheDocument()
+    // An exact match says nothing more: no score.
+    expect(screen.getByText('Matched by GST number')).toBeInTheDocument()
+    // The account by its last four digits, the one format every page uses.
+    expect(screen.getByText(/account ending 4216/)).toBeInTheDocument()
+    expect(screen.queryByText(/\*{5}4216/)).not.toBeInTheDocument()
     expect(screen.getByText('Not confirmed: suggested from the line coding')).toBeInTheDocument()
   })
 

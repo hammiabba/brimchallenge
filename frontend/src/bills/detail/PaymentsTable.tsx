@@ -20,7 +20,7 @@ export function PaymentsTable({ bill }: { bill: BillDetail }) {
         <Text size="sm">No payments for this bill yet.</Text>
       ) : (
         <Table.ScrollContainer minWidth={720}>
-          <Table aria-label="Payments" withTableBorder bg="white" stickyHeader={false}>
+          <Table aria-label="Payments" withTableBorder bg="white">
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Payment</Table.Th>

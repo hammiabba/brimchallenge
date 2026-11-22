@@ -29,12 +29,24 @@ const MATCH_METHODS: Record<string, string> = {
   fuzzy_name: 'similar name',
 }
 
-/** "Matched by GST number (score 0.92)", or "Not matched to a vendor". */
+/**
+ * A 0..1 similarity in words, the one format the bill screen uses for scores: 0.87 -> "87% alike". (A similarity,
+ * not money, so a JS number is fine here.)
+ */
+export function similarityText(score: number): string {
+  return `${Math.round(score * 100)}% alike`
+}
+
+/**
+ * "Matched by GST number", "Matched by similar name (87% alike)", or "Not matched to a vendor". The similarity is shown
+ * only when the match isn't exact; an exact match by GST number or bank account says nothing more.
+ */
 export function vendorMatchLine(method: unknown, score: unknown): string {
   const label = typeof method === 'string' ? MATCH_METHODS[method] : undefined
   if (!label) return 'Not matched to a vendor'
-  // The score is a 0..1 similarity, not money: showing it with two decimals is fine.
-  return typeof score === 'number' ? `Matched by ${label} (score ${score.toFixed(2)})` : `Matched by ${label}`
+  return typeof score === 'number' && Math.round(score * 100) < 100
+    ? `Matched by ${label} (${similarityText(score)})`
+    : `Matched by ${label}`
 }
 
 /** Where the bill's department came from (BillDetail.department_source). `unconfirmed` marks a suggestion. */

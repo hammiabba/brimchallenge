@@ -3,9 +3,10 @@ import { Fragment } from 'react'
 import { Link } from 'react-router'
 
 import type { DuplicateMatch } from '../../api/types'
+import { accountEnding } from '../../lib/accounts'
 import { DateText, Id, MoneyText } from '../../ui/DataText'
 import { classifyEvidence, type EvidenceBlock, type EvidenceValue } from '../evidence'
-import { bankChannelLabel, duplicateKindLabel } from '../labels'
+import { bankChannelLabel, duplicateKindLabel, similarityText } from '../labels'
 
 /** One evidence value: money, a date, a mono id, plain text (never HTML), or a comma-separated list. */
 export function EvidenceValueView({ value }: { value: EvidenceValue }) {
@@ -46,17 +47,13 @@ function BillLink({ billId }: { billId: string }) {
   )
 }
 
-/** A 0..1 score as a whole percentage (a similarity, not money). */
-function percent(score: number): string {
-  return `${Math.round(score * 100)}%`
-}
 
 /** One evidence block. */
 function Block({ block }: { block: EvidenceBlock }) {
   switch (block.type) {
     case 'pairs':
       return (
-        <Table withTableBorder fz="sm" verticalSpacing={4} bg="white" stickyHeader={false} highlightOnHover={false}>
+        <Table withTableBorder fz="sm" verticalSpacing={4} bg="white" highlightOnHover={false}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Item</Table.Th>
@@ -83,7 +80,7 @@ function Block({ block }: { block: EvidenceBlock }) {
               <Group gap={6} wrap="wrap">
                 {match.isBill ? <BillLink billId={match.id} /> : <Id>{match.id}</Id>}
                 {match.kind && <Text span size="sm">{duplicateKindLabel(match.kind)}</Text>}
-                {match.score !== null && <Text span size="sm" c="dimmed">{`score ${percent(match.score)}`}</Text>}
+                {match.score !== null && <Text span size="sm" c="dimmed">{similarityText(match.score)}</Text>}
               </Group>
               {match.reasons.length > 0 && (
                 <Text size="xs" c="dimmed">{match.reasons.join('; ')}</Text>
@@ -113,7 +110,7 @@ function Block({ block }: { block: EvidenceBlock }) {
       return (
         <Stack gap={2}>
           <Text size="sm">
-            Account <Id>{`...${block.oldLast4}`}</Id> changed to <Id>{`...${block.newLast4}`}</Id>
+            {`Account ${accountEnding(block.oldLast4, true)} changed to ${accountEnding(block.newLast4, true)}`}
           </Text>
           <Text size="sm" c="dimmed">
             {block.changedOn.kind !== 'empty' && <>On <EvidenceValueView value={block.changedOn} /></>}
