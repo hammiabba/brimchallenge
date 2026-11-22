@@ -4,6 +4,12 @@ from __future__ import annotations
 
 import re
 
+from sqlalchemy import update
+from sqlalchemy.orm import Session
+
+from app.db import models
+from app.db.database import as_write_engine
+from app.db.types import utcnow
 from tests.api.factories import app_bill
 from tests.api.test_bill_flow import decide, detail, submit
 
@@ -114,3 +120,29 @@ def test_controls_run_lists_duplicates(fresh_engine, act_as):
     second = app_bill(fresh_engine, number="DUP-77")
     dups = detail(clerk, second)["latest_run"]["duplicates"]
     assert any(d["matched_invoice_id"] == first for d in dups)
+
+
+def test_view_document_needs_a_kept_file_and_a_role_that_may_open_files(fresh_engine, act_as):
+    bill = app_bill(fresh_engine)  # the factory's "sha256:APP-0001" isn't a file intake kept
+    assert detail(act_as("U004"), bill)["allowed_actions"]["view_document"] == {
+        "allowed": False, "reason": "No original file for this bill."}
+
+    # Give the bill an original file, as intake does: a sha256 hash that an intake item references.
+    file_hash = "ab" * 32
+    with Session(as_write_engine(fresh_engine)) as s:
+        s.execute(update(models.Bill).where(models.Bill.bill_id == bill).values(file_hash=file_hash))
+        s.add(models.IntakeItem(email_id=None, file_name="APP-0001.pdf", file_hash=file_hash, status="ok", error=None,
+                                warnings=[], bill_id=bill, created_at=utcnow(), created_by="U004"))
+        s.commit()
+
+    # The roles GET /intake/files/{hash} admits (AP, finance, controller, auditor) may open it; others may not.
+    for user_id in ("U004", "U003", "U001", "U006"):
+        assert detail(act_as(user_id), bill)["allowed_actions"]["view_document"] == {"allowed": True, "reason": None}
+    for user_id in ("U013", "U007"):  # the D01 employee and approver can see the bill but not the file
+        assert detail(act_as(user_id), bill)["allowed_actions"]["view_document"] == {
+            "allowed": False, "reason": "Your role can't open original files."}
+
+
+def test_view_document_is_refused_for_history_bills(login):
+    actions = login("U004").get("/bills/AP-00407").json()["allowed_actions"]
+    assert actions["view_document"] == {"allowed": False, "reason": "No original file for this bill."}

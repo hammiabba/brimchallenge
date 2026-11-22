@@ -9,14 +9,16 @@ it depends on what the client last loaded.
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
 from app.api.schemas_api import ActionState
 from app.auth.deps import CurrentUser
-from app.auth.roles import AP_CLERK, CONTROLLER_ADMIN, FINANCE_MANAGER, RELEASERS, SIGNERS
+from app.auth.roles import AP_CLERK, BACK_OFFICE_READ, CONTROLLER_ADMIN, FINANCE_MANAGER, RELEASERS, SIGNERS
 from app.db import models
 from app.db.bills import latest_controls_run
 from app.services import approvals, controls_runner, payments
@@ -57,6 +59,23 @@ def _answer(user: CurrentUser, action: str, roles: tuple[str, ...], check: Calla
         return ActionState(allowed=False, reason=exc.message)
     except _No as exc:
         return ActionState(allowed=False, reason=str(exc))
+
+
+# GET /intake/files/{hash} serves only a sha256 hash that an intake item references (app.intake.files.load); the same
+# test decides whether a bill has an original file to open.
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+def document_action(db: Session, user: CurrentUser, bill: models.Bill) -> ActionState:
+    """view_document: may the caller open the bill's original file? Only roles that may call GET /intake/files/{hash}
+    (BACK_OFFICE_READ, the constant that route's guard uses), and only when intake kept a file for this bill."""
+    if user.role not in BACK_OFFICE_READ:
+        return ActionState(allowed=False, reason="Your role can't open original files.")
+    file_hash = bill.file_hash or ""
+    if not _SHA256.fullmatch(file_hash) or not db.scalar(
+            select(exists().where(models.IntakeItem.file_hash == file_hash))):
+        return ActionState(allowed=False, reason="No original file for this bill.")
+    return ActionState(allowed=True, reason=None)
 
 
 def _editable(bill: models.Bill, app_only: bool = True) -> None:
@@ -125,7 +144,9 @@ def bill_actions(db: Session, user: CurrentUser, bill: models.Bill) -> dict[str,
     checks = {"edit": lambda: _editable(bill), "code_lines": lambda: _editable(bill), "resolve_flags": resolve,
               "override_blocking_flags": override_blocking, "submit": submit, "approve": decide, "reject": decide,
               "assign_step": assign, "void": void, "schedule_payment": schedule}
-    return {name: _answer(user, name, BILL_ACTION_ROLES[name], check) for name, check in checks.items()}
+    actions = {name: _answer(user, name, BILL_ACTION_ROLES[name], check) for name, check in checks.items()}
+    actions["view_document"] = document_action(db, user, bill)
+    return actions
 
 
 def payment_actions(db: Session, user: CurrentUser, p: models.Payment) -> dict[str, ActionState]:
