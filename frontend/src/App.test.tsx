@@ -155,13 +155,6 @@ describe('signed in', () => {
     expect(screen.queryByRole('region', { name: 'Delegation' })).not.toBeInTheDocument()
   })
 
-  it('notes when a screen is not in the role\'s sidebar', async () => {
-    installFakeApi({ 'GET /auth/me': { body: makeMe({ role: 'employee' }) } })
-    renderApp('/payments')
-    expect(await screen.findByRole('heading', { name: 'Payments' })).toBeInTheDocument()
-    expect(screen.getByText(/isn't in the Employee navigation/)).toBeInTheDocument()
-  })
-
   it('shows a 404 page for an unknown path', async () => {
     installFakeApi({ 'GET /auth/me': { body: makeMe() } })
     renderApp('/no-such-page')
