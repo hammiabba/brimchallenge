@@ -298,3 +298,62 @@ describe('release a payment', () => {
     expect(within(list).queryByText('Actions')).not.toBeInTheDocument()
   })
 })
+
+describe('cancel a payment', () => {
+  it('cancels with a comment and refreshes the lists', async () => {
+    let sent: unknown = null
+    const fake = installFakeApi(paymentsRoutes(CLERK, {
+      'GET /payments/PAY-00416': { body: paymentDetail({ allowed_actions: {
+        release: { allowed: false, reason: "Your role (ap_clerk) can't release payments." },
+        cancel: { allowed: true, reason: null },
+      } }) },
+      'POST /payments/PAY-00416/cancel': async (request) => {
+        sent = await request.json()
+        return { body: paymentDetail({ status: 'cancelled', allowed_actions: {} }) }
+      },
+    }))
+    const user = userEvent.setup()
+    renderApp('/payments')
+
+    const list = await screen.findByRole('table', { name: 'Payments' })
+    const row = (await within(list).findByText('PAY-00416')).closest('tr')!
+    // AP isn't a releaser, so the release refusal isn't shown to them; only what they can do.
+    expect(within(row).queryByText(/can't release/)).not.toBeInTheDocument()
+    await user.click(await within(row).findByRole('button', { name: 'Cancel payment' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Cancel payment' })
+    expect(within(dialog).getByText(/AP-00436 goes back to approved/)).toBeInTheDocument()
+    await user.type(within(dialog).getByRole('textbox', { name: 'Comment' }), 'Vendor asked for a cheque instead')
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel payment' }))
+
+    await waitFor(() => expect(sent).toEqual({ comment: 'Vendor asked for a cheque instead' }))
+    expect(await screen.findByText('Payment cancelled')).toBeInTheDocument()
+    await waitFor(() => expect(fake.calls.filter((c) => c === 'GET /bills').length).toBeGreaterThan(1))
+  })
+
+  it('shows a refusal in the dialog', async () => {
+    installFakeApi(paymentsRoutes(FINANCE, {
+      'GET /payments/PAY-00416': { body: paymentDetail({ allowed_actions: { cancel: { allowed: true, reason: null } } }) },
+      'POST /payments/PAY-00416/cancel': {
+        status: 409, body: envelope('payment.invalid_state', 'The payment is released; it must be scheduled.', 'rid-cx-1'),
+      },
+    }))
+    const user = userEvent.setup()
+    renderApp('/payments')
+    await user.click(await screen.findByRole('button', { name: 'Cancel payment' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Cancel payment' })
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel payment' }))
+    expect(await within(dialog).findByText('The payment is released; it must be scheduled.')).toBeInTheDocument()
+  })
+
+  it('has no Cancel button when the server doesn\'t allow it', async () => {
+    installFakeApi(paymentsRoutes(CLERK, {
+      'GET /payments/PAY-00416': { body: paymentDetail({ allowed_actions: {
+        cancel: { allowed: false, reason: 'The payment is released; only a scheduled payment can be cancelled.' },
+      } }) },
+    }))
+    renderApp('/payments')
+    const list = await screen.findByRole('table', { name: 'Payments' })
+    await within(list).findByText('PAY-00416')
+    await waitFor(() => expect(within(list).queryByRole('button', { name: 'Cancel payment' })).not.toBeInTheDocument())
+  })
+})
