@@ -80,3 +80,18 @@ export function useSubmitBill(bill: BillDetail) {
     onSuccess: apply,
   })
 }
+
+/**
+ * POST /bills/{id}/void with a required comment: the bill is cancelled instead of deleted and stays on record. AP can
+ * void bills in review; the controller also bills awaiting or past approval, as long as no payment is scheduled.
+ */
+export function useVoidBill(bill: BillDetail) {
+  const apply = useApplyBill()
+  return useMutation({
+    mutationFn: (comment: string | null) => unwrap(api.POST('/bills/{bill_id}/void', {
+      params: { path: { bill_id: bill.bill_id } },
+      body: { row_version: bill.row_version, comment: comment ?? '' },
+    })),
+    onSuccess: apply,
+  })
+}

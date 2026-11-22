@@ -387,3 +387,53 @@ describe('submit for approval', () => {
     expect(screen.queryByRole('region', { name: 'Ready for approval' })).not.toBeInTheDocument()
   })
 })
+
+describe('void a bill', () => {
+  it('voids with a required comment after confirming', async () => {
+    let sent: unknown = null
+    renderReview(inReview({ allowed_actions: { void: ALLOWED } }), CLERK, (state) => ({
+      'POST /bills/AP-00407/void': async (request) => {
+        sent = await request.json()
+        state.bill = { ...state.bill, status: 'void', allowed_actions: { void: { allowed: false, reason: 'A void bill can\'t be voided by your role.' } } }
+        return { body: state.bill }
+      },
+    }))
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: 'Void bill' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Void bill' })
+    expect(within(dialog).getByText(/this can't be undone/)).toBeInTheDocument()
+    const confirm = within(dialog).getByRole('button', { name: 'Void bill' })
+    expect(confirm).toBeDisabled()
+    await user.type(within(dialog).getByRole('textbox', { name: /Comment/ }), 'Read wrong: vendor will resend')
+    await user.click(confirm)
+
+    await waitFor(() => expect(sent).toEqual({ row_version: 4, comment: 'Read wrong: vendor will resend' }))
+    expect(await screen.findByText('Bill voided')).toBeInTheDocument()
+    const summary = screen.getByRole('region', { name: 'Bill summary' })
+    expect(await within(summary).findByText('Void')).toBeInTheDocument()
+    expect(within(summary).queryByRole('button', { name: 'Void bill' })).not.toBeInTheDocument()
+  })
+
+  it('shows a refusal in the dialog', async () => {
+    renderReview(inReview({ allowed_actions: { void: ALLOWED } }), { role: 'controller_admin', user_id: 'U002' }, () => ({
+      'POST /bills/AP-00407/void': {
+        status: 409, body: envelope('bill.payment_scheduled', 'A payment is scheduled for this bill; cancel it first.', 'rid-vd-1'),
+      },
+    }))
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Void bill' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Void bill' })
+    await user.type(within(dialog).getByRole('textbox', { name: /Comment/ }), 'Duplicate of AP-00394')
+    await user.click(within(dialog).getByRole('button', { name: 'Void bill' }))
+    expect(await within(dialog).findByText('A payment is scheduled for this bill; cancel it first.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Request id: rid-vd-1')).toBeInTheDocument()
+  })
+
+  it('has no Void button when the server doesn\'t allow it', async () => {
+    renderReview(inReview({ allowed_actions: { void: { allowed: false, reason: "Your role (finance_manager) can't void bills." } } }),
+      { role: 'finance_manager', user_id: 'U003' })
+    await screen.findByRole('heading', { level: 1, name: 'Bill AP-00407' })
+    expect(screen.queryByRole('button', { name: 'Void bill' })).not.toBeInTheDocument()
+  })
+})

@@ -9,7 +9,8 @@ import { STATUS_TONES } from '../../theme'
 import { StatusBadge } from '../../ui/Badges'
 import { DateText, Id, MoneyText } from '../../ui/DataText'
 import { DEPARTMENT_SOURCES } from '../labels'
-import { useEditBill } from '../mutations'
+import { useEditBill, useVoidBill } from '../mutations'
+import { CommentActionModal } from '../../vendors/CommentActionModal'
 import { DepartmentModal } from './DepartmentModal'
 
 /** One labelled fact in the header. */
@@ -93,16 +94,49 @@ function TotalFact({ bill }: { bill: BillDetail }) {
 }
 
 /**
+ * Void, when the bill's allowed_actions.void allows it (AP on bills in review; the controller also on bills awaiting or
+ * past approval with no payment scheduled). A confirm dialog with a required comment, since it can't be undone. The
+ * dialog stays mounted once the bill is void, so its success handling still runs after the bill refreshes.
+ */
+function VoidAction({ bill }: { bill: BillDetail }) {
+  const [open, setOpen] = useState(false)
+  const voidBill = useVoidBill(bill)
+  const action = bill.allowed_actions?.void
+  if (!action) return null
+  return (
+    <>
+      {action.allowed && <Button size="xs" variant="default" onClick={() => setOpen(true)}>Void bill</Button>}
+      <CommentActionModal
+        opened={open}
+        onClose={() => setOpen(false)}
+        title="Void bill"
+        description={`${bill.bill_id} is cancelled and won't be paid. It stays on record with your reason; this can't be undone.`}
+        mutation={voidBill}
+        onDone={() => {
+          notifications.show({ title: 'Bill voided', message: bill.bill_id })
+          setOpen(false)
+        }}
+        danger
+        commentRequired
+      />
+    </>
+  )
+}
+
+/**
  * The bill's header row: id and status, then vendor (with its status), invoice number, dates, total and department.
  */
 export function BillHeader({ bill }: { bill: BillDetail }) {
   const vendor = useVendor(bill.vendor_id)
   return (
     <Stack component="section" aria-label="Bill summary" gap="sm">
-      <Group gap="sm" align="center">
-        <Title order={1}>Bill <Id>{bill.bill_id}</Id></Title>
-        <StatusBadge kind="bill" status={bill.status} />
-        {bill.is_credit_note && <Text size="sm" fw={600}>Credit note</Text>}
+      <Group justify="space-between" align="center" gap="sm">
+        <Group gap="sm" align="center">
+          <Title order={1}>Bill <Id>{bill.bill_id}</Id></Title>
+          <StatusBadge kind="bill" status={bill.status} />
+          {bill.is_credit_note && <Text size="sm" fw={600}>Credit note</Text>}
+        </Group>
+        <VoidAction bill={bill} />
       </Group>
       <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="md" verticalSpacing="xs">
         <Fact label="Vendor">
