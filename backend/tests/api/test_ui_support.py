@@ -56,6 +56,26 @@ def test_queue_rows_carry_the_current_step(fresh_engine, act_as):
     assert row["current_step"] == {"step_no": 1, "role": "dept_manager", "user_id": "U003", "delegated_from": "U012"}
 
 
+def test_bill_detail_carries_the_current_step_like_the_queue(fresh_engine, act_as):
+    # D07's manager U012 is on leave, so step 1 goes to U003 as the delegate (P08).
+    bill = app_bill(fresh_engine, dept="D07", requester="U037")
+    clerk = act_as("U004")
+    rv = detail(clerk, bill)["row_version"]
+    submitted = clerk.post(f"/bills/{bill}/submit", json={"row_version": rv}).json()
+    want = {"step_no": 1, "role": "dept_manager", "user_id": "U003", "delegated_from": "U012"}
+    assert submitted["current_step"] == want  # the submit answer says who step 1 goes to
+    fm = act_as("U003")
+    shown = fm.get(f"/bills/{bill}").json()
+    assert shown["current_step"] == want
+    [row] = fm.get("/approvals/queue").json()
+    assert row["current_step"] == shown["current_step"]
+    assert shown["open_flags"] == row["open_flags"] and shown["top_flag_code"] == row["top_flag_code"]
+    # Once the last step is signed there is no current step.
+    fm.post(f"/bills/{bill}/approve", json={"row_version": shown["row_version"]})
+    approved = fm.get(f"/bills/{bill}").json()
+    assert approved["status"] == "approved" and approved["current_step"] is None
+
+
 def test_me_shows_approval_and_release_limits(login):
     fm = login("U003").get("/auth/me").json()
     assert fm["release_limit_cad"] == "100000.00" and fm["approval_limit_cad"]
