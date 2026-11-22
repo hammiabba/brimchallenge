@@ -11,8 +11,8 @@ Two tests enforce parts of this file: `src/ui/contrast.test.ts` (every colour pa
 ## 1. Colour
 
 Brand values come from Brandfetch (an unclaimed brand page for Brim). They are defined once, in `BRAND` in
-`src/theme.ts`, so official values can replace them in one place. Brim's logo and wordmark are not used; the app name
-is `APP_NAME` ("AP Automation").
+`src/theme.ts`, so official values can replace them in one place. The app name is `APP_NAME` ("AP Automation"); the
+Brim logo is used only as described in "Logo" below.
 
 | Colour | Value | Role | Contrast |
 |---|---|---|---|
@@ -28,6 +28,7 @@ is `APP_NAME` ("AP Automation").
 | Border | `#CED8DF` | Dividers, table rules, panel borders (decorative) | |
 | Control border | `#7A8C98` | Inputs and default buttons, so controls are identifiable | 3.48:1 on white |
 | Primary tint | `#EAF2F6` | Active navigation item, row hover, and the part of an invoice a flag points at (with a 2px Blumine outline) | Blumine on it 7.13:1, ink 13.97:1 |
+| On-primary muted | `#D2E3EC` | Small secondary text on a Blumine panel (the sign-in demo note); main text on Blumine is white | 6.14:1 on Blumine (white 8.08:1) |
 
 There are no lighter text greys than Secondary. Mantine's `c="dimmed"` is mapped to Secondary and its placeholder
 colour to Placeholder, so Mantine defaults stay inside the palette.
@@ -80,7 +81,8 @@ colour, and the contrast test checks it.
 - Structure comes from spacing, alignment and 1px borders, not shadows. There is one shadow (`theme.shadows`, all
   sizes equal), and only floating elements use it: menus, dropdowns, modals, drawers, notifications.
 - Pages are sections with headings and dividers on the page background. A card (a bordered white panel) only where
-  content truly stands alone, such as the sign-in panel. Never a card inside a card.
+  content truly stands alone, such as a dialog. Never a card inside a card. The sign-in page is not a card either: it
+  fills the viewport with a Blumine brand panel beside the sign-in column (stacked on narrow screens).
 - 4px corners everywhere. Every radius size in the theme is 4px, so nothing is pill-shaped.
 - The shell: a white header with the 3px Robin's Egg bar on top, a white sidebar, the page on the page background.
 - Tables are the core component. The theme sets the defaults, so later chunks get them for free: compact rows,
@@ -150,6 +152,28 @@ colour, and the contrast test checks it.
 | `ErrorAlert` | `src/api/ErrorAlert.tsx` | An error inside a screen or form |
 | `notifyError` | `src/api/notify.tsx` | An error after an action (a notification) |
 
+## 7. Logo
+
+The logo files are in `src/assets/brand/`, unchanged from Brim's originals. Their names don't say what they are:
+
+| File | What it is | Size | Use |
+|---|---|---|---|
+| `brim_clear.png` | Robin's Egg wordmark (`#00C1D5`) on a transparent background | 177 x 59 | On Blumine: the sign-in brand panel. 3.69:1 on Blumine, the most contrast any of the files has on a brand surface |
+| `brim_blue.png` | White wordmark on its own Robin's Egg square, fully opaque (an app icon) | 400 x 400 | The favicon. Always the whole square |
+| `brim_white.png` | Robin's Egg wordmark on an opaque white rectangle | 1024 x 512 | Only on pure white, if ever; on the page background its white box shows. 2.19:1 on white, so it reads faintly. Not used now |
+
+- Brim has no white-wordmark file, so the rule "white logo on Blumine" becomes: on Blumine, the Robin's Egg wordmark
+  (`brim_clear.png`). On white or the page background, the cyan wordmark is faint (about 2:1); prefer placing the logo
+  on Blumine.
+- Never stretch, recolour, crop (the square icon stays a square), add effects to, or place the logo on Robin's Egg or
+  Sand.
+- Clear space on every side of at least the height of the wordmark's letters; minimum width 72px. Show
+  `brim_clear.png` at no more than half its pixel size (88px wide) so it stays sharp on 2x screens.
+- Alt text "Brim". The logo is not a link.
+- Where: the sign-in brand panel and the favicon. Not in the app header: the header's Robin's Egg bar already carries
+  the brand, the only light-background wordmark is faint on white, and the header's space is for the task and the
+  signed-in user.
+
 ## Never
 
 - Purple or violet, anywhere.
@@ -166,3 +190,4 @@ colour, and the contrast test checks it.
 - Light-grey body text (nothing lighter than Secondary).
 - Fake people, avatars, metrics or testimonials.
 - Landing-page patterns: hero sections, feature grids.
+- The Brim logo stretched, recoloured, cropped, with effects, or on Robin's Egg or Sand (see "Logo").
