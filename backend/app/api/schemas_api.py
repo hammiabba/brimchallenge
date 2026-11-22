@@ -624,6 +624,61 @@ class EmailOut(ApiModel):
     suggested_action: SuggestedAction | None = None  # intake lane: app.intake.review.action_for
 
 
+# ---------------------------------------------------------------- early-payment discounts (controls.early_pay)
+
+class EarlyPaySuggestionOut(ApiModel):
+    bill_id: str
+    vendor_id: str
+    vendor_name: str | None
+    status: str
+    terms: str = Field(description='The vendor\'s terms in words, e.g. "2% off if paid within 10 days, net 30"')
+    method: str
+    invoice_date: date
+    due_date: date
+    discount_deadline: date | None = Field(None, description="Last day the money must arrive to earn the discount")
+    pay_on: date = Field(description="Suggested date to send the payment")
+    scheduled_date: date | None
+    currency: Literal["CAD", "USD"]
+    total: Money
+    saving: Money = Field(description="In the bill's currency, compared with paying on the due date")
+    saving_cad: Money
+    pay_amount: Money
+    action: Literal["take_discount", "pay_on_due_date", "pay_now", "reschedule"]
+    reason: str
+    notes: list[str]
+
+
+class PastDiscountOut(ApiModel):
+    payment_id: str
+    bill_id: str
+    vendor_id: str
+    invoice_date: date
+    paid_date: date
+    days_to_pay: int
+    discount_cad: Money
+
+
+class EarlyPaySummary(ApiModel):
+    bills: int
+    with_discount_open: int
+    saving_cad: Money
+    to_reschedule: int
+    pay_now: int
+
+
+class EarlyPayHistory(ApiModel):
+    taken: int
+    taken_cad: Money
+    missed: int
+    missed_cad: Money
+    missed_payments: list[PastDiscountOut]
+
+
+class EarlyPayReport(ApiModel):
+    as_of: date
+    summary: EarlyPaySummary
+    suggestions: list[EarlyPaySuggestionOut]
+    history: EarlyPayHistory
 # ---------------------------------------------------------------- bank reconciliation (controls.reconciliation)
 
 class ReconIssueOut(ApiModel):
