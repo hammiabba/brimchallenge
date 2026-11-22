@@ -5,7 +5,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, unwrap } from '../api/client'
-import type { AbsenceInput, PolicyPatch, UserPatch } from '../api/types'
+import type { AbsenceInput, PolicyPatch, Role, UserPatch } from '../api/types'
+
+/**
+ * The roles that may change users, policies and absences, as the API's role gate decides it (the PATCH and POST
+ * routes under /admin are controller only; tests/api/matrix.py). Screens show their edit actions only to these roles;
+ * the server still refuses anyone else.
+ */
+export const ADMIN_WRITE_ROLES: readonly Role[] = ['controller_admin']
 
 /** GET /admin/users: every user, including terminated ones. */
 export function useAdminUsers() {

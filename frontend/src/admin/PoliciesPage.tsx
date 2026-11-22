@@ -5,12 +5,15 @@ import { useState } from 'react'
 import { ErrorAlert } from '../api/ErrorAlert'
 import { personName, usePeople } from '../api/reference'
 import type { Policy, PolicyPatch } from '../api/types'
+import { useCurrentUser } from '../auth/context'
 import { DateText, Id } from '../ui/DataText'
-import { usePolicies, useUpdatePolicy } from './queries'
+import { ADMIN_WRITE_ROLES, usePolicies, useUpdatePolicy } from './queries'
 import { TableShell } from './TableShell'
 
-/** Edit comes first, as on Users, so it is never the column cut off at the right edge. */
-const COLUMNS = ['', 'Rule', 'Type', 'Condition', 'Required', 'Notes', 'Last changed'] as const
+/** The rules' columns; Edit comes last, as on Users, and only for roles that may edit. */
+const COLUMNS = ['Rule', 'Type', 'Condition', 'Required', 'Notes', 'Last changed'] as const
+/** The Edit column has no heading: its buttons say what they do ("Edit rule P02"). */
+const EDIT_COLUMN = ''
 const TYPE_LABELS: Record<Policy['rule_type'], string> = {
   approval: 'Approval',
   payment_release: 'Payment release',
@@ -82,6 +85,9 @@ export default function PoliciesPage() {
   const people = usePeople()
   const [editing, setEditing] = useState<Policy | null>(null)
   const rows = policies.data ?? []
+  // Auditors read this page; only the roles the server lets edit policies get the Edit column (display only).
+  const mayEdit = ADMIN_WRITE_ROLES.includes(useCurrentUser().role)
+  const columns = mayEdit ? [...COLUMNS, EDIT_COLUMN] : COLUMNS
 
   return (
     <Stack gap="md">
@@ -89,14 +95,10 @@ export default function PoliciesPage() {
       {policies.isError ? (
         <ErrorAlert error={policies.error} title="Can't load policies" onRetry={() => void policies.refetch()} />
       ) : (
-        <TableShell label="Policies" columns={COLUMNS} loading={policies.isPending} empty={rows.length === 0}
+        <TableShell label="Policies" columns={columns} loading={policies.isPending} empty={rows.length === 0}
           emptyMessage="No policies yet." minWidth={900}>
           {rows.map((policy) => (
             <Table.Tr key={policy.rule_id}>
-              <Table.Td>
-                <Button size="xs" variant="default" onClick={() => setEditing(policy)}
-                  aria-label={`Edit rule ${policy.rule_id}`}>Edit</Button>
-              </Table.Td>
               <Table.Td><Id>{policy.rule_id}</Id></Table.Td>
               <Table.Td>{TYPE_LABELS[policy.rule_type]}</Table.Td>
               <Table.Td>{policy.condition}</Table.Td>
@@ -108,6 +110,12 @@ export default function PoliciesPage() {
                   {policy.updated_by && <Text size="xs" c="dimmed">{personName(policy.updated_by, people.data)}</Text>}
                 </Stack>
               </Table.Td>
+              {mayEdit && (
+                <Table.Td>
+                  <Button size="xs" variant="default" onClick={() => setEditing(policy)}
+                    aria-label={`Edit rule ${policy.rule_id}`}>Edit</Button>
+                </Table.Td>
+              )}
             </Table.Tr>
           ))}
         </TableShell>

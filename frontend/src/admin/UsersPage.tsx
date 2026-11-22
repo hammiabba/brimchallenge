@@ -5,19 +5,22 @@ import { useState } from 'react'
 import { ErrorAlert } from '../api/ErrorAlert'
 import { departmentLabel, useDepartments } from '../api/reference'
 import type { AdminUser, Role, UserPatch, UserStatus } from '../api/types'
+import { useCurrentUser } from '../auth/context'
 import { ROLE_LABELS, ROLES } from '../auth/roles'
 import { parseMoneyInput } from '../lib/money'
 import { StatusBadge } from '../ui/Badges'
 import { Id, MoneyText } from '../ui/DataText'
 import { USER_STATUS } from '../ui/statusStyles'
-import { useAdminUsers, useUpdateUser } from './queries'
+import { ADMIN_WRITE_ROLES, useAdminUsers, useUpdateUser } from './queries'
 import { TableShell } from './TableShell'
 
 /**
- * Edit comes first, so it is never the column cut off at the right edge; the user id sits under the name. Eight
- * columns that fit the 1008 px content column at 1280 px.
+ * The user id sits under the name. With Edit last (shown only to roles that may edit), eight columns that fit the
+ * 1008 px content column at 1280 px.
  */
-const COLUMNS = ['', 'Name', 'Role', 'Department', 'Status', 'Approval limit (CAD)', 'Manager', 'Delegate'] as const
+const COLUMNS = ['Name', 'Role', 'Department', 'Status', 'Approval limit (CAD)', 'Manager', 'Delegate'] as const
+/** The Edit column has no heading: its buttons say what they do ("Edit Morgan Lee"). */
+const EDIT_COLUMN = ''
 const ROLE_OPTIONS = ROLES.map((role) => ({ value: role, label: ROLE_LABELS[role] }))
 const STATUS_OPTIONS = Object.entries(USER_STATUS).map(([value, style]) => ({ value, label: style.label }))
 
@@ -112,6 +115,9 @@ export default function UsersPage() {
   const departments = useDepartments()
   const [editing, setEditing] = useState<AdminUser | null>(null)
   const all = users.data ?? []
+  // Auditors read this page; only the roles the server lets edit users get the Edit column (display only).
+  const mayEdit = ADMIN_WRITE_ROLES.includes(useCurrentUser().role)
+  const columns = mayEdit ? [...COLUMNS, EDIT_COLUMN] : COLUMNS
 
   return (
     <Stack gap="md">
@@ -119,14 +125,10 @@ export default function UsersPage() {
       {users.isError ? (
         <ErrorAlert error={users.error} title="Can't load users" onRetry={() => void users.refetch()} />
       ) : (
-        <TableShell label="Users" columns={COLUMNS} numeric={['Approval limit (CAD)']} loading={users.isPending}
+        <TableShell label="Users" columns={columns} numeric={['Approval limit (CAD)']} loading={users.isPending}
           empty={all.length === 0} emptyMessage="No users yet." minWidth={900}>
           {all.map((user) => (
             <Table.Tr key={user.user_id}>
-              <Table.Td>
-                <Button size="xs" variant="default" onClick={() => setEditing(user)}
-                  aria-label={`Edit ${user.full_name}`}>Edit</Button>
-              </Table.Td>
               <Table.Td>
                 <Stack gap={0}>
                   <Text size="sm">{user.full_name}</Text>
@@ -140,6 +142,12 @@ export default function UsersPage() {
               <Table.Td data-numeric><MoneyText value={user.approval_limit_cad} align="right" /></Table.Td>
               <Table.Td>{userLabel(user.manager_id, all)}</Table.Td>
               <Table.Td>{userLabel(user.delegate_user_id, all)}</Table.Td>
+              {mayEdit && (
+                <Table.Td>
+                  <Button size="xs" variant="default" onClick={() => setEditing(user)}
+                    aria-label={`Edit ${user.full_name}`}>Edit</Button>
+                </Table.Td>
+              )}
             </Table.Tr>
           ))}
         </TableShell>

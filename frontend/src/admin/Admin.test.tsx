@@ -8,6 +8,7 @@ import { billScreenRoutes } from '../test/fixtures'
 import { renderApp } from '../test/renderApp'
 
 const CONTROLLER = { role: 'controller_admin' as const, user_id: 'U002', full_name: 'Elena Duarte' }
+const AUDITOR = { role: 'auditor' as const, user_id: 'U015', full_name: 'Kai Thompson' }
 
 const USERS: AdminUser[] = [
   {
@@ -30,6 +31,30 @@ const POLICY: Policy = {
 
 const ABSENCE: Absence = { id: 1, user_id: 'U012', delegate_user_id: 'U003', starts_on: '2026-10-20', ends_on: null }
 
+describe('admin pages for the auditor', () => {
+  it('shows users with no Edit column and no Edit button', async () => {
+    installFakeApi({ ...billScreenRoutes(AUDITOR), 'GET /admin/users': { body: USERS } })
+    renderApp('/admin/users')
+    const table = await screen.findByRole('table', { name: 'Users' })
+    await within(table).findByText('Morgan Lee')
+    expect(within(table).getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
+      'Name', 'Role', 'Department', 'Status', 'Approval limit (CAD)', 'Manager', 'Delegate',
+    ])
+    expect(within(table).queryByRole('button', { name: /^Edit/ })).not.toBeInTheDocument()
+  })
+
+  it('shows policies with no Edit column and no Edit button', async () => {
+    installFakeApi({ ...billScreenRoutes(AUDITOR), 'GET /admin/policies': { body: [POLICY] } })
+    renderApp('/admin/policies')
+    const table = await screen.findByRole('table', { name: 'Policies' })
+    await within(table).findByText('Invoice total over $10,000 CAD')
+    expect(within(table).getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
+      'Rule', 'Type', 'Condition', 'Required', 'Notes', 'Last changed',
+    ])
+    expect(within(table).queryByRole('button', { name: /^Edit/ })).not.toBeInTheDocument()
+  })
+})
+
 describe('users', () => {
   it('lists users and saves only what changed', async () => {
     let sent: unknown = null
@@ -46,9 +71,9 @@ describe('users', () => {
 
     const table = await screen.findByRole('table', { name: 'Users' })
     const row = (await within(table).findByText('Morgan Lee')).closest('tr')!
-    // Edit is the first cell, so it is never cut off at the right edge; the user id sits under the name.
-    expect(within(row).getAllByRole('cell')[0]).toContainElement(within(row).getByRole('button', { name: 'Edit Morgan Lee' }))
-    expect(within(row).getAllByRole('cell')[1]).toHaveTextContent('U001')
+    // Edit is the last cell for the controller; the user id sits under the name.
+    expect(within(row).getAllByRole('cell').at(-1)).toContainElement(within(row).getByRole('button', { name: 'Edit Morgan Lee' }))
+    expect(within(row).getAllByRole('cell')[0]).toHaveTextContent('U001')
     expect(within(row).getByText('$10,000.00')).toBeInTheDocument()
     expect(within(row).getByText('Operations (D01)')).toBeInTheDocument()
     expect(within(row).getByText('Elena Duarte (U002)')).toBeInTheDocument()
@@ -91,9 +116,9 @@ describe('policies', () => {
 
     const table = await screen.findByRole('table', { name: 'Policies' })
     expect(await within(table).findByText('Invoice total over $10,000 CAD')).toBeInTheDocument()
-    // Edit first, as on Users; the approver chain one step per line.
+    // Edit last, as on Users; the approver chain one step per line.
     const row = within(table).getByText('Invoice total over $10,000 CAD').closest('tr')!
-    expect(within(row).getAllByRole('cell')[0]).toContainElement(within(row).getByRole('button', { name: 'Edit rule P02' }))
+    expect(within(row).getAllByRole('cell').at(-1)).toContainElement(within(row).getByRole('button', { name: 'Edit rule P02' }))
     expect(within(row).getByText('dept_manager')).toBeInTheDocument()
     expect(within(row).getByText('finance_manager').parentElement).toHaveTextContent('> finance_manager')
     await user.click(within(table).getByRole('button', { name: 'Edit rule P02' }))
