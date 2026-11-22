@@ -4,54 +4,7 @@ AP automation: email/upload intake → extraction → coding → validation & du
 simulated payment → audit trail. See [`CLAUDE.md`](CLAUDE.md) for the team rules and repo map, and
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the pipeline.
 
-## 1. System dependencies
-
-You need Python 3.11+. OCR for scanned invoices needs **tesseract** (with French data). **poppler**
-(`pdftotext`) is an optional fallback text extractor. Without either, the app still runs: PDFs with a
-text layer work, and scans are sent to the LLM as images.
-
-| OS | Command |
-|---|---|
-| macOS | `brew install tesseract tesseract-lang poppler` |
-| Ubuntu/Debian | `sudo apt install tesseract-ocr tesseract-ocr-fra poppler-utils` |
-| Windows | `choco install tesseract poppler`, plus `fra.traineddata` from github.com/tesseract-ocr/tessdata into tesseract's `tessdata` folder; make sure both are on `PATH` |
-
-## 2. Python setup
-
-Dependencies are declared in `backend/pyproject.toml` (one file; `[dev]` adds pytest, ruff, httpx).
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -e "backend[dev]"
-cp .env.example .env               # add ANTHROPIC_API_KEY to enable LLM extraction
-```
-
-| Variable | Meaning |
-|---|---|
-| `ANTHROPIC_API_KEY` | Enables LLM extraction. Empty → classification + text layer only. |
-| `LLM_MODEL` / `LLM_EFFORT` | Extraction model and effort level. |
-| `AS_OF_DATE` | Business "today" (2026-11-02). |
-| `DATASET_DIR` | Empty → `dataset/brim_ap_dataset`. |
-| `DATABASE_URL` | For the DB team; SQLite by default (`backend/ap.db`). |
-| `AUDIT_HMAC_KEY` | **Required.** Signs the audit log chain; nothing can be written without it. Keep it once the database has events. |
-| `SESSION_SECRET` | Signs session cookies. Empty → a random one, so everyone is signed out when the backend restarts. |
-
-## 3. Run
-
-```bash
-cd backend
-uvicorn app.main:app --reload          # http://127.0.0.1:8000/health and /docs
-pytest                                 # unit tests, no network
-ruff check .                           # lint
-python scripts/run_inbox.py            # process all 59 emails → backend/output/drafts/
-python scripts/eval_extraction.py      # per-field accuracy vs tests/golden/
-```
-
-LLM results are cached in `backend/.cache/` by file hash + prompt version + model, so reruns are free and
-deterministic. Delete the folder (or bump `PROMPT_VERSION` in the prompt) to force re-extraction.
-
-## 4. Run the whole app
+## 1. Run the whole app
 
 Everything from the repo root, with the venv active. You need Python 3.11+ and Node 20+ (`frontend/.nvmrc`: 24).
 
@@ -100,3 +53,53 @@ sign in by picking a person; there are no passwords. Useful people for the demo:
 The full walk-through, with every bill and payment the demo sets up, is in
 [`docs/DEMO_SCENARIO.md`](docs/DEMO_SCENARIO.md). The frontend's own setup and scripts are in
 [`frontend/README.md`](frontend/README.md).
+
+## 2. System dependencies
+
+You need Python 3.11+. OCR for scanned invoices needs **tesseract** (with French data). **poppler**
+(`pdftotext`) is an optional fallback text extractor. Without either, the app still runs: PDFs with a
+text layer work, and scans are sent to the LLM as images.
+
+| OS | Command |
+|---|---|
+| macOS | `brew install tesseract tesseract-lang poppler` |
+| Ubuntu/Debian | `sudo apt install tesseract-ocr tesseract-ocr-fra poppler-utils` |
+| Windows | `choco install tesseract poppler`, plus `fra.traineddata` from github.com/tesseract-ocr/tessdata into tesseract's `tessdata` folder; make sure both are on `PATH` |
+
+## 3. Python setup
+
+Dependencies are declared in `backend/pyproject.toml` (one file; `[dev]` adds pytest, ruff, httpx).
+
+| Variable | Meaning |
+|---|---|
+| `ANTHROPIC_API_KEY` | Enables LLM extraction. Empty → classification + text layer only. |
+| `LLM_MODEL` / `LLM_EFFORT` | Extraction model and effort level. |
+| `AS_OF_DATE` | Business "today" (2026-11-02). |
+| `DATASET_DIR` | Empty → `dataset/brim_ap_dataset`. |
+| `DATABASE_URL` | For the DB team; SQLite by default (`backend/ap.db`). |
+| `AUDIT_HMAC_KEY` | **Required.** Protects bank account numbers in audit events (stored as the last 4 digits plus an HMAC fingerprint). It doesn't sign the audit chain, which is plain SHA-256. Without it, any audit write that includes a bank account number fails. Keep it once the database has events. |
+| `SESSION_SECRET` | Signs session cookies. Empty → a random one, so everyone is signed out when the backend restarts. |
+
+## 4. For developers
+
+```bash
+cd backend
+uvicorn app.main:app --reload          # http://127.0.0.1:8000/health and /docs
+pytest                                 # unit tests, no network
+ruff check .                           # lint
+python scripts/run_inbox.py            # process all 59 emails → backend/output/drafts/
+python scripts/eval_extraction.py      # per-field accuracy vs tests/golden/
+```
+
+LLM results are cached in `backend/.cache/` by file hash + prompt version + model, so reruns are free and
+deterministic. Delete the folder (or bump `PROMPT_VERSION` in the prompt) to force re-extraction.
+
+## 5. Stack
+
+| Part | What |
+|---|---|
+| Backend | Python 3.11+, FastAPI, Pydantic v2, SQLAlchemy 2, Alembic |
+| Frontend | React 19, TypeScript, Vite, Mantine, TanStack Query, React Router |
+| Database | SQLite (`backend/ap.db`) |
+| AI model | Claude Opus 5.5 (`claude-opus-5-5`) through the Anthropic SDK, for reading invoices and breaking ties in email triage only |
+| Tests | pytest (backend, offline) and Vitest (frontend) |
