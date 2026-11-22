@@ -149,3 +149,29 @@ def test_login_and_logout_are_audited(login, db_factory):
         actions = s.scalars(select(models.AuditEvent.action).where(models.AuditEvent.actor_user_id == "U005")
                             .order_by(models.AuditEvent.seq.desc()).limit(2)).all()
     assert actions == ["auth.logout", "auth.login"]
+
+
+# GET /auth/me?optional=true: the sign-in page's check. Signed out is an expected answer (204), not an error (401).
+def test_optional_me_without_a_session_is_204_with_no_body(client):
+    client.cookies.clear()
+    r = client.get("/auth/me", params={"optional": "true"})
+    assert r.status_code == 204
+    assert r.content == b""
+
+
+def test_optional_me_with_a_bad_cookie_is_204_and_clears_it(client):
+    client.cookies.set(COOKIE, "not-a-session")
+    r = client.get("/auth/me", params={"optional": "true"})
+    assert r.status_code == 204
+    cookie = r.headers.get("set-cookie", "").lower()
+    assert f'{COOKIE}=""' in cookie or "max-age=0" in cookie
+
+
+def test_optional_me_with_a_session_returns_the_user(login):
+    assert login("U007").get("/auth/me", params={"optional": "true"}).json()["user_id"] == "U007"
+
+
+def test_me_without_the_flag_is_still_401(client):
+    client.cookies.clear()
+    assert client.get("/auth/me").status_code == 401
+    assert client.get("/auth/me", params={"optional": "false"}).status_code == 401

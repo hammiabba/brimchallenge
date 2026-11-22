@@ -2,7 +2,7 @@
 after this point; see app/auth/deps.py."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -67,6 +67,23 @@ def logout(response: Response, user: CurrentUser = Depends(current_user),
     return response
 
 
-@router.get("/me", response_model=Me, responses=READ_ERRORS)
-def me(user: CurrentUser = Depends(current_user), db: Session = Depends(get_session)) -> Me:
+@router.get("/me", response_model=Me,
+            responses={**READ_ERRORS, 204: {"description": "No valid session (only with `optional=true`)."}})
+def me(request: Request, db: Session = Depends(get_session),
+       optional: bool = Query(False, description="Answer 204 instead of 401 when no one is signed in, so a "
+                                                 "signed-out visit isn't reported as an error.")) -> Me | Response:
+    """The signed-in user. Without a valid session this is a 401, as on every other route; with `optional=true` it
+    is a 204 with no body instead (and a bad or expired cookie is still cleared)."""
+    if not optional:
+        return me_out(db, current_user(request, db))
+    try:
+        user = current_user(request, db)
+    except ApiError as error:
+        if error.status != 401:
+            raise
+        # Signed out is the expected answer here, not a failure: no body, and the stale cookie (if any) removed.
+        response = Response(status_code=204)
+        if error.clear_session:
+            response.delete_cookie(get_auth_settings().session_cookie_name, path="/")
+        return response
     return me_out(db, user)
