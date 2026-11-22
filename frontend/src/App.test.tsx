@@ -157,8 +157,8 @@ describe('signed in', () => {
 
   it('notes when a screen is not in the role\'s sidebar', async () => {
     installFakeApi({ 'GET /auth/me': { body: makeMe({ role: 'employee' }) } })
-    renderApp('/audit')
-    expect(await screen.findByRole('heading', { name: 'Audit log' })).toBeInTheDocument()
+    renderApp('/unassigned-steps')
+    expect(await screen.findByRole('heading', { name: 'Unassigned steps' })).toBeInTheDocument()
     expect(screen.getByText(/isn't in the Employee navigation/)).toBeInTheDocument()
   })
 

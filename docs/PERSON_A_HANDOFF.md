@@ -173,7 +173,7 @@ All 56 incoming files, checked against expectations derived from the PDFs (not f
 **56/56 extracted, 176/176 checks**. Arithmetic warnings fire on exactly Evergreen 000850 and Northstar
 NO26-1773, the only two documents whose maths is wrong. Five unseen layouts (table-less, right-aligned, French,
 totals first, USD) all give the same core fields, live and offline. End to end through the inbox job and
-controls, every HACKATHON_PLAN §4 trap raises its flag, and 18 clean invoices raise no `block` flag
+controls, every HACKATHON_PLAN §4 trap raises its flag (Voyageur `000903-A` as an exact duplicate, by design), and 18 clean invoices raise no `block` flag
 (`tests/api/test_flags_end_to_end.py`).
 
 Cost: one full run of 56 files is 218k input / 26k output tokens, about $1.39 at list price ($0.025 per file),
@@ -181,7 +181,7 @@ in about 4 minutes. Reruns are free (cache).
 
 ## Tests
 
-`cd backend && pytest`: **1272 passed, 1 xfailed** (controls item, `ISSUES_FOR_B.md` #2), offline, about 60 s.
+`cd backend && pytest`: all pass offline, about 60 s (no xfails: the Voyageur `000903-A` exact duplicate is by design, `ISSUES_FOR_B.md` #2).
 `RUN_LIVE_LLM=1 pytest -m live`: 9 live tests (2 dataset invoices, 2 vision fallback, 5 layouts).
 Coverage on `intake/ extraction/ coding/ reference/` and `api/routes_intake.py`: **95%**. Below 90%:
 

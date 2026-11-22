@@ -53,6 +53,14 @@ def email(api, email_id: str, role: str = "ap_clerk") -> dict:
     return r.json()
 
 
+def test_detail_times_are_utc_like_the_list(api):
+    # The list sends UtcDateTime ("...Z"); the detail must too, or a browser reads it as local time.
+    listed = {e["email_id"]: e for e in api("ap_clerk").get("/intake/emails", params={"limit": 200}).json()["items"]}
+    e = email(api, "EM-057")
+    assert e["received_at"] == listed["EM-057"]["received_at"] and e["received_at"].endswith("Z")
+    assert e["triaged_at"].endswith("Z")
+
+
 def test_statement_is_reconciled_later(api):
     e = email(api, "EM-056")
     assert e["email_class"] == "statement" and e["triage_reason"]

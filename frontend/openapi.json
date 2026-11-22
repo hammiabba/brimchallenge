@@ -118,6 +118,17 @@
         "title": "ActingForOut",
         "type": "object"
       },
+      "ActionKind": {
+        "enum": [
+          "create_drafts",
+          "request_resend",
+          "answer_status",
+          "reconcile_later",
+          "ignore"
+        ],
+        "title": "ActionKind",
+        "type": "string"
+      },
       "ActionState": {
         "properties": {
           "allowed": {
@@ -553,45 +564,6 @@
           "origin"
         ],
         "title": "BankChangeOut",
-        "type": "object"
-      },
-      "BankDetails": {
-        "properties": {
-          "account": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Account"
-          },
-          "institution": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Institution"
-          },
-          "transit": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Transit"
-          }
-        },
-        "title": "BankDetails",
         "type": "object"
       },
       "BillDetail": {
@@ -1520,53 +1492,6 @@
         "title": "Body_submit_file_submissions_post",
         "type": "object"
       },
-      "Body_upload_intake_upload_post": {
-        "properties": {
-          "file": {
-            "contentMediaType": "application/octet-stream",
-            "title": "File",
-            "type": "string"
-          }
-        },
-        "required": [
-          "file"
-        ],
-        "title": "Body_upload_intake_upload_post",
-        "type": "object"
-      },
-      "CodingSuggestion": {
-        "properties": {
-          "accepted": {
-            "default": false,
-            "title": "Accepted",
-            "type": "boolean"
-          },
-          "confidence": {
-            "title": "Confidence",
-            "type": "number"
-          },
-          "department_id": {
-            "title": "Department Id",
-            "type": "string"
-          },
-          "gl_account": {
-            "title": "Gl Account",
-            "type": "string"
-          },
-          "reason": {
-            "title": "Reason",
-            "type": "string"
-          }
-        },
-        "required": [
-          "gl_account",
-          "department_id",
-          "confidence",
-          "reason"
-        ],
-        "title": "CodingSuggestion",
-        "type": "object"
-      },
       "CommentIn": {
         "additionalProperties": false,
         "properties": {
@@ -1875,173 +1800,6 @@
         "title": "DepartmentOut",
         "type": "object"
       },
-      "DraftBill": {
-        "properties": {
-          "contract_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Contract Id"
-          },
-          "currency": {
-            "default": "CAD",
-            "title": "Currency",
-            "type": "string"
-          },
-          "department_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Department Id"
-          },
-          "due_date": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Due Date"
-          },
-          "extraction_warnings": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Extraction Warnings",
-            "type": "array"
-          },
-          "field_confidence": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "default": {},
-            "title": "Field Confidence",
-            "type": "object"
-          },
-          "fx_rate_to_cad": {
-            "default": "1",
-            "title": "Fx Rate To Cad",
-            "type": "string"
-          },
-          "invoice_date": {
-            "format": "date",
-            "title": "Invoice Date",
-            "type": "string"
-          },
-          "invoice_number": {
-            "title": "Invoice Number",
-            "type": "string"
-          },
-          "is_credit_note": {
-            "default": false,
-            "title": "Is Credit Note",
-            "type": "boolean"
-          },
-          "lines": {
-            "items": {
-              "$ref": "#/components/schemas/InvoiceLine"
-            },
-            "title": "Lines",
-            "type": "array"
-          },
-          "payment_terms_days": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Payment Terms Days"
-          },
-          "po_number": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Po Number"
-          },
-          "requester_user_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Requester User Id"
-          },
-          "ship_to_province": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ship To Province"
-          },
-          "source": {
-            "$ref": "#/components/schemas/SourceInfo"
-          },
-          "subtotal": {
-            "title": "Subtotal",
-            "type": "string"
-          },
-          "taxes": {
-            "default": [],
-            "items": {
-              "$ref": "#/components/schemas/TaxLine"
-            },
-            "title": "Taxes",
-            "type": "array"
-          },
-          "total": {
-            "title": "Total",
-            "type": "string"
-          },
-          "total_cad": {
-            "title": "Total Cad",
-            "type": "string"
-          },
-          "vendor": {
-            "$ref": "#/components/schemas/VendorOnInvoice"
-          }
-        },
-        "required": [
-          "source",
-          "vendor",
-          "invoice_number",
-          "invoice_date",
-          "lines",
-          "subtotal",
-          "total",
-          "total_cad"
-        ],
-        "title": "DraftBill",
-        "type": "object"
-      },
       "DuplicateOut": {
         "properties": {
           "kind": {
@@ -2088,6 +1846,217 @@
           "score"
         ],
         "title": "DuplicateOut",
+        "type": "object"
+      },
+      "EmailDetail": {
+        "properties": {
+          "attachments": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
+          "bill_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Bill Ids",
+            "type": "array"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "email_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Class"
+          },
+          "email_id": {
+            "title": "Email Id",
+            "type": "string"
+          },
+          "from_address": {
+            "title": "From Address",
+            "type": "string"
+          },
+          "from_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Name"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EmailItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "received_at": {
+            "examples": [
+              "2026-11-02T15:00:00Z"
+            ],
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "suggested_action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SuggestedAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "to_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Address"
+          },
+          "triage_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Triage Reason"
+          },
+          "triaged_at": {
+            "anyOf": [
+              {
+                "examples": [
+                  "2026-11-02T15:00:00Z"
+                ],
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Triaged At"
+          }
+        },
+        "required": [
+          "email_id",
+          "from_name",
+          "from_address",
+          "to_address",
+          "subject",
+          "received_at",
+          "body",
+          "attachments",
+          "email_class",
+          "triage_reason",
+          "triaged_at",
+          "suggested_action",
+          "bill_ids",
+          "items"
+        ],
+        "title": "EmailDetail",
+        "type": "object"
+      },
+      "EmailItem": {
+        "description": "One file from the email, as intake handled it.",
+        "properties": {
+          "bill_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bill Id"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "file_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Hash"
+          },
+          "file_name": {
+            "title": "File Name",
+            "type": "string"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "llm_skipped",
+              "failed",
+              "queued",
+              "processing"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "item_id",
+          "file_name",
+          "file_hash",
+          "status",
+          "error",
+          "warnings",
+          "bill_id"
+        ],
+        "title": "EmailItem",
         "type": "object"
       },
       "EmailOut": {
@@ -2148,6 +2117,16 @@
           "subject": {
             "title": "Subject",
             "type": "string"
+          },
+          "suggested_action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SuggestedAction"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "triage_reason": {
             "anyOf": [
@@ -2542,51 +2521,102 @@
         "title": "IntakeItemOut",
         "type": "object"
       },
-      "InvoiceLine": {
+      "InvoiceStatus": {
         "properties": {
-          "amount": {
-            "title": "Amount",
-            "type": "string"
-          },
-          "coding": {
+          "currency": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CodingSuggestion"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Currency"
           },
-          "description": {
-            "title": "Description",
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "invoice_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Date"
+          },
+          "invoice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invoice Id"
+          },
+          "invoice_number": {
+            "title": "Invoice Number",
             "type": "string"
           },
-          "line_no": {
-            "title": "Line No",
-            "type": "integer"
+          "payments": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PaymentRecord"
+            },
+            "title": "Payments",
+            "type": "array"
           },
-          "line_type": {
-            "$ref": "#/components/schemas/LineType",
-            "default": "services"
-          },
-          "quantity": {
-            "title": "Quantity",
+          "status": {
+            "title": "Status",
             "type": "string"
           },
-          "unit_price": {
-            "title": "Unit Price",
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "vendor_id": {
+            "title": "Vendor Id",
+            "type": "string"
+          },
+          "vendor_name": {
+            "title": "Vendor Name",
             "type": "string"
           }
         },
         "required": [
-          "line_no",
-          "description",
-          "quantity",
-          "unit_price",
-          "amount"
+          "vendor_id",
+          "vendor_name",
+          "invoice_number",
+          "status",
+          "summary"
         ],
-        "title": "InvoiceLine",
+        "title": "InvoiceStatus",
         "type": "object"
       },
       "JobOut": {
@@ -2695,14 +2725,6 @@
         "title": "LineCodingPatch",
         "type": "object"
       },
-      "LineType": {
-        "enum": [
-          "goods",
-          "services"
-        ],
-        "title": "LineType",
-        "type": "string"
-      },
       "LoginIn": {
         "additionalProperties": false,
         "properties": {
@@ -2717,17 +2739,6 @@
         ],
         "title": "LoginIn",
         "type": "object"
-      },
-      "MatchMethod": {
-        "enum": [
-          "gst_number",
-          "bank_account",
-          "email_domain",
-          "fuzzy_name",
-          "none"
-        ],
-        "title": "MatchMethod",
-        "type": "string"
       },
       "Me": {
         "properties": {
@@ -3275,6 +3286,68 @@
         "title": "PaymentDetail",
         "type": "object"
       },
+      "PaymentRecord": {
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "paid_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid Date"
+          },
+          "payment_id": {
+            "title": "Payment Id",
+            "type": "string"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "scheduled_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled Date"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "payment_id",
+          "method",
+          "status",
+          "amount",
+          "currency",
+          "reference"
+        ],
+        "title": "PaymentRecord",
+        "type": "object"
+      },
       "PaymentSummary": {
         "properties": {
           "amount": {
@@ -3759,56 +3832,6 @@
         "title": "ScheduleIn",
         "type": "object"
       },
-      "SourceInfo": {
-        "properties": {
-          "email_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Email Id"
-          },
-          "file_hash": {
-            "title": "File Hash",
-            "type": "string"
-          },
-          "file_name": {
-            "title": "File Name",
-            "type": "string"
-          },
-          "language": {
-            "default": "en",
-            "title": "Language",
-            "type": "string"
-          },
-          "sender_address": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Sender Address"
-          },
-          "was_ocr": {
-            "default": false,
-            "title": "Was Ocr",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "file_name",
-          "file_hash"
-        ],
-        "title": "SourceInfo",
-        "type": "object"
-      },
       "SpendReport": {
         "properties": {
           "department_id": {
@@ -3949,38 +3972,62 @@
         "title": "StatusTotal",
         "type": "object"
       },
-      "TaxCode": {
-        "enum": [
-          "HST13",
-          "GST5",
-          "PST7_BC",
-          "QST9975",
-          "EXEMPT",
-          "FOREIGN"
-        ],
-        "title": "TaxCode",
-        "type": "string"
-      },
-      "TaxLine": {
+      "SuggestedAction": {
         "properties": {
-          "amount": {
-            "title": "Amount",
+          "invoice_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InvoiceStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ActionKind"
+          },
+          "language": {
+            "enum": [
+              "en",
+              "fr"
+            ],
+            "title": "Language",
             "type": "string"
           },
-          "code": {
-            "$ref": "#/components/schemas/TaxCode"
-          },
-          "rate": {
-            "title": "Rate",
+          "message": {
+            "title": "Message",
             "type": "string"
+          },
+          "reply_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Text"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
           }
         },
         "required": [
-          "code",
-          "rate",
-          "amount"
+          "kind",
+          "message",
+          "language"
         ],
-        "title": "TaxLine",
+        "title": "SuggestedAction",
         "type": "object"
       },
       "UserOut": {
@@ -4507,76 +4554,6 @@
         "title": "VendorIn",
         "type": "object"
       },
-      "VendorOnInvoice": {
-        "properties": {
-          "address": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Address"
-          },
-          "bank": {
-            "$ref": "#/components/schemas/BankDetails",
-            "default": {}
-          },
-          "gst_number": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Gst Number"
-          },
-          "match_method": {
-            "$ref": "#/components/schemas/MatchMethod",
-            "default": "none"
-          },
-          "match_score": {
-            "default": 0.0,
-            "title": "Match Score",
-            "type": "number"
-          },
-          "name_on_invoice": {
-            "title": "Name On Invoice",
-            "type": "string"
-          },
-          "qst_number": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Qst Number"
-          },
-          "vendor_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Vendor Id"
-          }
-        },
-        "required": [
-          "name_on_invoice"
-        ],
-        "title": "VendorOnInvoice",
-        "type": "object"
-      },
       "VendorSummary": {
         "properties": {
           "category": {
@@ -4794,7 +4771,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Create Absence",
@@ -4941,7 +4918,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Update Policy",
@@ -5088,7 +5065,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Update User",
@@ -5945,7 +5922,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Reject Bank Change",
@@ -6037,7 +6014,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Verify Bank Change",
@@ -6364,7 +6341,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Update Bill Header",
@@ -6456,7 +6433,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Approve Bill",
@@ -6557,7 +6534,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Resolve Flag",
@@ -6658,7 +6635,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Code Line",
@@ -6750,7 +6727,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Schedule Payment",
@@ -6842,7 +6819,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Reject Bill",
@@ -6943,7 +6920,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Assign Step",
@@ -7035,7 +7012,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Submit Bill",
@@ -7127,7 +7104,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Void Bill",
@@ -7154,31 +7131,6 @@
           }
         },
         "summary": "Health"
-      }
-    },
-    "/intake/drafts": {
-      "get": {
-        "operationId": "list_drafts_intake_drafts_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/DraftBill"
-                  },
-                  "title": "Response List Drafts Intake Drafts Get",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "List Drafts",
-        "tags": [
-          "intake"
-        ]
       }
     },
     "/intake/emails": {
@@ -7300,6 +7252,153 @@
         ]
       }
     },
+    "/intake/emails/{email_id}": {
+      "get": {
+        "description": "One inbox email: body, triage (class, reason), the suggested next step (with a ready reply or the payment\nanswer where useful), and the intake items and bills made from it.",
+        "operationId": "get_email_intake_emails__email_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "email_id",
+            "required": true,
+            "schema": {
+              "title": "Email Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Email",
+        "tags": [
+          "intake"
+        ]
+      }
+    },
+    "/intake/files/{file_hash}": {
+      "get": {
+        "description": "The original invoice file (PDF or image), by the sha256 shown on the bill and the intake item.",
+        "operationId": "get_file_intake_files__file_hash__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_hash",
+            "required": true,
+            "schema": {
+              "title": "File Hash",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "application/pdf": {},
+              "image/jpeg": {},
+              "image/png": {}
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get File",
+        "tags": [
+          "intake"
+        ]
+      }
+    },
     "/intake/inbox/jobs": {
       "post": {
         "description": "Start processing the AP inbox in the background. Returns 202 at once; poll the job for progress.",
@@ -7363,7 +7462,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Start Inbox Job",
@@ -7439,33 +7538,6 @@
           }
         },
         "summary": "Inbox Job Status",
-        "tags": [
-          "intake"
-        ]
-      }
-    },
-    "/intake/inbox/run": {
-      "post": {
-        "description": "Process the dataset inbox. Returns one entry per email with its triage and per-file status.",
-        "operationId": "run_inbox_intake_inbox_run_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "additionalProperties": true,
-                    "type": "object"
-                  },
-                  "title": "Response Run Inbox Intake Inbox Run Post",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Run Inbox",
         "tags": [
           "intake"
         ]
@@ -7589,47 +7661,6 @@
         ]
       }
     },
-    "/intake/upload": {
-      "post": {
-        "operationId": "upload_intake_upload_post",
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_upload_intake_upload_post"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DraftBill"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Upload",
-        "tags": [
-          "intake"
-        ]
-      }
-    },
     "/me/delegation": {
       "put": {
         "description": "Record your own absence and who approves for you meanwhile.",
@@ -7703,7 +7734,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Set My Delegation",
@@ -8047,7 +8078,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Cancel Payment",
@@ -8142,7 +8173,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Release Payment",
@@ -8571,7 +8602,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Submit File",
@@ -8777,7 +8808,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Onboard Vendor",
@@ -8941,7 +8972,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Approve Vendor",
@@ -9033,7 +9064,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Request Bank Change",
@@ -9125,7 +9156,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Hold Vendor",
