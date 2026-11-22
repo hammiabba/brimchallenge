@@ -38,8 +38,9 @@ function DecisionButtons({ change }: { change: BankChange }) {
     setOpen(null)
   }
 
+  // Verify above Reject, as the payments list stacks its actions, so the Actions column stays narrow.
   return (
-    <Group gap="xs" wrap="nowrap">
+    <Stack gap={6} align="flex-start">
       <Button size="xs" onClick={() => setOpen('verify')}>Verify</Button>
       <Button size="xs" variant="default" onClick={() => setOpen('reject')}>Reject</Button>
       <CommentActionModal
@@ -59,7 +60,7 @@ function DecisionButtons({ change }: { change: BankChange }) {
         onDone={() => done('Bank change rejected')}
         danger
       />
-    </Group>
+    </Stack>
   )
 }
 

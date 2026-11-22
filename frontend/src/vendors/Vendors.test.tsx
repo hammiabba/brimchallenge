@@ -96,8 +96,14 @@ describe('vendor page', () => {
     // On file, and as the old account of the pending change.
     expect(screen.getAllByText('Ending 1111')).toHaveLength(2)
     const history = screen.getByRole('table', { name: 'Bank change requests' })
+    // The same table as the queue, without the vendor (this page is the vendor) or actions.
+    expect(within(history).getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
+      'Change', 'Requested', 'Account', 'Status', 'Decided by',
+    ])
     expect(within(history).getByText('BCR-0007')).toBeInTheDocument()
+    expect(within(history).queryByRole('link', { name: 'V011' })).not.toBeInTheDocument()
     expect(within(history).getByText('Ending 4821')).toBeInTheDocument()
+    expect(within(history).getByText('Ending 4821').closest('td')).toHaveTextContent('Ending 1111→ changed to Ending 4821')
     expect(within(history).getByText('Email request')).toBeInTheDocument()
     expect(within(history).getByText('Pending verification')).toBeInTheDocument()
     // Active: hold is offered, approve isn't.

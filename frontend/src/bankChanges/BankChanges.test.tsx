@@ -20,11 +20,27 @@ describe('bank changes', () => {
     renderApp('/bank-changes')
 
     const table = await screen.findByRole('table', { name: 'Bank changes' })
+    // Six columns: the vendor sits under the change, who and how under the time, the new account under the old.
+    expect(within(table).getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
+      'Change', 'Requested', 'Account', 'Status', 'Decided by', 'Actions',
+    ])
     const row = (await within(table).findByText('BCR-0007')).closest('tr')!
-    expect(within(row).getByRole('link', { name: 'V011' })).toHaveAttribute('href', '/vendors/V011')
+    const cells = within(row).getAllByRole('cell')
+    expect(within(cells[0]!).getByRole('link', { name: 'V011' })).toHaveAttribute('href', '/vendors/V011')
     expect(within(row).getByText('0004821')).toBeInTheDocument()
     expect(within(row).getByText('Institution 010, transit 54321')).toBeInTheDocument()
-    expect(await within(row).findByText('Jordan Okafor')).toBeInTheDocument()
+    expect(await within(cells[1]!).findByText('Jordan Okafor')).toBeInTheDocument()
+    expect(within(cells[1]!).getByText('Email request')).toBeInTheDocument()
+    // The old account, then the new one: the arrow is hidden from screen readers, which hear "changed to".
+    expect(within(cells[2]!).getByText('Ending 1111')).toBeInTheDocument()
+    expect(within(cells[2]!).getByText('→').closest('[aria-hidden="true"]')).not.toBeNull()
+    expect(within(cells[2]!).getByText('changed to')).toBeInTheDocument()
+    expect(cells[2]).toHaveTextContent('Ending 1111→ changed to 0004821')
+    // Verify above Reject, stacked in the Actions cell.
+    const actions = cells[5]!
+    const [verify, reject] = within(actions).getAllByRole('button')
+    expect([verify!.textContent, reject!.textContent]).toEqual(['Verify', 'Reject'])
+    expect(verify!.parentElement).toHaveClass('mantine-Stack-root')
     expect(fake.urls.find((u) => u.pathname === '/api/bank-changes')!.searchParams.get('status')).toBe('pending_verification')
   })
 
