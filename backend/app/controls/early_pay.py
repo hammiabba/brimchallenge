@@ -25,6 +25,7 @@ from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from .refdata import RefData, d, money
+from .wording import human_date
 
 CENT = Decimal("0.01")
 # Days before the deadline a payment must go out to arrive in time. EFT: posts the next day (every discount in the
@@ -148,8 +149,8 @@ def _suggest(ref: RefData, inv: dict, payment: dict | None, today: date) -> PayS
     scheduled = d((payment or {}).get("scheduled_date", ""))
     notes = [terms.note] if terms.note else []
     if d(inv["due_date"]) and d(inv["due_date"]) != invoiced + timedelta(days=terms.net_days):
-        notes.append(f"Invoice due date {due} isn't {terms.describe()} from the invoice date; the invoice's date "
-                     f"is used.")
+        notes.append(f"Invoice due date {human_date(due)} isn't {terms.describe()} from the invoice date; the "
+                     f"invoice's date is used.")
 
     deadline = invoiced + timedelta(days=terms.discount_days) if terms.has_discount else None
     saving = Decimal("0.00")
@@ -159,22 +160,29 @@ def _suggest(ref: RefData, inv: dict, payment: dict | None, today: date) -> PayS
         pay_on = max(today, deadline - timedelta(days=lead))
         action = "take_discount"
         rate = f" (skipping it costs about {terms.annual_rate * 100:.0f}% a year)" if terms.annual_rate else ""
-        reason = (f"Pay by {pay_on} to take {terms.discount_pct.normalize():f}% off the {_fmt(subtotal, cur)} "
-                  f"subtotal: save {_fmt(saving, cur)}{rate}. The discount ends {deadline}.")
+        # Pay-by is the discount's last day less the time the method takes to arrive, so both dates are given.
+        arrive = f", {lead} day{'s' if lead != 1 else ''} before the discount ends on {human_date(deadline)},"
+        reason = (f"Pay by {human_date(pay_on)}{arrive if pay_on < deadline else ''} to take "
+                  f"{terms.discount_pct.normalize():f}% off the {_fmt(subtotal, cur)} subtotal: save "
+                  f"{_fmt(saving, cur)}{rate}.")
     else:
         pay_on = max(today, due)
         action = "pay_now" if due <= today else "pay_on_due_date"
-        reason = (f"Due {due}" + (", already due: pay now." if due < today else
-                                   ", pay today." if due == today else ". Paying earlier saves nothing."))
+        reason = (f"Overdue since {human_date(due)}: pay now." if due < today else
+                  "Due today: pay today." if due == today else
+                  f"Due {human_date(due)}. Paying earlier saves nothing.")
         if deadline:
             missed = discount_amount(terms, subtotal)
-            reason += f" The {terms.discount_pct.normalize():f}% discount ({_fmt(missed, cur)}) ended {deadline}."
+            reason += (f" The {terms.discount_pct.normalize():f}% discount ({_fmt(missed, cur)}) ended "
+                       f"{human_date(deadline)}.")
     if scheduled and saving and scheduled > pay_on:
         action = "reschedule"
-        reason = f"Scheduled for {scheduled}, after the discount ends. Move it to {pay_on} to save {_fmt(saving, cur)}."
+        reason = (f"Scheduled for {human_date(scheduled)}, after the discount ends. Move it to {human_date(pay_on)} "
+                  f"to save {_fmt(saving, cur)}.")
     elif scheduled and scheduled > due:
         action = "reschedule"
-        reason = f"Scheduled for {scheduled}, after the {due} due date. Move it to {pay_on}."
+        reason = (f"Scheduled for {human_date(scheduled)}, after the {human_date(due)} due date. Move it to "
+                  f"{human_date(pay_on)}.")
     return PaySuggestion(
         inv["invoice_id"], inv["vendor_id"], inv["status"], terms, method, invoiced, due, deadline, pay_on, cur,
         total, saving, (saving * fx).quantize(CENT), total - saving, scheduled, action, reason, notes)

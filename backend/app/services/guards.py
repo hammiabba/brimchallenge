@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.errors import ApiError
+from app.controls.wording import status_label
 
 
 def check_row_version(current: int, expected: int, what: str = "record") -> None:
@@ -24,8 +25,11 @@ def check_row_version(current: int, expected: int, what: str = "record") -> None
 
 
 def invalid_state(what: str, status: str, allowed: tuple[str, ...] | str) -> ApiError:
-    allowed_text = allowed if isinstance(allowed, str) else ", ".join(allowed)
-    message = f"This {what.replace('_', ' ')} is {status}; it must be {allowed_text}."
+    # The message words the statuses ("This bill needs review; it must be approved."); the details keep the codes.
+    wanted = [allowed] if isinstance(allowed, str) else list(allowed)
+    allowed_text = " or ".join(status_label(a) for a in wanted)
+    current = "needs review" if status == "needs_review" else f"is {status_label(status)}"
+    message = f"This {what.replace('_', ' ')} {current}; it must be {allowed_text}."
     return ApiError(409, f"{what}.invalid_state", message,
                     {"status": status, "allowed": allowed if isinstance(allowed, str) else list(allowed)})
 

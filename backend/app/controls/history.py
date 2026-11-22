@@ -24,6 +24,7 @@ from app.shared.schemas import ControlsResult, Severity
 
 from .engine import run_controls
 from .refdata import RefData, bill_from_history, d, money
+from .wording import channel_phrase, human_date, status_label
 
 
 # ---------------------------------------------------------------------------
@@ -139,15 +140,17 @@ def check_unverified_bank_changes(ref: RefData, payments: list[dict]) -> list[Fi
             if paid and paid >= changed:
                 days = (paid - changed).days
                 out.append(Finding("paid_after_unverified_bank_change", p["invoice_id"],
-                                   f"{p['invoice_id']} ({name}) was paid on {paid}, {days} days after its bank account "
-                                   f"changed on {changed} by {c['request_channel']} with no callback "
+                                   f"{p['invoice_id']} ({name}) was paid on {human_date(paid)}, {days} days after its "
+                                   f"bank account changed on {human_date(changed)} by "
+                                   f"{channel_phrase(c['request_channel'])}, without a callback "
                                    f"(…{c['old_account_last4']} → …{c['new_account_last4']}).",
                                    money(p["amount_cad"]),
                                    {"change": c["change_id"], "payment": p["payment_id"], "days_after": days}))
             elif not paid and p["status"] in ("scheduled", "outstanding"):
                 out.append(Finding("due_after_unverified_bank_change", p["invoice_id"],
-                                   f"{p['invoice_id']} ({name}) is {p['status']} for {p['scheduled_date']}, after an "
-                                   f"unverified bank change on {changed}. Hold it.",
+                                   f"{p['invoice_id']} ({name}) is {status_label(p['status'])} for "
+                                   f"{human_date(p['scheduled_date'])}, after an unverified bank change on "
+                                   f"{human_date(changed)}. Hold it.",
                                    money(p["amount_cad"]), {"change": c["change_id"], "payment": p["payment_id"]}))
         for iid, inv in ref.invoices.items():
             if inv["vendor_id"] == c["vendor_id"] and inv["status"] == "approved" and iid not in paid_ids:

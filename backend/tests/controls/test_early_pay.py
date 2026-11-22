@@ -126,23 +126,23 @@ def test_last_day_of_the_window_means_pay_today(ref):
 def test_scheduled_after_the_discount_ends_is_moved(ref):
     s = only(with_bill(ref), [scheduled("2026-11-25")])
     assert s.action == "reschedule" and s.scheduled_date == date(2026, 11, 25)
-    assert "Move it to 2026-11-04 to save $10.94" in s.reason
+    assert "Move it to Nov 4, 2026 to save $10.94" in s.reason
 
 
 def test_closed_discount_pays_on_the_due_date_and_names_what_was_missed(ref):
     s = only(with_bill(ref), today=date(2026, 11, 10))
     assert (s.pay_on, s.action, s.saving) == (date(2026, 11, 25), "pay_on_due_date", D("0.00"))
-    assert "discount ($10.94) ended 2026-11-05" in s.reason
+    assert "discount ($10.94) ended Nov 5, 2026" in s.reason
 
 
 def test_overdue_bill_is_paid_now(ref):
     s = only(with_bill(ref), today=date(2026, 12, 1))
-    assert (s.pay_on, s.action) == (date(2026, 12, 1), "pay_now") and "already due" in s.reason
+    assert (s.pay_on, s.action) == (date(2026, 12, 1), "pay_now") and "Overdue since" in s.reason
 
 
 def test_payment_scheduled_after_the_due_date_is_moved(ref):
     s = only(with_bill(ref, vendor_id="V001"), [scheduled("2026-11-30")], today=date(2026, 11, 10))
-    assert s.action == "reschedule" and "after the 2026-11-25 due date" in s.reason
+    assert s.action == "reschedule" and "after the Nov 25, 2026 due date" in s.reason
 
 
 def test_usd_saving_is_also_given_in_cad(ref):

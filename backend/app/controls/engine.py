@@ -10,6 +10,7 @@ from .approvals import route
 from .duplicates import duplicate_flags, find_duplicates, find_split
 from .refdata import RefData, default_refdata
 from .validate import validate
+from .wording import flag_titles
 
 
 def run_controls(bill: DraftBill, batch: Iterable[DraftBill] = (), ref: RefData | None = None) -> ControlsResult:
@@ -38,5 +39,6 @@ def run_controls(bill: DraftBill, batch: Iterable[DraftBill] = (), ref: RefData 
         duplicates=duplicates,
         route=steps,
         can_auto_proceed=not blocks,
-        recommendation=f"Hold: {blocks[0].message}" if blocks else None,
+        # The reason in a few words (the blocking flags' titles); each flag's own message is shown with the flag.
+        recommendation=f"Hold until cleared: {flag_titles(f.code for f in blocks)}." if blocks else None,
     )

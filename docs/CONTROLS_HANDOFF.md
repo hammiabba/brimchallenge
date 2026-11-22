@@ -634,3 +634,44 @@ itself, and the batch is checked against itself as well as history.
 
 **What does the UI show for a flag?**
 A plain-English message, evidence (expected vs found), and the field to highlight.
+
+## Plain-language messages (UI audit, batch 3)
+
+The text the controls write is read by AP, approvers and auditors in the app, so it now uses the app's words. Codes,
+ISO dates and user ids no longer appear in messages, reasons or notes. This section updates the earlier parts of this
+document where they quote the old wording.
+
+- **`wording.py`** (new) holds the shared pieces:
+  - `human_date` writes dates as "Nov 2, 2026".
+  - `money_text` writes "$1,234.50" for CAD and "US$1,234.50" for USD.
+  - `status_label` writes "outstanding", "needs review".
+  - `channel_phrase` writes "email request".
+  - `role_group` writes "AP clerks".
+  - `flag_title` / `flag_titles` take titles from `flag_help`.
+- **`ControlsResult.recommendation`** is now "Hold until cleared: <titles of the blocking flags>." (for example
+  "Hold until cleared: Duplicate invoice."), still `None` when nothing blocks. It used to be "Hold: <first block
+  message>"; each flag's full message is shown with the flag itself.
+- **`can_release` reasons** speak to the person asking, since its only caller passes the acting user:
+  - "You approved this bill, so another finance manager or the controller must release it (policy P11)."
+  - "You requested this bill, so someone else must release its payment."
+  - "On hold until these flags are cleared: <flag titles>."
+  - "<Role group> can't release payments."
+
+  The policy ids P09, P10 and P11 are still in the text.
+- **Approval route notes:** "<name> is on leave (since Oct 20, 2026), so <delegate> approves as delegate."
+- **Flag messages:**
+  - The tax flags (`TAX_MISSING`, `PST_ON_SERVICES`, `TAX_WRONG_FOR_PROVINCE`) no longer end with "Ask the vendor
+    for a corrected invoice.", because their flag help says what to do.
+  - `BANK_CHANGE_UNVERIFIED` reads "The bank account changed on Oct 27, 2026 by email request (…7504 → …9679).
+    Nobody has confirmed it by phone."
+  - `FOREIGN_CURRENCY` uses "US$" and "Nov 2, 2026".
+  - `PO_CLOSED_OR_WRONG_VENDOR` no longer says "PO PO-…".
+- **Duplicate reasons** read "same total $2,457.19" (or "total $X vs $Y") and "AP-00394 is scheduled".
+- **Early payment:**
+  - Reasons use human dates: "Overdue since Nov 1, 2026: pay now.", "Due today: pay today.", "Due Nov 3, 2026.
+    Paying earlier saves nothing.".
+  - A discount says how pay-by relates to the deadline: "Pay by Nov 8, 2026, 1 day before the discount ends on
+    Nov 9, 2026, to take …".
+  - `GET /early-pay` (`services/early_pay.py`) leaves out bills whose latest controls run has an open blocking flag,
+    so a held duplicate is never "Pay now".
+- **Reconciliation and history findings** use human dates and words for statuses and request channels.

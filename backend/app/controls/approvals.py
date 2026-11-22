@@ -13,6 +13,7 @@ from app.shared.schemas import ApprovalStep, DraftBill, Flag, PermissionDecision
 
 from .refdata import RefData, currency, is_credit, vendor_id
 from .validate import amount_for_limits, has_blocking
+from .wording import flag_titles, human_date, role_group
 
 APPROVER_ROLES = {"approver", "finance_manager", "controller_admin"}
 # Which user roles may sign a step of each kind. Escalation only goes up, so higher roles may sign lower steps.
@@ -163,8 +164,8 @@ def _resolve(uid: str | None, amount: Decimal, is_last: bool, requester: str | N
             continue
         if u["status"] == "on_leave":
             if u["delegate_user_id"]:
-                r.notes.append(f"{u['full_name']} is on leave since {u['status_since']}; "
-                               f"{ref.users[u['delegate_user_id']]['full_name']} acts as delegate.")
+                r.notes.append(f"{u['full_name']} is on leave (since {human_date(u['status_since'])}), so "
+                               f"{ref.users[u['delegate_user_id']]['full_name']} approves as delegate.")
                 r.policies.append("P08")
                 r.delegated_from = uid
                 uid = u["delegate_user_id"]
@@ -232,25 +233,29 @@ def can_release(user_id: str, amount_cad: Decimal, approver_ids: set[str], flags
     """flags must include the duplicate/split flags (run_controls(...).flags does), or duplicates won't hold payment.
 
     bill is required: the requester check and the credit-note check need it.
+
+    The reasons speak to `user_id` ("You approved this bill ..."): they are shown to the person asking to release,
+    as a refusal or as the reason the Release button is missing.
     """
     u = ref.users.get(user_id)
     if not u or u["status"] != "active":
-        return PermissionDecision(allowed=False, reason=f"{user_id} is not an active user.")
+        return PermissionDecision(allowed=False, reason="Your account isn't active, so you can't release payments.")
     if is_credit(bill) or amount_cad < 0 or any(f.code == "CREDIT_NOTE" for f in flags):
         return PermissionDecision(allowed=False,
                                   reason="This is a credit note: apply it against an open invoice, don't pay it.")
     if user_id == bill.requester_user_id:
         return PermissionDecision(allowed=False,
-                                  reason=f"{user_id} requested this bill, so they can't release its payment.")
+                                  reason="You requested this bill, so someone else must release its payment.")
     if not approval_complete:
         return PermissionDecision(allowed=False, reason="The bill isn't fully approved yet.")
     if has_blocking(flags):
         open_blocks = [f.code for f in flags if f.severity == Severity.BLOCK]
         return PermissionDecision(allowed=False,
-                                  reason=f"Payment is on hold until these are resolved: {', '.join(open_blocks)}.")
+                                  reason=f"On hold until these flags are cleared: {flag_titles(open_blocks)}.")
     if user_id in approver_ids:
         return PermissionDecision(allowed=False,
-                                  reason=f"{user_id} approved this bill, so they can't release its payment (P11).")
+                                  reason="You approved this bill, so another finance manager or the controller must "
+                                         "release it (policy P11).")
     limit = _release_threshold(ref)
     if u["role"] == "finance_manager":
         if abs(amount_cad) <= limit:
@@ -258,4 +263,4 @@ def can_release(user_id: str, amount_cad: Decimal, approver_ids: set[str], flags
         return PermissionDecision(allowed=False, reason=f"Payments over ${limit:,.0f} need the controller (P10).")
     if u["role"] == "controller_admin":
         return PermissionDecision(allowed=True, reason="Controller may release any amount (P10).")
-    return PermissionDecision(allowed=False, reason=f"Role '{u['role']}' can't release payments.")
+    return PermissionDecision(allowed=False, reason=f"{role_group(u['role'])} can't release payments.")

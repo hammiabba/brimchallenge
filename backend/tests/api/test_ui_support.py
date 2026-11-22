@@ -47,7 +47,8 @@ def test_blocking_flag_shows_in_actions_and_queue_fields(fresh_engine, act_as):
     bill = app_bill(fresh_engine, bank_account="999999999")
     clerk = act_as("U004")
     a = detail(clerk, bill)["allowed_actions"]
-    assert not a["submit"]["allowed"] and "BANK_DETAILS_MISMATCH" in a["submit"]["reason"]
+    # The reason names the blocking flag by its title, not its code.
+    assert not a["submit"]["allowed"] and "Bank details differ" in a["submit"]["reason"]
     assert not a["override_blocking_flags"]["allowed"]
     assert act_as("U003").get(f"/bills/{bill}").json()["allowed_actions"]["override_blocking_flags"]["allowed"]
     row = next(b for b in clerk.get("/bills", params={"status": "needs_review"}).json()["items"]

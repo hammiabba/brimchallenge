@@ -19,6 +19,7 @@ from app.shared.schemas import DraftBill, DuplicateMatch, Flag
 
 from .refdata import RefData, bill_id, currency, d, is_credit, money, vendor_id
 from .validate import _norm_name, flag, to_cad
+from .wording import money_text, status_label
 
 NEAR_AMOUNT_PCT = Decimal("0.01")  # amounts within 1%
 NEAR_DAYS = 14
@@ -159,12 +160,14 @@ def find_duplicates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill] = 
             continue  # a credit note shares its invoice's number and amount by design; that's not a duplicate
         same_vendor = _same_vendor(bill, c)
         days = abs((c.invoice_date - bill.invoice_date).days) if c.invoice_date else 999
-        status = f"{c.id} status: {c.status}"
+        # The reasons read as plain words in the flag message: "AP-00394 is scheduled", "same total $2,457.19".
+        status = f"{c.id} is {status_label(c.status)}"
+        amounts = _amounts(c.total, bill.total, currency(bill))
 
         if same_vendor and c.number == bill.invoice_number:
             matches.append(DuplicateMatch(kind="exact", score=1.0, matched_invoice_id=c.id,
                                           reasons=["same vendor", f"same invoice number {c.number}",
-                                                   f"total {c.total} vs {bill.total}", status]))
+                                                   amounts, status]))
             continue
         if same_vendor and my_no and norm_invoice_no(c.number) == my_no:
             matches.append(DuplicateMatch(kind="normalized", score=0.95, matched_invoice_id=c.id,
@@ -184,7 +187,7 @@ def find_duplicates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill] = 
                 continue
             if sim < NEAR_NUMBER_SIM and not same_period:
                 continue
-            why = ["same vendor", f"amount {c.total} vs {bill.total}", f"{days} days apart",
+            why = ["same vendor", amounts, f"{days} days apart",
                    f"invoice numbers {sim:.0%} similar"]
             if same_period:
                 why.append("same service period")
@@ -196,12 +199,19 @@ def find_duplicates(bill: DraftBill, ref: RefData, batch: Iterable[DraftBill] = 
             if other and (other["bank_transit"], other["bank_account"]) == my_bank:
                 matches.append(DuplicateMatch(kind="cross_vendor", score=0.85, matched_invoice_id=c.id,
                                               reasons=[f"same bank account as {c.vendor_id} {other['legal_name']}",
-                                                       f"amount {c.total} vs {bill.total}", f"{days} days apart",
+                                                       amounts, f"{days} days apart",
                                                        status]))
 
     if not credit:
         matches.extend(_card_matches(bill, ref))
     return sorted(matches, key=lambda m: -m.score)
+
+
+def _amounts(theirs: Decimal, ours: Decimal, cur: str) -> str:
+    """"same total $2,457.19" when the two totals are equal, else "total $2,457.19 vs $2,460.00" (theirs, then ours)."""
+    if theirs == ours:
+        return f"same total {money_text(ours, cur)}"
+    return f"total {money_text(theirs, cur)} vs {money_text(ours, cur)}"
 
 
 def _card_matches(bill: DraftBill, ref: RefData) -> list[DuplicateMatch]:

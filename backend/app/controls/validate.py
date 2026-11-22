@@ -26,6 +26,7 @@ from .refdata import (
     tax_amounts,
     vendor_id,
 )
+from .wording import channel_phrase, human_date, money_text
 
 TOL = Decimal("0.02")        # rounding tolerance per amount (2 cents)
 TAX_TOL = Decimal("0.05")    # tax is rounded per line on some invoices, allow 5 cents
@@ -103,9 +104,11 @@ def check_fx(bill: DraftBill, ref: RefData) -> list[Flag]:
                f"Routing uses the face amount {cur} {_amt(bill.total)}. Convert it manually before approving.")
         return [flag("CURRENCY_UNSUPPORTED", msg, evidence=ev, field="currency")]
     if source == "bill":
-        msg = f"{cur} {_amt(bill.total)} converted at {rate} (rate given on the bill) = CAD {_amt(cad)}."
+        msg = (f"{money_text(bill.total, cur)} converted at {rate} (the rate on the bill) = "
+               f"{money_text(cad)} CAD.")
     else:
-        msg = f"USD {_amt(bill.total)} converted at {rate} = CAD {_amt(cad)} (rate of {bill.invoice_date})."
+        msg = (f"{money_text(bill.total, 'USD')} converted at {rate} = {money_text(cad)} CAD (Bank of Canada rate "
+               f"for {human_date(bill.invoice_date)}).")
     return [flag("FOREIGN_CURRENCY", msg, evidence=ev, field="currency")]
 
 
@@ -288,9 +291,9 @@ def check_vendor(bill: DraftBill, ref: RefData) -> list[Flag]:
     if changes and changes[-1]["verified_by_callback"] != "yes":
         last = changes[-1]
         flags.append(flag("BANK_CHANGE_UNVERIFIED",
-                          f"Bank account changed on {last['changed_at']} via {last['request_channel']} "
-                          f"(…{last['old_account_last4']} → …{last['new_account_last4']}) "
-                          f"and was never verified by callback.",
+                          f"The bank account changed on {human_date(last['changed_at'])} by "
+                          f"{channel_phrase(last['request_channel'])} (…{last['old_account_last4']} → "
+                          f"…{last['new_account_last4']}). Nobody has confirmed it by phone.",
                           evidence=last, field="vendor.bank"))
 
     # Lookalike records: only flag the bill when it sits on the suspicious copy, never on the real vendor.
@@ -386,19 +389,21 @@ def check_tax(bill: DraftBill, ref: RefData) -> list[Flag]:
     should = f"{_amt(exp_fed)} + {_amt(exp_prov)}"
     missing = [name for name, exp, chg in (("GST/HST", exp_fed, fed_chg), ("PST/QST", exp_prov, prov_chg))
                if abs(exp) > TAX_TOL and chg == 0]
+    # The messages say what is wrong on this bill; what to do about it (ask for a corrected invoice) is the flag's help
+    # text, shown under it, so it isn't repeated here.
     if missing:
         return [flag("TAX_MISSING",
                      f"No {' or '.join(missing)} charged. Delivery to {where} should carry {should}; "
-                     f"invoice has {charged}. Ask the vendor for a corrected invoice.",
+                     f"invoice has {charged}.",
                      evidence=ev, field="taxes")]
     if where == "BC" and "PST7_BC" in charged_codes and prov_chg > exp_prov + TAX_TOL:
         return [flag("PST_ON_SERVICES",
-                     f"BC PST charged on services: invoice has PST {_amt(prov_chg)}, but PST only applies to goods "
-                     f"({_amt(exp_prov)}). Ask the vendor for a corrected invoice.",
+                     f"BC PST of {_amt(prov_chg)} charged on services; PST applies only to goods "
+                     f"({_amt(exp_prov)} expected).",
                      evidence=ev, field="taxes")]
     return [flag("TAX_WRONG_FOR_PROVINCE",
                  f"Tax charged is {charged}, but delivery to {where} should be {should} "
-                 f"({', '.join(sorted(exp_codes)) or 'no Canadian tax'}). Ask the vendor for a corrected invoice.",
+                 f"({', '.join(sorted(exp_codes)) or 'no Canadian tax'}).",
                  evidence=ev, field="taxes")]
 
 
@@ -558,7 +563,7 @@ def check_po(bill: DraftBill, ref: RefData) -> list[Flag]:
                           evidence={"po": bill.po_number, "po_vendor": po["vendor_id"]}, field="po_number"))
     remaining = po_remaining(ref, bill.po_number, exclude_bill=bill_id(bill))
     if po["status"] == "closed" and remaining <= TOL:
-        flags.append(flag("PO_CLOSED_OR_WRONG_VENDOR", f"PO {bill.po_number} is closed and fully used.",
+        flags.append(flag("PO_CLOSED_OR_WRONG_VENDOR", f"{bill.po_number} is closed and fully used.",
                           evidence={"po": bill.po_number, "po_status": "closed"}, field="po_number"))
     elif not is_credit(bill) and bill.subtotal > remaining + TOL:
         flags.append(flag("PO_OVER_BALANCE",

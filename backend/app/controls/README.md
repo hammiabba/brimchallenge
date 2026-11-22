@@ -31,6 +31,7 @@ Reference data is read from the repo dataset (`get_settings().dataset_dir / "dat
 | `reconciliation.py` | `reconcile(bank_rows, payment_rows, ref)`: bank statement lines matched to payments; fees, unexplained debits, double payments and amount differences explained. Served by `GET /reconciliation/bank` (see docs/CONTROLS_HANDOFF.md, "Bank reconciliation"). |
 | `flag_help.py` | `help_for(code)` / `FLAG_HELP`: short title and one help sentence for every flag code, for the UI |
 | `permissions.py` | Re-exports `can_approve` / `can_release` from `approvals.py` (the API guide refers to `controls.permissions`) |
+| `wording.py` | Plain words for the text the controls write: `human_date` ("Nov 2, 2026"), `money_text`, `status_label`, `channel_phrase`, `role_group`, `flag_title` / `flag_titles`. Used by the messages, reasons and notes in the other modules and by `services/actions.py` and `services/guards.py`. |
 
 ## How the pieces fit
 

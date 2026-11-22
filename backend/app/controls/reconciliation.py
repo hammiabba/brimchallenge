@@ -34,6 +34,7 @@ from .duplicates import CARD_DAYS, _close_amount, _similar, norm_invoice_no
 from .history import check_unverified_bank_changes
 from .refdata import RefData, d, money
 from .validate import _norm_name
+from .wording import human_date, status_label
 
 EFT_REF_DIGITS = 6
 EFT_WINDOW_DAYS = 5         # an EFT posts a day after it's paid; the fallback match allows a few days
@@ -339,8 +340,8 @@ def reconcile(bank_rows: list[dict], payment_rows: list[dict], ref: RefData) -> 
                                          f"amount and payee. Check the reference with the bank."))
             if p and not _payee_matches(m["payee"], vendors.get(p["vendor_id"], {})):
                 res.issues.append(_issue("PAYEE_DIFFERS",
-                                         f"Bank payee '{m['payee']}' isn't {p['vendor_id']} "
-                                         f"{vendors.get(p['vendor_id'], {}).get('legal_name', '')}."))
+                                         f"The bank paid '{m['payee']}', not "
+                                         f"{vendors.get(p['vendor_id'], {}).get('legal_name') or p['vendor_id']}."))
         elif r["bank_txn_id"] in cheque_pairs:
             p = cheque_pairs[r["bank_txn_id"]]
 
@@ -358,15 +359,15 @@ def reconcile(bank_rows: list[dict], payment_rows: list[dict], ref: RefData) -> 
                                          f"{_amt(abs(diff))}). Ask the bank or the vendor which is right."))
             if p["status"] != "settled":
                 res.issues.append(_issue("STATUS_NOT_UPDATED",
-                                         f"{p['payment_id']} is still '{p['status']}' but cleared the bank on "
-                                         f"{r['posted_date']}. Mark it settled."))
+                                         f"{p['payment_id']} cleared the bank on {human_date(r['posted_date'])} but "
+                                         f"is still marked {status_label(p['status'])}. Mark it settled."))
         elif _FEE.search(text) and r["debit"]:
             res.status = "bank_fee"
             res.issues.append(_issue("BANK_FEE"))
             if _WIRE_FEE.search(text) and d(r["posted_date"]) not in wire_dates:
                 res.issues.append(_issue("WIRE_FEE_WITHOUT_WIRE",
-                                         f"Wire fee of {_amt(debit)} on {r['posted_date']}, but no payment went out "
-                                         f"by wire. Ask the bank what it's for."))
+                                         f"Wire fee of {_amt(debit)} on {human_date(r['posted_date'])}, but no "
+                                         f"payment went out by wire. Ask the bank what it's for."))
         elif r["debit"]:
             kind = "pre-authorized debit" if _PREAUTH.match(text) else "debit"
             res.issues.append(_issue("UNEXPLAINED_DEBIT",
@@ -390,19 +391,20 @@ def reconcile(bank_rows: list[dict], payment_rows: list[dict], ref: RefData) -> 
         if p["method"] == "CARD":
             pr.issues.append(_issue("PAID_BY_CARD"))
         elif p["status"] == "scheduled":
-            pr.issues.append(_issue("SCHEDULED", f"Scheduled for {p['scheduled_date']}, not sent yet."))
+            pr.issues.append(_issue("SCHEDULED", f"Scheduled for {human_date(p['scheduled_date'])}, not sent yet."))
         elif p["method"] == "CHEQUE":
             age = _days(end, when)
             code = "STALE_CHEQUE" if age is not None and age > STALE_CHEQUE_DAYS else "OUTSTANDING_CHEQUE"
-            pr.issues.append(_issue(code, f"Cheque issued {when}, not cleared by {end}"
+            pr.issues.append(_issue(code, f"Cheque issued {human_date(when)}, not cleared by {human_date(end)}"
                                     + (f" ({age} days). Contact the vendor and void or reissue it." if code ==
                                        "STALE_CHEQUE" else ".")))
         elif end and when and (end - when).days > EFT_POST_DAYS:
             pr.issues.append(_issue("NOT_ON_STATEMENT",
-                                    f"{p['payment_id']} is '{p['status']}' (paid {when}) but no bank line shows it. "
+                                    f"{p['payment_id']} is marked {status_label(p['status'])} "
+                                    f"(paid {human_date(when)}) but no bank line shows it. "
                                     f"Check whether the money actually left."))
         else:
-            pr.issues.append(_issue("IN_TRANSIT", f"Sent {when}, not posted by the bank yet."))
+            pr.issues.append(_issue("IN_TRANSIT", f"Sent {human_date(when)}, not posted by the bank yet."))
         pay_results.append(pr)
 
     # Double payments: mark the extra copies' bank lines and scheduled payments.

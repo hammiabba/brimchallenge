@@ -19,6 +19,7 @@ from app.api.errors import ApiError
 from app.api.schemas_api import ActionState
 from app.auth.deps import CurrentUser
 from app.auth.roles import AP_CLERK, BACK_OFFICE_READ, CONTROLLER_ADMIN, FINANCE_MANAGER, RELEASERS, SIGNERS
+from app.controls.wording import flag_titles, role_group, status_label
 from app.db import models
 from app.db.bills import latest_controls_run
 from app.services import approvals, controls_runner, payments
@@ -52,7 +53,8 @@ class _No(Exception):
 
 def _answer(user: CurrentUser, action: str, roles: tuple[str, ...], check: Callable[[], str | None]) -> ActionState:
     if user.role not in roles:
-        return ActionState(allowed=False, reason=f"Your role ({user.role}) can't {_VERBS[action]}.")
+        # In words, not the role code: "AP clerks can't approve bills."
+        return ActionState(allowed=False, reason=f"{role_group(user.role)} can't {_VERBS[action]}.")
     try:
         return ActionState(allowed=True, reason=check())
     except ApiError as exc:
@@ -80,7 +82,7 @@ def document_action(db: Session, user: CurrentUser, bill: models.Bill) -> Action
 
 def _editable(bill: models.Bill, app_only: bool = True) -> None:
     if bill.status not in EDITABLE:
-        raise _No(f"The bill is {bill.status}; it can only change while in review.")
+        raise _No(f"The bill is {status_label(bill.status)}; it can only change while in review.")
     if app_only and bill.origin != "app":
         raise _No("Bills loaded from the dataset history can't be edited.")
 
@@ -94,18 +96,18 @@ def bill_actions(db: Session, user: CurrentUser, bill: models.Bill) -> dict[str,
         _editable(bill, app_only=False)
         if not open_flags:
             raise _No("There are no open flags.")
-        return f"{len(open_flags)} open flag(s)."
+        return f"{len(open_flags)} open flag{'' if len(open_flags) == 1 else 's'}."
 
     def override_blocking() -> str:
         _editable(bill, app_only=False)
         if not blocking:
             raise _No("There are no open blocking flags.")
-        return f"Blocking: {', '.join(blocking)}."
+        return f"Blocking: {flag_titles(blocking)}."
 
     def submit() -> str:
         _editable(bill)
         if blocking:
-            raise _No(f"Resolve or override first: {', '.join(blocking)}.")
+            raise _No(f"Resolve or override first: {flag_titles(blocking)}.")
         if stored is None or not stored.result.route:
             raise _No("Controls haven't produced an approval route yet.")
         return "Ready for approval."

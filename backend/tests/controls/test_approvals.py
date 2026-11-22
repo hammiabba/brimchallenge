@@ -129,7 +129,8 @@ def test_ap_clerk_cannot_release(ref, make_bill):
 def test_blocking_flag_holds_payment(ref, make_bill):
     flags = [Flag(code="BANK_CHANGE_UNVERIFIED", severity=Severity.BLOCK, message="x")]
     decision = can_release("U003", D("1000"), {"U007"}, flags, True, ref, bill=make_bill())
-    assert not decision.allowed and "BANK_CHANGE_UNVERIFIED" in decision.reason
+    # The reason names the flag by its title, not its code.
+    assert not decision.allowed and "Bank change not verified" in decision.reason
 
 
 def test_not_fully_approved(ref, make_bill):
