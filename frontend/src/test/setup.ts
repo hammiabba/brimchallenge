@@ -4,6 +4,7 @@
  */
 import '@testing-library/jest-dom/vitest'
 
+import { notifications } from '@mantine/notifications'
 import { cleanup } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
 
@@ -31,6 +32,9 @@ window.ResizeObserver = ResizeObserverStub
 window.HTMLElement.prototype.scrollIntoView = () => {}
 
 afterEach(() => {
+  // Notifications live in one store for the whole file; Mantine shows 5 at a time and queues the rest, so one test's
+  // notifications could hide the next test's.
+  notifications.clean()
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
