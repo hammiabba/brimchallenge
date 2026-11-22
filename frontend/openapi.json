@@ -3893,6 +3893,18 @@
             "title": "Department Id",
             "type": "string"
           },
+          "department_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The department's name from the departments table ('Operations'); null if unknown",
+            "title": "Department Name"
+          },
           "full_name": {
             "title": "Full Name",
             "type": "string"
@@ -5536,7 +5548,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Create Absence",
@@ -5683,7 +5695,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Update Policy",
@@ -5830,7 +5842,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Update User",
@@ -6497,7 +6509,7 @@
     },
     "/auth/users": {
       "get": {
-        "description": "Active and on-leave users. Terminated users aren't listed and can't sign in.",
+        "description": "Active and on-leave users, each with their department's name. Terminated users aren't listed and can't sign\nin.",
         "operationId": "picker_users_auth_users_get",
         "responses": {
           "200": {
@@ -6687,7 +6699,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Reject Bank Change",
@@ -6779,7 +6791,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Verify Bank Change",
@@ -7106,7 +7118,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Update Bill Header",
@@ -7198,7 +7210,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Approve Bill",
@@ -7299,7 +7311,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Resolve Flag",
@@ -7400,7 +7412,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Code Line",
@@ -7492,7 +7504,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Schedule Payment",
@@ -7584,7 +7596,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Reject Bill",
@@ -7685,7 +7697,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Assign Step",
@@ -7777,7 +7789,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Submit Bill",
@@ -7869,7 +7881,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Void Bill",
@@ -8301,7 +8313,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Start Inbox Job",
@@ -8573,7 +8585,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Set My Delegation",
@@ -8917,7 +8929,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Cancel Payment",
@@ -9012,7 +9024,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Release Payment",
@@ -9515,7 +9527,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Submit File",
@@ -9721,7 +9733,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Onboard Vendor",
@@ -9885,7 +9897,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Approve Vendor",
@@ -9977,7 +9989,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Request Bank Change",
@@ -10069,7 +10081,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         },
         "summary": "Hold Vendor",
