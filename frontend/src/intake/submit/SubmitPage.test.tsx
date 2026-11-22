@@ -53,6 +53,21 @@ describe('submit invoice', () => {
     expect(fake.calls.filter((call) => call === 'POST /submissions')).toHaveLength(1)
   })
 
+  it('says what happens to a file once sent, and why Submit is disabled before one is chosen', async () => {
+    installFakeApi({ ...billScreenRoutes(EMPLOYEE), 'GET /submissions': { body: [] } })
+    const user = userEvent.setup()
+    renderApp('/submit')
+
+    expect(await screen.findByText(/Each file you send becomes a bill/)).toBeInTheDocument()
+    const submit = screen.getByRole('button', { name: 'Submit' })
+    expect(submit).toBeDisabled()
+    expect(submit).toHaveAccessibleDescription('Choose at least one PDF or image file to submit.')
+
+    await user.upload(fileInput(), fileOf('Invoice HA26-2766.pdf'))
+    expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled()
+    expect(screen.queryByText('Choose at least one PDF or image file to submit.')).not.toBeInTheDocument()
+  })
+
   it('keeps Submit disabled while uploading', async () => {
     let release: (reply: FakeReply) => void = () => {}
     installFakeApi({

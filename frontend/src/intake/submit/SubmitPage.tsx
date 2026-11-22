@@ -72,11 +72,6 @@ function RowCells({ row, live }: { row: Row; live: IntakeItem | undefined }) {
   }
 }
 
-/**
- * /submit: send one or more invoice files (PDF or image) to AP. Each file is one POST /submissions; the result of
- * each is followed by polling GET /submissions until it is final. File type and size are checked here only for
- * quick feedback: the server checks them again and its answer is shown.
- */
 /** The roles that may upload invoices, as the API's role gate decides (POST /submissions: employee and AP clerk). */
 const SUBMITTER_ROLES: readonly Role[] = ['employee', 'ap_clerk']
 
@@ -97,7 +92,13 @@ export default function SubmitPage() {
   return <SubmitForm />
 }
 
-/** The upload form: pick or drop files, then submit them; each one's progress and the bill it became. */
+/**
+ * The upload form: pick or drop invoice files (PDF or image), then submit them; each one's progress and the bill it
+ * became. Each file is one POST /submissions; its result is followed by polling GET /submissions until it is final.
+ * File type and size are checked here only for quick feedback: the server checks them again and its answer is shown.
+ * A line under the title says what happens to a file once sent, and while Submit is disabled a line beside it says
+ * why.
+ */
 function SubmitForm() {
   const queryClient = useQueryClient()
   const input = useRef<HTMLInputElement>(null)
@@ -149,6 +150,10 @@ function SubmitForm() {
   return (
     <Stack gap="md" maw={960}>
       <Title order={1}>Submit invoice</Title>
+      <Text size="sm">
+        Each file you send becomes a bill: it is read, matched to its vendor and coded, then AP checks it before it goes
+        for approval. You can follow each one in My submissions.
+      </Text>
       <Box
         data-testid="drop-zone"
         onDragOver={(event) => { event.preventDefault(); setDragging(true) }}
@@ -201,9 +206,16 @@ function SubmitForm() {
       )}
 
       <Group justify="space-between">
-        <Button onClick={() => void submit()} disabled={uploading || ready.length === 0}>
-          {uploading ? 'Uploading' : ready.length > 1 ? `Submit ${ready.length} files` : 'Submit'}
-        </Button>
+        {/* While there is nothing to send, the reason sits beside the disabled button and is tied to it. */}
+        <Group gap="sm">
+          <Button onClick={() => void submit()} disabled={uploading || ready.length === 0}
+            aria-describedby={!uploading && ready.length === 0 ? 'submit-hint' : undefined}>
+            {uploading ? 'Uploading' : ready.length > 1 ? `Submit ${ready.length} files` : 'Submit'}
+          </Button>
+          {!uploading && ready.length === 0 && (
+            <Text id="submit-hint" size="sm" c="dimmed">Choose at least one PDF or image file to submit.</Text>
+          )}
+        </Group>
         {anySent && <Anchor component={Link} to="/submissions" size="sm">See all in My submissions</Anchor>}
       </Group>
     </Stack>
