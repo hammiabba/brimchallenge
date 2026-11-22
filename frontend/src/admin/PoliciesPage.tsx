@@ -9,7 +9,8 @@ import { DateText, Id } from '../ui/DataText'
 import { usePolicies, useUpdatePolicy } from './queries'
 import { TableShell } from './TableShell'
 
-const COLUMNS = ['Rule', 'Type', 'Condition', 'Required', 'Notes', 'Last changed', ''] as const
+/** Edit comes first, as on Users, so it is never the column cut off at the right edge. */
+const COLUMNS = ['', 'Rule', 'Type', 'Condition', 'Required', 'Notes', 'Last changed'] as const
 const TYPE_LABELS: Record<Policy['rule_type'], string> = {
   approval: 'Approval',
   payment_release: 'Payment release',
@@ -60,6 +61,21 @@ function EditPolicyModal({ policy, onClose }: { policy: Policy; onClose: () => v
   )
 }
 
+/**
+ * The approver chain ("dept_manager > finance_manager > controller_admin"), one step per line: each step is a code
+ * that never breaks across lines, so the whole chain on one line would make the column very wide.
+ */
+function RequiredCell({ required }: { required: string }) {
+  const steps = required.split('>').map((step) => step.trim()).filter(Boolean)
+  return (
+    <Stack gap={0}>
+      {steps.map((step, index) => (
+        <Text key={`${step}-${index}`} size="sm">{index > 0 && '> '}<Id>{step}</Id></Text>
+      ))}
+    </Stack>
+  )
+}
+
 /** /admin/policies: the approval, payment-release and match rules, as routing and the controls read them. */
 export default function PoliciesPage() {
   const policies = usePolicies()
@@ -74,23 +90,23 @@ export default function PoliciesPage() {
         <ErrorAlert error={policies.error} title="Can't load policies" onRetry={() => void policies.refetch()} />
       ) : (
         <TableShell label="Policies" columns={COLUMNS} loading={policies.isPending} empty={rows.length === 0}
-          emptyMessage="No policies yet." minWidth={1100}>
+          emptyMessage="No policies yet." minWidth={900}>
           {rows.map((policy) => (
             <Table.Tr key={policy.rule_id}>
+              <Table.Td>
+                <Button size="xs" variant="default" onClick={() => setEditing(policy)}
+                  aria-label={`Edit rule ${policy.rule_id}`}>Edit</Button>
+              </Table.Td>
               <Table.Td><Id>{policy.rule_id}</Id></Table.Td>
               <Table.Td>{TYPE_LABELS[policy.rule_type]}</Table.Td>
               <Table.Td>{policy.condition}</Table.Td>
-              <Table.Td><Id>{policy.required}</Id></Table.Td>
+              <Table.Td><RequiredCell required={policy.required} /></Table.Td>
               <Table.Td><Text size="sm">{policy.notes ?? ''}</Text></Table.Td>
               <Table.Td>
                 <Stack gap={0}>
                   <Text size="sm"><DateText value={policy.updated_at} kind="timestamp" /></Text>
                   {policy.updated_by && <Text size="xs" c="dimmed">{personName(policy.updated_by, people.data)}</Text>}
                 </Stack>
-              </Table.Td>
-              <Table.Td>
-                <Button size="xs" variant="default" onClick={() => setEditing(policy)}
-                  aria-label={`Edit rule ${policy.rule_id}`}>Edit</Button>
               </Table.Td>
             </Table.Tr>
           ))}

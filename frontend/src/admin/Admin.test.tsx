@@ -46,6 +46,9 @@ describe('users', () => {
 
     const table = await screen.findByRole('table', { name: 'Users' })
     const row = (await within(table).findByText('Morgan Lee')).closest('tr')!
+    // Edit is the first cell, so it is never cut off at the right edge; the user id sits under the name.
+    expect(within(row).getAllByRole('cell')[0]).toContainElement(within(row).getByRole('button', { name: 'Edit Morgan Lee' }))
+    expect(within(row).getAllByRole('cell')[1]).toHaveTextContent('U001')
     expect(within(row).getByText('$10,000.00')).toBeInTheDocument()
     expect(within(row).getByText('Operations (D01)')).toBeInTheDocument()
     expect(within(row).getByText('Elena Duarte (U002)')).toBeInTheDocument()
@@ -88,6 +91,11 @@ describe('policies', () => {
 
     const table = await screen.findByRole('table', { name: 'Policies' })
     expect(await within(table).findByText('Invoice total over $10,000 CAD')).toBeInTheDocument()
+    // Edit first, as on Users; the approver chain one step per line.
+    const row = within(table).getByText('Invoice total over $10,000 CAD').closest('tr')!
+    expect(within(row).getAllByRole('cell')[0]).toContainElement(within(row).getByRole('button', { name: 'Edit rule P02' }))
+    expect(within(row).getByText('dept_manager')).toBeInTheDocument()
+    expect(within(row).getByText('finance_manager').parentElement).toHaveTextContent('> finance_manager')
     await user.click(within(table).getByRole('button', { name: 'Edit rule P02' }))
     const dialog = await screen.findByRole('dialog', { name: 'Edit rule P02' })
     const condition = within(dialog).getByRole('textbox', { name: 'Condition' })

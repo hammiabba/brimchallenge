@@ -14,10 +14,14 @@ interface TableShellProps {
   children: ReactNode
 }
 
-/** The admin tables' frame: header, static skeleton rows while loading, and a one-line empty state. */
+/**
+ * The admin tables' frame: header, static skeleton rows while loading, and a one-line empty state. Below `minWidth`
+ * the table scrolls sideways with the browser's own scrollbar, which is always there to see (Mantine's default one
+ * only appears on hover, so cut-off columns looked missing rather than scrollable).
+ */
 export function TableShell({ label, columns, numeric = [], loading, empty, emptyMessage, minWidth = 900, children }: TableShellProps) {
   return (
-    <Table.ScrollContainer minWidth={minWidth}>
+    <Table.ScrollContainer minWidth={minWidth} type="native">
       <Table aria-label={label} bg="white" withTableBorder>
         <Table.Thead>
           <Table.Tr>

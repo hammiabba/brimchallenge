@@ -13,7 +13,11 @@ import { USER_STATUS } from '../ui/statusStyles'
 import { useAdminUsers, useUpdateUser } from './queries'
 import { TableShell } from './TableShell'
 
-const COLUMNS = ['User', 'Name', 'Role', 'Department', 'Status', 'Approval limit (CAD)', 'Manager', 'Delegate', ''] as const
+/**
+ * Edit comes first, so it is never the column cut off at the right edge; the user id sits under the name. Eight
+ * columns that fit the 1008 px content column at 1280 px.
+ */
+const COLUMNS = ['', 'Name', 'Role', 'Department', 'Status', 'Approval limit (CAD)', 'Manager', 'Delegate'] as const
 const ROLE_OPTIONS = ROLES.map((role) => ({ value: role, label: ROLE_LABELS[role] }))
 const STATUS_OPTIONS = Object.entries(USER_STATUS).map(([value, style]) => ({ value, label: style.label }))
 
@@ -116,14 +120,18 @@ export default function UsersPage() {
         <ErrorAlert error={users.error} title="Can't load users" onRetry={() => void users.refetch()} />
       ) : (
         <TableShell label="Users" columns={COLUMNS} numeric={['Approval limit (CAD)']} loading={users.isPending}
-          empty={all.length === 0} emptyMessage="No users yet." minWidth={1100}>
+          empty={all.length === 0} emptyMessage="No users yet." minWidth={900}>
           {all.map((user) => (
             <Table.Tr key={user.user_id}>
-              <Table.Td><Id>{user.user_id}</Id></Table.Td>
+              <Table.Td>
+                <Button size="xs" variant="default" onClick={() => setEditing(user)}
+                  aria-label={`Edit ${user.full_name}`}>Edit</Button>
+              </Table.Td>
               <Table.Td>
                 <Stack gap={0}>
                   <Text size="sm">{user.full_name}</Text>
                   <Text size="xs" c="dimmed">{user.title}</Text>
+                  <Text size="xs" c="dimmed"><Id>{user.user_id}</Id></Text>
                 </Stack>
               </Table.Td>
               <Table.Td>{ROLE_LABELS[user.role]}</Table.Td>
@@ -132,10 +140,6 @@ export default function UsersPage() {
               <Table.Td data-numeric><MoneyText value={user.approval_limit_cad} align="right" /></Table.Td>
               <Table.Td>{userLabel(user.manager_id, all)}</Table.Td>
               <Table.Td>{userLabel(user.delegate_user_id, all)}</Table.Td>
-              <Table.Td>
-                <Button size="xs" variant="default" onClick={() => setEditing(user)}
-                  aria-label={`Edit ${user.full_name}`}>Edit</Button>
-              </Table.Td>
             </Table.Tr>
           ))}
         </TableShell>
