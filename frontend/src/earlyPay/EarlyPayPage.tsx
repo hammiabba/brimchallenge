@@ -117,7 +117,9 @@ function Report({ data, includePending }: { data: EarlyPayReport; includePending
         <Field label="Bills">{`${s.bills} ${includePending ? 'approved, scheduled or in review' : 'approved or scheduled'}`}</Field>
         <Field label="Saving if paid on the suggested dates">
           <Text size="sm" fw={600} span><MoneyText value={s.saving_cad} /></Text>
-          <Text size="xs" c="dimmed">{`${s.with_discount_open} bill${s.with_discount_open === 1 ? '' : 's'} with a discount still open`}</Text>
+          <Text size="xs" c="dimmed">
+            {`${s.with_discount_open} bill${s.with_discount_open === 1 ? '' : 's'} with a discount still open`}
+          </Text>
         </Field>
         <Field label="To reschedule">{`${s.to_reschedule}`}</Field>
         <Field label="To pay now">{`${s.pay_now}`}</Field>

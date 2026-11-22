@@ -26,10 +26,18 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
+/** "1 line", "333 lines". */
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`
+}
+
 /** "333 lines, $1,740,825.21". */
 function CountAndTotal({ count, noun, total }: { count: number; noun: string; total: string }) {
-  return <>{`${count} ${noun}${count === 1 ? '' : 's'}, `}<MoneyText value={total} /></>
+  return <>{`${plural(count, noun)}, `}<MoneyText value={total} /></>
 }
+
+const DOUBLE_COLUMNS = ['Bills', 'Card charges', 'Payments', 'Extra paid', 'Still to go out', 'What happened']
+const OFF_STATEMENT_COLUMNS = ['Payment', 'Bill', 'Method', 'Status', 'Date', 'Amount (CAD)', 'Issues']
 
 /** A line's or payment's issues: the ones that need review in ink, notes in the secondary colour. */
 function Issues({ issues, skip = [] }: { issues: readonly ReconIssue[]; skip?: readonly string[] }) {
@@ -112,12 +120,14 @@ function Summary({ data }: { data: BankReconciliation }) {
       <Field label="Bank fees"><CountAndTotal count={s.bank_fees} noun="line" total={s.bank_fees_cad} /></Field>
       <Field label="Unexplained"><CountAndTotal count={s.unexplained} noun="line" total={s.unexplained_cad} /></Field>
       <Field label="Double payments">
-        {`${s.double_payments} bill${s.double_payments === 1 ? '' : 's'}, `}<MoneyText value={s.double_paid_extra_cad} />{' paid out extra'}
+        {`${plural(s.double_payments, 'bill')}, `}<MoneyText value={s.double_paid_extra_cad} />{' paid out extra'}
         {s.double_at_risk_cad !== '0.00' && (
           <Text size="xs" c="dimmed"><MoneyText value={s.double_at_risk_cad} />{' still scheduled to go out'}</Text>
         )}
       </Field>
-      <Field label="Needs review">{`${s.needs_review} line${s.needs_review === 1 ? '' : 's'} or payment${s.needs_review === 1 ? '' : 's'}`}</Field>
+      <Field label="Needs review">
+        {`${plural(s.needs_review, 'line')} or payment${s.needs_review === 1 ? '' : 's'}`}
+      </Field>
     </SimpleGrid>
   )
 }
@@ -147,7 +157,11 @@ function DoubleRow({ group }: { group: ReconDoublePayment }) {
   return (
     <Table.Tr>
       <Table.Td><Links ids={group.bill_ids} to={(id) => `/bills/${id}`} /></Table.Td>
-      <Table.Td>{group.card_txn_ids.length > 0 ? group.card_txn_ids.map((id) => <Id key={id}>{id}</Id>) : <Text span c="dimmed" size="sm">None</Text>}</Table.Td>
+      <Table.Td>
+        {group.card_txn_ids.length > 0
+          ? group.card_txn_ids.map((id) => <Id key={id}>{id}</Id>)
+          : <Text span c="dimmed" size="sm">None</Text>}
+      </Table.Td>
       <Table.Td><Links ids={group.payment_ids} to={(id) => `/payments/${id}`} /></Table.Td>
       <Table.Td data-numeric><MoneyText value={group.extra_paid_cad} align="right" /></Table.Td>
       <Table.Td data-numeric><MoneyText value={group.at_risk_cad} align="right" /></Table.Td>
@@ -184,33 +198,40 @@ function Groups({ data, onlyIssues }: { data: BankReconciliation; onlyIssues: bo
   const fees = data.lines.filter((l) => l.status === 'bank_fee')
   const matched = data.lines.filter((l) => l.status === 'matched')
   const lineColumns = ['Line', 'Posted', 'Description', 'Amount', 'Issues']
-  const shownNote = (shown: number, noun: string) => (onlyIssues ? ` Showing the ${shown} that need review.` : '') + (shown === 0 && !onlyIssues ? ` No ${noun}.` : '')
+  /** In the issues view, how many of the group are shown. */
+  const shownNote = (shown: number) => (onlyIssues ? ` Showing the ${shown} that need review.` : '')
 
   return (
     <Stack gap="lg">
       <Section title="Unexplained debits"
-        note={<><CountAndTotal count={s.unexplained} noun="line" total={s.unexplained_cad} />{'. Money that left with no payment, bill or fee behind it.'}</>}>
+        note={<>
+          <CountAndTotal count={s.unexplained} noun="line" total={s.unexplained_cad} />
+          {'. Money that left with no payment, bill or fee behind it.'}
+        </>}>
         <SimpleTable label="Unexplained debits" columns={lineColumns} numeric={['Amount']}
           empty="Every debit is matched or explained."
           rows={unexplained.map((l) => <LineRow key={l.bank_txn_id} line={l} matched={false} />)} />
       </Section>
 
       <Section title="Double payments"
-        note={<>{`${s.double_payments} bill${s.double_payments === 1 ? '' : 's'}, `}<MoneyText value={s.double_paid_extra_cad} />{' paid out extra, '}<MoneyText value={s.double_at_risk_cad} />{' still to go out.'}</>}>
-        <SimpleTable label="Double payments" columns={['Bills', 'Card charges', 'Payments', 'Extra paid', 'Still to go out', 'What happened']}
+        note={<>
+          {`${plural(s.double_payments, 'bill')}, `}<MoneyText value={s.double_paid_extra_cad} />{' paid out extra, '}
+          <MoneyText value={s.double_at_risk_cad} />{' still to go out.'}
+        </>}>
+        <SimpleTable label="Double payments" columns={DOUBLE_COLUMNS}
           numeric={['Extra paid', 'Still to go out']} empty="No bill was paid twice."
           rows={data.double_payments.map((g) => <DoubleRow key={[...g.bill_ids, ...g.card_txn_ids].join('-')} group={g} />)} />
       </Section>
 
       <Section title="Bank fees"
-        note={<><CountAndTotal count={s.bank_fees} noun="line" total={s.bank_fees_cad} />{'.'}{shownNote(fees.length, 'fees')}</>}>
+        note={<><CountAndTotal count={s.bank_fees} noun="line" total={s.bank_fees_cad} />{'.'}{shownNote(fees.length)}</>}>
         <SimpleTable label="Bank fees" columns={lineColumns} numeric={['Amount']}
           empty={onlyIssues ? 'No bank fee needs review.' : 'No bank fees.'}
           rows={fees.map((l) => <LineRow key={l.bank_txn_id} line={l} matched={false} skip={['BANK_FEE']} />)} />
       </Section>
 
       <Section title="Matched"
-        note={<><CountAndTotal count={s.matched} noun="line" total={s.matched_cad} />{'.'}{shownNote(matched.length, 'matched lines')}</>}>
+        note={<><CountAndTotal count={s.matched} noun="line" total={s.matched_cad} />{'.'}{shownNote(matched.length)}</>}>
         <SimpleTable label="Matched lines" columns={['Line', 'Posted', 'Description', 'Amount', 'Payment', 'Bill', 'Issues']}
           numeric={['Amount']} empty={onlyIssues ? 'No matched line needs review.' : 'No line matched a payment.'}
           rows={matched.map((l) => <LineRow key={l.bank_txn_id} line={l} matched />)} />
@@ -218,7 +239,7 @@ function Groups({ data, onlyIssues }: { data: BankReconciliation; onlyIssues: bo
 
       <Section title="Payments not on the statement"
         note={onlyIssues ? 'The ones that need review.' : 'Card payments, scheduled payments and cheques not cleared yet.'}>
-        <SimpleTable label="Payments not on the statement" columns={['Payment', 'Bill', 'Method', 'Status', 'Date', 'Amount (CAD)', 'Issues']}
+        <SimpleTable label="Payments not on the statement" columns={OFF_STATEMENT_COLUMNS}
           numeric={['Amount (CAD)']} empty={onlyIssues ? 'No payment needs review.' : 'Every payment is on the statement.'}
           rows={data.payments.filter((p) => !p.bank_txn_id).map((p) => <PaymentRow key={p.payment_id} payment={p} />)} />
       </Section>
