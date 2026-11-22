@@ -37,6 +37,16 @@ describe('out of office', () => {
     await waitFor(() => expect(sent).toEqual({ delegate_user_id: 'U003', starts_on: '2026-11-10', ends_on: '2026-11-14' }))
   })
 
+  it('puts the "To" hint under its input, so both date inputs line up', async () => {
+    installFakeApi(billScreenRoutes(APPROVER))
+    renderApp('/out-of-office')
+    const to = await screen.findByLabelText('To')
+    const hint = screen.getByText("Leave empty if you don't know yet")
+    // The hint comes after the input in the document (Mantine's default puts it between the label and the input).
+    expect(to.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(to).toHaveAccessibleDescription("Leave empty if you don't know yet")
+  })
+
   it('lists who you sign for, and shows a refusal', async () => {
     installFakeApi({
       ...billScreenRoutes({

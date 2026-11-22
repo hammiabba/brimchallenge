@@ -91,9 +91,11 @@ export default function DelegationPage() {
           </Text>
           <Select label="Delegate" required placeholder="Pick an approver, finance manager or controller" data={options}
             value={delegateId} onChange={setDelegateId} searchable nothingFoundMessage="No one matches" />
+          {/* Both date inputs sit on one line: the "To" hint goes under its input, not between label and input. */}
           <SimpleGrid cols={2} spacing="sm">
             <TextInput label="From" type="date" required value={startsOn} onChange={(e) => setStartsOn(e.currentTarget.value)} />
             <TextInput label="To" type="date" description="Leave empty if you don't know yet" value={endsOn}
+              inputWrapperOrder={['label', 'input', 'description', 'error']}
               error={endsOn !== '' && startsOn !== '' && endsOn < startsOn ? 'The end date is before the start date' : undefined}
               onChange={(e) => setEndsOn(e.currentTarget.value)} />
           </SimpleGrid>
