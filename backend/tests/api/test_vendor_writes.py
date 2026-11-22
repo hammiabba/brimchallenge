@@ -111,3 +111,40 @@ def test_a_failed_audit_write_rolls_the_change_back(act_as, monkeypatch, fresh_d
     assert "audit log unavailable" not in r.text
     with fresh_db() as s:
         assert s.get(models.Vendor, "V054").status == "pending_review"
+
+
+def test_verifying_a_bank_change_rechecks_the_vendors_bills_in_review(fresh_engine, act_as, fresh_db):
+    # A bill in review on Cascadia (V004), whose account came in through BC-009 and was never verified: blocked.
+    from app.db.bills import latest_controls_run
+    from tests.api.factories import app_bill
+    bill = app_bill(fresh_engine, vendor_id="V004")
+    with fresh_db() as s:
+        codes = {f.code for f in latest_controls_run(s, bill).flags}
+    assert "BANK_CHANGE_UNVERIFIED" in codes
+    # Verifying BC-009 re-runs the controls on that bill straight away: the flag is gone without any other edit.
+    verified = act_as("U002").post("/bank-changes/BC-009/verify", json={"comment": "called 604-555-0100"})
+    assert verified.status_code == 200
+    with fresh_db() as s:
+        codes = {f.code for f in latest_controls_run(s, bill).flags}
+    assert "BANK_CHANGE_UNVERIFIED" not in codes
+
+
+def test_bank_changes_carry_the_vendor_name(as_role):
+    rows = as_role("finance_manager").get("/bank-changes", params={"status": "pending_verification"}).json()
+    assert rows and rows[0]["vendor_name"] == "Cascadia Cartage Ltd."
+
+
+def test_an_unverified_bank_change_cannot_be_marked_resolved(fresh_engine, act_as):
+    # Only verifying the change clears the flag; finance can still override it with a reason.
+    from tests.api.factories import app_bill
+    bill = app_bill(fresh_engine, vendor_id="V004")
+    clerk = act_as("U004")
+    d = clerk.get(f"/bills/{bill}").json()
+    flag = next(f for f in d["latest_run"]["flags"] if f["code"] == "BANK_CHANGE_UNVERIFIED")
+    r = clerk.post(f"/bills/{bill}/flags/{flag['id']}/resolve",
+                   json={"row_version": d["row_version"], "resolution": "resolved", "comment": "looked fine"})
+    assert r.status_code == 409 and r.json()["error"]["code"] == "flag.cleared_by_verification"
+    r = act_as("U003").post(f"/bills/{bill}/flags/{flag['id']}/resolve",
+                            json={"row_version": d["row_version"], "resolution": "overridden",
+                                  "comment": "Vendor confirmed by phone"})
+    assert r.status_code == 200

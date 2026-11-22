@@ -11,7 +11,7 @@ from app.config import get_settings
 from app.db import models
 from app.db.audit import AuditAction
 from app.db.types import utcnow
-from app.services import views
+from app.services import controls_runner, views
 from app.services.events import record
 from app.services.guards import invalid_state, next_id
 from app.services.pagination import paginate
@@ -48,22 +48,45 @@ def vendor_detail(db: Session, role: str, vendor_id: str) -> s.VendorDetail:
         accepts_card_payment=v.accepts_card_payment, ap_contact_email=v.ap_contact_email,
         onboarded_at=v.onboarded_at, origin=v.origin,
         bank_account=views.bank_account_out(role, open_account(db, v.vendor_id)),
-        bank_changes=[views.bank_change_out(role, c) for c in changes])
+        bank_changes=[views.bank_change_out(role, c, v.legal_name) for c in changes])
 
 
 def bank_change(db: Session, role: str, change_id: str) -> s.BankChangeOut:
     c = db.get(models.BankChangeRequest, change_id)
     if c is None:
         raise not_found("bank_change", change_id)
-    return views.bank_change_out(role, c)
+    vendor = db.get(models.Vendor, c.vendor_id)
+    return views.bank_change_out(role, c, vendor.legal_name if vendor else None)
 
 
 def list_bank_changes(db: Session, role: str, *, status: str | None) -> list[s.BankChangeOut]:
     stmt = select(models.BankChangeRequest)
     if status:
         stmt = stmt.where(models.BankChangeRequest.status == status)
-    rows = db.scalars(stmt.order_by(models.BankChangeRequest.requested_at.desc()))
-    return [views.bank_change_out(role, c) for c in rows]
+    rows = list(db.scalars(stmt.order_by(models.BankChangeRequest.requested_at.desc())))
+    # Vendor names in one query, for every row.
+    ids = {c.vendor_id for c in rows}
+    names = {vid: name for vid, name in db.execute(
+        select(models.Vendor.vendor_id, models.Vendor.legal_name).where(models.Vendor.vendor_id.in_(ids)))}
+    return [views.bank_change_out(role, c, names.get(c.vendor_id)) for c in rows]
+
+
+# When a vendor's bank change is decided, the bills still in review re-run their controls, so a flag about the change
+# (BANK_CHANGE_UNVERIFIED) reflects the decision at once instead of blocking until some unrelated edit. Bills further
+# on keep their stored run: re-running one mid-approval could change its route under the approvers, and history bills
+# keep their point-in-time run.
+RECHECK_STATUSES = ("needs_review", "on_hold")
+
+
+def _recheck_open_bills(db: Session, vendor_id: str) -> list[str]:
+    """Re-run the controls on the vendor's app bills in review; returns their ids."""
+    db.flush()
+    bill_ids = list(db.scalars(select(models.Bill.bill_id).where(
+        models.Bill.vendor_id == vendor_id, models.Bill.origin == "app",
+        models.Bill.status.in_(RECHECK_STATUSES)).order_by(models.Bill.bill_id)))
+    for bill_id in bill_ids:
+        controls_runner.rerun(db, bill_id)
+    return bill_ids
 
 
 # ---------------------------------------------------------------- writes
@@ -187,10 +210,12 @@ def verify_bank_change(db: Session, user: CurrentUser, change_id: str, comment: 
     c.verified_by = user.user_id
     c.verified_at = utcnow()
     c.verified_by_callback = True
+    rechecked = _recheck_open_bills(db, c.vendor_id)
     record(db, actor_user_id=user.user_id, actor_role=user.role, action=AuditAction.VENDOR_BANK_CHANGE_VERIFIED,
            entity_type="vendor", entity_id=c.vendor_id,
            before={"account": current.account} if current else None,
-           after={"change_id": c.change_id, "account": c.new_account or c.new_account_last4}, comment=comment)
+           after={"change_id": c.change_id, "account": c.new_account or c.new_account_last4,
+                  "rechecked_bills": rechecked}, comment=comment)
 
 
 def reject_bank_change(db: Session, user: CurrentUser, change_id: str, comment: str | None) -> None:
@@ -206,5 +231,6 @@ def reject_bank_change(db: Session, user: CurrentUser, change_id: str, comment: 
     if applied_unverified:
         vendor = _vendor(db, c.vendor_id)
         after["vendor_status"] = vendor.status = "on_hold"
+    after["rechecked_bills"] = _recheck_open_bills(db, c.vendor_id)
     record(db, actor_user_id=user.user_id, actor_role=user.role, action=AuditAction.VENDOR_BANK_CHANGE_REJECTED,
            entity_type="vendor", entity_id=c.vendor_id, after=after, comment=comment)

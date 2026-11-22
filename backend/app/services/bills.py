@@ -189,6 +189,10 @@ def code_line(db: Session, user: CurrentUser, bill_id: str, line_no: int, patch:
                   "coding_status": line.coding_status, "suggested_gl_account": line.suggested_gl_account})
 
 
+# Flags that only their own workflow can clear: marking them resolved by hand is refused.
+VERIFY_TO_CLEAR = frozenset({"BANK_CHANGE_UNVERIFIED"})
+
+
 def resolve_flag(db: Session, user: CurrentUser, bill_id: str, flag_id: int, body: s.FlagResolveIn) -> None:
     """Resolve (fixed) or override (accepted as is, with a reason) one open flag of the latest controls run.
     Overriding a blocking flag needs finance or controller rights; an AP clerk can resolve anything and override
@@ -200,6 +204,13 @@ def resolve_flag(db: Session, user: CurrentUser, bill_id: str, flag_id: int, bod
         raise not_found("flag", str(flag_id))
     if flag.resolution != "open":
         raise invalid_state("flag", flag.resolution, "open")
+    # An unverified bank change is fixed only by verifying it (a callback on a number already on file), which clears
+    # the flag on the bill's next controls run. Marking it "resolved" by hand would let the bill through unverified;
+    # finance or the controller can still override it with a reason.
+    if body.resolution == "resolved" and flag.code in VERIFY_TO_CLEAR:
+        raise ApiError(409, "flag.cleared_by_verification",
+                       "Verify the bank change instead (Bank changes); that clears this flag. A finance manager or "
+                       "the controller can override it with a reason.")
     if body.resolution == "overridden":
         if not body.comment:
             raise ApiError(422, "flag.comment_required", "Say why you're overriding this flag.")
