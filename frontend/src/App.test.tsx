@@ -41,8 +41,9 @@ describe('signed out', () => {
     for (const group of ['Employee', 'AP clerk', 'Approver', 'Finance manager', 'Controller / admin', 'Auditor']) {
       expect(await within(list).findByText(group)).toBeInTheDocument()
     }
-    // Each option shows the name, then title, department and id; on-leave users are marked.
-    expect(within(list).getByText('Facilities Manager, D04 (U012)')).toBeInTheDocument()
+    // Each option shows the name, then "title, department" (the id here: these test users have no department name);
+    // on-leave users are marked.
+    expect(within(list).getByText('Facilities Manager, D04')).toBeInTheDocument()
     expect(within(list).getByText('On leave')).toBeInTheDocument()
   })
 

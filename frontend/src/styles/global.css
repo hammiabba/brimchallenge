@@ -197,9 +197,16 @@
   padding: 32px 24px 48px;
 }
 
+/* The logo, title and description, as one group. From md up it takes the panel's free height and centres itself,
+   so the demo note stays at the bottom; stacked below md, the panel is only as tall as its content. */
+.app-signin-brand-main {
+  flex: 1;
+}
+
 @media (min-width: 62em) {
+  /* The brand panel is about a third of the width, between 320px and 440px. */
   .app-signin-columns {
-    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    grid-template-columns: clamp(320px, 33.333%, 440px) minmax(0, 1fr);
   }
 
   .app-signin-brand {

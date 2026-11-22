@@ -11,15 +11,21 @@ import { ROLE_LABELS } from './roles'
 
 const SIGNED_OUT = { status: 401, body: envelope('auth.required', 'Sign in to continue.') }
 
-/** One person per demo persona id (in DEMO_PERSONAS order), plus someone who isn't a persona. */
+/** The persona user ids, in DEMO_PERSONAS order. */
+const PERSONA_IDS = DEMO_PERSONAS.map((persona) => persona.userId)
+
+/**
+ * One person per demo persona id (in DEMO_PERSONAS order), plus someone who isn't a persona. Auditor Kai Thompson's
+ * department has no name, to show the fallback to the id.
+ */
 const USERS: PickerUser[] = [
-  { user_id: 'U013', full_name: 'Avery Chen', title: 'Operations Analyst', role: 'employee', department_id: 'D01', status: 'active' },
-  { user_id: 'U004', full_name: 'Nadia Haddad', title: 'AP Clerk', role: 'ap_clerk', department_id: 'D02', status: 'active' },
-  { user_id: 'U007', full_name: 'Dev Malhotra', title: 'Operations Manager', role: 'approver', department_id: 'D01', status: 'active' },
-  { user_id: 'U003', full_name: 'Priya Natarajan', title: 'Finance Manager', role: 'finance_manager', department_id: 'D02', status: 'active' },
-  { user_id: 'U001', full_name: 'Morgan Lee', title: 'Chief Financial Officer', role: 'controller_admin', department_id: 'D08', status: 'active' },
-  { user_id: 'U006', full_name: 'Kai Thompson', title: 'Audit Lead', role: 'auditor', department_id: 'D04', status: 'active' },
-  { user_id: 'U020', full_name: 'Robin Okoye', title: 'Fleet Coordinator', role: 'employee', department_id: 'D03', status: 'active' },
+  { user_id: 'U013', full_name: 'Avery Chen', title: 'Dispatcher', role: 'employee', department_id: 'D01', department_name: 'Operations', status: 'active' },
+  { user_id: 'U004', full_name: 'Nadia Haddad', title: 'AP Clerk', role: 'ap_clerk', department_id: 'D04', department_name: 'Finance', status: 'active' },
+  { user_id: 'U007', full_name: 'Dev Malhotra', title: 'Operations Manager', role: 'approver', department_id: 'D01', department_name: 'Operations', status: 'active' },
+  { user_id: 'U003', full_name: 'Priya Natarajan', title: 'Finance Manager', role: 'finance_manager', department_id: 'D04', department_name: 'Finance', status: 'active' },
+  { user_id: 'U001', full_name: 'Morgan Lee', title: 'Chief Financial Officer', role: 'controller_admin', department_id: 'D08', department_name: 'Executive', status: 'active' },
+  { user_id: 'U006', full_name: 'Kai Thompson', title: 'Audit Lead', role: 'auditor', department_id: 'D04', department_name: null, status: 'active' },
+  { user_id: 'U020', full_name: 'Robin Okoye', title: 'Fleet Coordinator', role: 'employee', department_id: 'D03', department_name: 'Marketing', status: 'active' },
 ]
 
 /** The fake API for the sign-in page; POST /auth/login answers as whoever was asked for and records the ids. */
@@ -60,21 +66,28 @@ describe('sign-in page', () => {
     for (const image of screen.getAllByRole('img')) expect(image).toHaveAccessibleName()
   })
 
-  it('lists one persona per role, in role order, with name, title and department from /auth/users', async () => {
+  it('lists one persona per role, in role order, with name, hint, title and department name', async () => {
     installSignIn()
     renderApp('/')
 
     const rows = await personaRows()
-    expect(rows).toHaveLength(DEMO_PERSONAS.length)
+    expect(rows).toHaveLength(PERSONA_IDS.length)
     expect(rows.map((row) => within(row).getByText(/^(Employee|AP clerk|Approver|Finance manager|Controller \/ admin|Auditor)$/).textContent))
       .toEqual(['Employee', 'AP clerk', 'Approver', 'Finance manager', 'Controller / admin', 'Auditor'])
-    expect(rows[0]).toHaveAccessibleName('Sign in as Avery Chen, Operations Analyst, D01, Employee')
-    expect(within(rows[4]!).getByText('Chief Financial Officer, D08')).toBeInTheDocument()
+    // Name (bold), what the role is for, then "title, department name"; the accessible name keeps that order.
+    expect(within(rows[0]!).getByText('Avery Chen')).toBeInTheDocument()
+    expect(within(rows[0]!).getByText('Submit an invoice and track it')).toBeInTheDocument()
+    expect(within(rows[0]!).getByText('Dispatcher, Operations')).toBeInTheDocument()
+    expect(rows[0]).toHaveAccessibleName('Sign in as Avery Chen, Submit an invoice and track it, Dispatcher, Operations, Employee')
+    expect(rows.map((row) => within(row).getAllByText(/./)[1]?.textContent)).toEqual(DEMO_PERSONAS.map((p) => p.hint))
+    expect(within(rows[4]!).getByText('Chief Financial Officer, Executive')).toBeInTheDocument()
+    // No department name: the id instead.
+    expect(within(rows[5]!).getByText('Audit Lead, D04')).toBeInTheDocument()
     // Someone who isn't a persona is only in the picker.
     expect(screen.queryByRole('button', { name: /Robin Okoye/ })).not.toBeInTheDocument()
   })
 
-  it.each(DEMO_PERSONAS)('signs in as persona %s and lands on that role\'s first page', async (userId) => {
+  it.each(PERSONA_IDS)('signs in as persona %s and lands on that role\'s first page', async (userId) => {
     const fake = installSignIn()
     const user = userEvent.setup()
     renderApp('/')
@@ -101,7 +114,7 @@ describe('sign-in page', () => {
     renderApp('/')
 
     const rows = await personaRows()
-    expect(rows).toHaveLength(DEMO_PERSONAS.length - 1)
+    expect(rows).toHaveLength(PERSONA_IDS.length - 1)
     expect(screen.queryByRole('button', { name: /Dev Malhotra/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
@@ -117,6 +130,22 @@ describe('sign-in page', () => {
 
     await waitFor(() => expect(fake.loginIds).toEqual(['U020']))
     expect(await screen.findByRole('heading', { level: 1, name: navItemsFor('employee')[0]!.label })).toBeInTheDocument()
+  })
+
+  it('labels the picker without a visible "Sign in as" and shows "title, department name" in its options', async () => {
+    installSignIn()
+    const user = userEvent.setup()
+    renderApp('/')
+
+    const picker = await screen.findByRole('combobox', { name: 'Sign in as' })
+    expect(screen.queryByText('Sign in as')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: 'Or sign in as someone else' })).toBeInTheDocument()
+
+    // Searching a department's name finds the people in it.
+    await user.type(picker, 'marketing')
+    const option = await screen.findByRole('option', { name: /Robin Okoye/ })
+    expect(within(option).getByText('Fleet Coordinator, Marketing')).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: /Avery Chen/ })).not.toBeInTheDocument()
   })
 
   it('shows a refused persona sign-in with the request id, and stays on the page', async () => {
