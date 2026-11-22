@@ -1,5 +1,6 @@
-import { Anchor, Group, SegmentedControl, SimpleGrid, Skeleton, Stack, Table, Text, Title } from '@mantine/core'
-import { Fragment, type ReactNode } from 'react'
+import { Anchor, Box, Button, Group, SegmentedControl, SimpleGrid, Skeleton, Stack, Table, Text, Title } from '@mantine/core'
+import { IconChevronDown, IconChevronRight } from '@tabler/icons-react'
+import { Fragment, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
 import { ErrorAlert } from '../api/ErrorAlert'
@@ -7,14 +8,24 @@ import type { BankReconciliation, ReconDoublePayment, ReconIssue, ReconLine, Rec
 import { PAYMENT_METHOD_LABELS } from '../bills/labels'
 import { StatusBadge } from '../ui/Badges'
 import { DateText, Id, MoneyText } from '../ui/DataText'
+import { Icon } from '../ui/Icon'
 import { PAYMENT_STATUS } from '../ui/statusStyles'
 import { useBankReconciliation } from './queries'
 
-/** The two views: every line, or only what needs someone's action. Kept in the URL (?view=issues). */
+/**
+ * The two views: only what needs someone's action (the default), or every line. "All lines" is kept in the URL
+ * (?view=all); the default needs nothing.
+ */
 const VIEWS = [
-  { value: 'all', label: 'All lines' },
   { value: 'issues', label: 'Only issues' },
+  { value: 'all', label: 'All lines' },
 ] as const
+
+/**
+ * The note every card payment carries ("Paid by card: settles on the card account, not this bank account."). It
+ * says the same thing on every row, so the section says it once, above the table, and the rows leave it out.
+ */
+const CARD_NOTE = 'PAID_BY_CARD'
 
 /** One label and value in the summary grid. */
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -88,7 +99,7 @@ function SimpleTable({ label, columns, numeric = [], empty, rows }: {
   label: string; columns: readonly string[]; numeric?: readonly string[]; empty: string; rows: ReactNode[]
 }) {
   return (
-    <Table.ScrollContainer minWidth={820}>
+    <Table.ScrollContainer minWidth={820} type="native">
       <Table aria-label={label} bg="white" withTableBorder>
         <Table.Thead>
           <Table.Tr>
@@ -186,8 +197,32 @@ function PaymentRow({ payment }: { payment: ReconPayment }) {
       <Table.Td>{PAYMENT_STATUS[status] ? <StatusBadge kind="payment" status={status} /> : payment.status}</Table.Td>
       <Table.Td>{payment.on_date ? <DateText value={payment.on_date} /> : <Text span c="dimmed" size="sm">None</Text>}</Table.Td>
       <Table.Td data-numeric><MoneyText value={payment.amount_cad} align="right" /></Table.Td>
-      <Table.Td><Issues issues={payment.issues} /></Table.Td>
+      <Table.Td><Issues issues={payment.issues} skip={[CARD_NOTE]} /></Table.Td>
     </Table.Tr>
+  )
+}
+
+/**
+ * The matched lines. In the issues view they are the few that need review, shown as they are; in the all-lines view
+ * they are hundreds of lines that need nothing, so they stay folded behind "Show N matched lines" until asked for.
+ */
+function MatchedLines({ lines, onlyIssues }: { lines: readonly ReconLine[]; onlyIssues: boolean }) {
+  const [open, setOpen] = useState(false)
+  const table = (
+    <SimpleTable label="Matched lines" columns={['Line', 'Posted', 'Description', 'Amount', 'Payment', 'Bill', 'Issues']}
+      numeric={['Amount']} empty={onlyIssues ? 'No matched line needs review.' : 'No line matched a payment.'}
+      rows={lines.map((l) => <LineRow key={l.bank_txn_id} line={l} matched />)} />
+  )
+  if (onlyIssues || lines.length === 0) return table
+  return (
+    <Stack gap="sm">
+      <Button variant="subtle" size="compact-sm" w="fit-content" onClick={() => setOpen((o) => !o)}
+        leftSection={<Icon icon={open ? IconChevronDown : IconChevronRight} size={14} />}
+        aria-expanded={open} aria-controls="recon-matched-lines">
+        {open ? 'Hide matched lines' : `Show ${plural(lines.length, 'matched line')}`}
+      </Button>
+      <Box id="recon-matched-lines" hidden={!open}>{open && table}</Box>
+    </Stack>
   )
 }
 
@@ -197,6 +232,9 @@ function Groups({ data, onlyIssues }: { data: BankReconciliation; onlyIssues: bo
   const unexplained = data.lines.filter((l) => l.status === 'unexplained')
   const fees = data.lines.filter((l) => l.status === 'bank_fee')
   const matched = data.lines.filter((l) => l.status === 'matched')
+  const offStatement = data.payments.filter((p) => !p.bank_txn_id)
+  // The card note's own wording, from the first payment that carries it (said once, in the section intro).
+  const cardNote = offStatement.flatMap((p) => p.issues).find((i) => i.code === CARD_NOTE)?.message
   const lineColumns = ['Line', 'Posted', 'Description', 'Amount', 'Issues']
   /** In the issues view, how many of the group are shown. */
   const shownNote = (shown: number) => (onlyIssues ? ` Showing the ${shown} that need review.` : '')
@@ -232,16 +270,17 @@ function Groups({ data, onlyIssues }: { data: BankReconciliation; onlyIssues: bo
 
       <Section title="Matched"
         note={<><CountAndTotal count={s.matched} noun="line" total={s.matched_cad} />{'.'}{shownNote(matched.length)}</>}>
-        <SimpleTable label="Matched lines" columns={['Line', 'Posted', 'Description', 'Amount', 'Payment', 'Bill', 'Issues']}
-          numeric={['Amount']} empty={onlyIssues ? 'No matched line needs review.' : 'No line matched a payment.'}
-          rows={matched.map((l) => <LineRow key={l.bank_txn_id} line={l} matched />)} />
+        <MatchedLines lines={matched} onlyIssues={onlyIssues} />
       </Section>
 
       <Section title="Payments not on the statement"
-        note={onlyIssues ? 'The ones that need review.' : 'Card payments, scheduled payments and cheques not cleared yet.'}>
+        note={<>
+          {onlyIssues ? 'The ones that need review.' : 'Card payments, scheduled payments and cheques not cleared yet.'}
+          {cardNote && ` ${cardNote}`}
+        </>}>
         <SimpleTable label="Payments not on the statement" columns={OFF_STATEMENT_COLUMNS}
           numeric={['Amount (CAD)']} empty={onlyIssues ? 'No payment needs review.' : 'Every payment is on the statement.'}
-          rows={data.payments.filter((p) => !p.bank_txn_id).map((p) => <PaymentRow key={p.payment_id} payment={p} />)} />
+          rows={offStatement.map((p) => <PaymentRow key={p.payment_id} payment={p} />)} />
       </Section>
     </Stack>
   )
@@ -254,7 +293,7 @@ function Groups({ data, onlyIssues }: { data: BankReconciliation; onlyIssues: bo
  */
 export default function ReconciliationPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const onlyIssues = searchParams.get('view') === 'issues'
+  const onlyIssues = searchParams.get('view') !== 'all'
   const report = useBankReconciliation(onlyIssues)
 
   return (
@@ -263,7 +302,7 @@ export default function ReconciliationPage() {
       <Group>
         <SegmentedControl aria-label="Show" data={VIEWS.map((v) => ({ value: v.value, label: v.label }))}
           value={onlyIssues ? 'issues' : 'all'}
-          onChange={(value) => setSearchParams(value === 'issues' ? { view: 'issues' } : {}, { replace: true })} />
+          onChange={(value) => setSearchParams(value === 'all' ? { view: 'all' } : {}, { replace: true })} />
       </Group>
       {report.isError && !report.data ? (
         <ErrorAlert error={report.error} title="Can't load the reconciliation" onRetry={() => void report.refetch()} />

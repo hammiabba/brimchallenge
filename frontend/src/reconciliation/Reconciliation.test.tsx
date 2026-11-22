@@ -11,6 +11,7 @@ import { currentLocation, renderApp } from '../test/renderApp'
 const CONTROLLER = { role: 'controller_admin', user_id: 'U002' } as const
 const review = (code: string, message: string) => ({ code, severity: 'review' as const, message })
 const info = (code: string, message: string) => ({ code, severity: 'info' as const, message })
+const CARD_NOTE = 'Paid by card: settles on the card account, not this bank account.'
 
 /** A small statement shaped like the dataset's: one line of each kind, a double payment and a payment at risk. */
 const REPORT: BankReconciliation = {
@@ -35,6 +36,8 @@ const REPORT: BankReconciliation = {
     { payment_id: 'PAY-00399', bill_id: 'AP-00407', vendor_id: 'V011', method: 'EFT', status: 'scheduled', amount_cad: '2457.19',
       on_date: '2026-11-02', bank_txn_id: null,
       issues: [info('SCHEDULED', 'Scheduled for 2026-11-02, not sent yet.'), review('DOUBLE_PAYMENT_AT_RISK', 'Summit Packaging Supply: AP-00394 / AP-00407 are one bill. Cancel it.')] },
+    { payment_id: 'PAY-00201', bill_id: 'AP-00210', vendor_id: 'V020', method: 'CARD', status: 'settled', amount_cad: '120.00',
+      on_date: '2026-06-01', bank_txn_id: null, issues: [info('PAID_BY_CARD', CARD_NOTE)] },
   ],
   double_payments: [
     { bill_ids: ['AP-00136', 'AP-00155'], card_txn_ids: [], payment_ids: ['PAY-00133', 'PAY-00150'],
@@ -49,7 +52,8 @@ const REPORT: BankReconciliation = {
 describe('bank reconciliation', () => {
   it('shows the totals and every group, with links to payments and bills', async () => {
     const fake = installFakeApi({ ...billScreenRoutes(CONTROLLER), 'GET /reconciliation/bank': { body: REPORT } })
-    renderApp('/reconciliation')
+    const user = userEvent.setup()
+    renderApp('/reconciliation?view=all')
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Bank reconciliation' })).toBeInTheDocument()
     const summary = await screen.findByLabelText('Summary')
@@ -72,6 +76,12 @@ describe('bank reconciliation', () => {
     expect(within(fees).getByText(/no payment went out by wire/)).toBeInTheDocument()
     expect(within(fees).queryByText('Bank fee.')).not.toBeInTheDocument() // the fee's own note isn't repeated
 
+    // Matched lines need nothing, so in this view they are folded behind a toggle until asked for.
+    expect(screen.queryByRole('table', { name: 'Matched lines' })).not.toBeInTheDocument()
+    const toggle = screen.getByRole('button', { name: 'Show 1 matched line' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await user.click(toggle)
+    expect(screen.getByRole('button', { name: 'Hide matched lines' })).toHaveAttribute('aria-expanded', 'true')
     const matched = screen.getByRole('table', { name: 'Matched lines' })
     const cheque = within(matched).getByText('CHEQUE 5018 CLEARED').closest('tr')!
     expect(within(cheque).getByRole('link', { name: 'PAY-00347' })).toHaveAttribute('href', '/payments/PAY-00347')
@@ -80,9 +90,14 @@ describe('bank reconciliation', () => {
 
     const off = screen.getByRole('table', { name: 'Payments not on the statement' })
     expect(within(off).getByText(/AP-00394 \/ AP-00407 are one bill/)).toBeInTheDocument()
+    // The card note is said once, in the section's intro, not on every card payment's row.
+    expect(within(off).getByRole('link', { name: 'PAY-00201' })).toBeInTheDocument()
+    expect(within(off).queryByText(CARD_NOTE)).not.toBeInTheDocument()
+    const section = screen.getByRole('region', { name: 'Payments not on the statement' })
+    expect(within(section).getByText(CARD_NOTE, { exact: false })).toBeInTheDocument()
   })
 
-  it('switches to only issues through the URL and asks the server for it', async () => {
+  it('opens on only issues, switches to all lines through the URL and asks the server for each', async () => {
     const fake = installFakeApi({
       ...billScreenRoutes(CONTROLLER),
       'GET /reconciliation/bank': (request) => ({
@@ -91,13 +106,18 @@ describe('bank reconciliation', () => {
     })
     const user = userEvent.setup()
     renderApp('/reconciliation')
-    await screen.findByRole('table', { name: 'Matched lines' })
+    const lastQuery = () => fake.urls.filter((u) => u.pathname === '/api/reconciliation/bank').at(-1)!.searchParams
 
-    await user.click(screen.getByText('Only issues'))
-    await waitFor(() => expect(currentLocation()).toBe('/reconciliation?view=issues'))
+    // Only issues is the default: no query string, and the server is asked for issues only.
     expect(await screen.findByText('No matched line needs review.')).toBeInTheDocument()
     expect(screen.getByText('No bank fee needs review.')).toBeInTheDocument()
-    expect(fake.urls.filter((u) => u.pathname === '/api/reconciliation/bank').at(-1)!.searchParams.get('only_issues')).toBe('true')
+    expect(currentLocation()).toBe('/reconciliation')
+    expect(lastQuery().get('only_issues')).toBe('true')
+
+    await user.click(screen.getByText('All lines'))
+    await waitFor(() => expect(currentLocation()).toBe('/reconciliation?view=all'))
+    expect(await screen.findByRole('button', { name: 'Show 1 matched line' })).toBeInTheDocument()
+    expect(lastQuery().get('only_issues')).toBe('false')
   })
 
   it('shows the server\'s refusal for other roles', async () => {
