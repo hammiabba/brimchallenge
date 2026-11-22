@@ -1,5 +1,6 @@
-import { Anchor, Group, Pagination, SegmentedControl, SimpleGrid, Skeleton, Stack, Table, Text, Title } from '@mantine/core'
+import { Anchor, Button, Group, Pagination, SegmentedControl, SimpleGrid, Skeleton, Stack, Table, Text, Title } from '@mantine/core'
 import type { ReactNode } from 'react'
+import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
 import { ErrorAlert } from '../api/ErrorAlert'
@@ -7,10 +8,12 @@ import { personName, usePeople } from '../api/reference'
 import type { BillSummary, Payment, PaymentStatus } from '../api/types'
 import { useCurrentUser } from '../auth/context'
 import { PAYMENT_METHOD_LABELS } from '../bills/labels'
+import { useBill } from '../bills/queries'
 import { StatusBadge } from '../ui/Badges'
 import { DateText, Id, MoneyText } from '../ui/DataText'
 import { PAYMENT_STATUS } from '../ui/statusStyles'
 import { PAYMENTS_PAGE_SIZE, useApprovedBills, usePaymentsPage, usePaymentsSummary } from './queries'
+import { ScheduleModal } from './ScheduleModal'
 
 /** The status tabs over the payments list; "all" is no filter. The list opens on what is still to be released. */
 const TABS = [
@@ -122,8 +125,29 @@ function Overview() {
   )
 }
 
+/**
+ * Schedule, when the bill's allowed_actions (GET /bills/{id}) says the signed-in user may schedule it now. For AP, a
+ * bill they can't schedule shows the server's reason instead (a pending bank change, an inactive vendor).
+ */
+function ScheduleCell({ bill, asOf }: { bill: BillSummary; asOf: string }) {
+  const user = useCurrentUser()
+  const detail = useBill(bill.bill_id)
+  const [open, setOpen] = useState(false)
+  const action = detail.data?.allowed_actions?.schedule_payment
+  if (!action) return null
+  if (!action.allowed) {
+    return user.role === 'ap_clerk' && action.reason ? <Text size="sm" c="dimmed">{action.reason}</Text> : null
+  }
+  return (
+    <>
+      <Button size="xs" onClick={() => setOpen(true)}>Schedule</Button>
+      <ScheduleModal bill={bill} asOf={asOf} opened={open} onClose={() => setOpen(false)} />
+    </>
+  )
+}
+
 /** One approved bill waiting for its payment to be scheduled. */
-function ApprovedRow({ bill }: { bill: BillSummary }) {
+function ApprovedRow({ bill, asOf, actions }: { bill: BillSummary; asOf: string; actions: boolean }) {
   return (
     <Table.Tr>
       <Table.Td>
@@ -132,14 +156,20 @@ function ApprovedRow({ bill }: { bill: BillSummary }) {
       <Table.Td>{bill.vendor_name ?? <Text span c="dimmed" size="sm">No vendor matched</Text>}</Table.Td>
       <Table.Td>{bill.due_date ? <DateText value={bill.due_date} /> : <Text span c="dimmed" size="sm">None</Text>}</Table.Td>
       <Table.Td data-numeric><MoneyText value={bill.total_cad} align="right" /></Table.Td>
+      {actions && <Table.Td><ScheduleCell bill={bill} asOf={asOf} /></Table.Td>}
     </Table.Tr>
   )
 }
 
-/** Approved bills with no payment yet (GET /bills?status=approved). AP schedules them. */
+/** Approved bills with no payment yet (GET /bills?status=approved). AP schedules them; the server decides who may. */
 function ApprovedBills() {
+  const user = useCurrentUser()
   const bills = useApprovedBills()
-  const columns = ['Bill', 'Vendor', 'Due date', 'Total (CAD)']
+  const summary = usePaymentsSummary()
+  const asOf = summary.data?.as_of ?? ''
+  // Only AP schedules payments, so other roles don't get an empty Actions column. The buttons still need the server's yes.
+  const actions = user.role === 'ap_clerk'
+  const columns = ['Bill', 'Vendor', 'Due date', 'Total (CAD)', ...(actions ? ['Actions'] : [])]
   return (
     <Stack component="section" aria-label="Approved, not scheduled" gap="sm">
       <Title order={2}>Approved, not scheduled</Title>
@@ -156,7 +186,7 @@ function ApprovedBills() {
             <Table.Tbody>
               <TableState loading={bills.isPending} empty={bills.data?.items.length === 0} columns={columns.length}
                 message="No approved bill is waiting for a payment." />
-              {bills.data?.items.map((bill) => <ApprovedRow key={bill.bill_id} bill={bill} />)}
+              {bills.data?.items.map((bill) => <ApprovedRow key={bill.bill_id} bill={bill} asOf={asOf} actions={actions} />)}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
