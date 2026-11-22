@@ -1,0 +1,1119 @@
+{
+  "delegated_step": {
+    "allowed_actions": {
+      "approve": {
+        "allowed": true,
+        "reason": "Step 1 (dept_manager) is yours, as delegate for U012."
+      },
+      "assign_step": {
+        "allowed": false,
+        "reason": "No approval step is waiting for an approver to be assigned."
+      },
+      "code_lines": {
+        "allowed": false,
+        "reason": "Your role (finance_manager) can't code lines."
+      },
+      "edit": {
+        "allowed": false,
+        "reason": "Your role (finance_manager) can't edit bills."
+      },
+      "override_blocking_flags": {
+        "allowed": false,
+        "reason": "The bill is pending_approval; it can only change while in review."
+      },
+      "reject": {
+        "allowed": true,
+        "reason": "Step 1 (dept_manager) is yours, as delegate for U012."
+      },
+      "resolve_flags": {
+        "allowed": false,
+        "reason": "The bill is pending_approval; it can only change while in review."
+      },
+      "schedule_payment": {
+        "allowed": false,
+        "reason": "Your role (finance_manager) can't schedule payments."
+      },
+      "submit": {
+        "allowed": false,
+        "reason": "Your role (finance_manager) can't submit bills."
+      },
+      "void": {
+        "allowed": false,
+        "reason": "Your role (finance_manager) can't void bills."
+      }
+    },
+    "audit": [
+      {
+        "action": "bill.created",
+        "actor_role": "system",
+        "actor_user_id": "system",
+        "after": {
+          "department_id": "D07",
+          "department_source": "submitter",
+          "email_id": null,
+          "file_name": "demo-d07-delegate-queue.pdf",
+          "intake_item_id": 7,
+          "started_by": "U004",
+          "status": "needs_review",
+          "warnings": []
+        },
+        "at": "2026-11-22T05:08:35Z",
+        "before": null,
+        "comment": null,
+        "entity_id": "AP-00433",
+        "entity_type": "bill",
+        "event_id": "EV-f2c14e4bd01f4d3da7ff23c5eade26a1",
+        "on_behalf_of": null,
+        "request_id": null,
+        "seq": 21
+      },
+      {
+        "action": "bill.submitted",
+        "actor_role": "ap_clerk",
+        "actor_user_id": "U004",
+        "after": {
+          "route": [
+            {
+              "role": "dept_manager",
+              "step_no": 1,
+              "user_id": "U003"
+            }
+          ],
+          "status": "pending_approval"
+        },
+        "at": "2026-11-22T05:08:35Z",
+        "before": {
+          "status": "needs_review"
+        },
+        "comment": null,
+        "entity_id": "AP-00433",
+        "entity_type": "bill",
+        "event_id": "EV-3d1dc29642e849b8974e3be4b113092a",
+        "on_behalf_of": null,
+        "request_id": null,
+        "seq": 22
+      }
+    ],
+    "bill_id": "AP-00433",
+    "contract_id": null,
+    "created_at": "2026-11-22T05:08:35Z",
+    "created_by": "U004",
+    "currency": "CAD",
+    "current_step": {
+      "delegated_from": "U012",
+      "role": "dept_manager",
+      "step_no": 1,
+      "user_id": "U003"
+    },
+    "decisions": [],
+    "department_id": "D07",
+    "department_source": "submitter",
+    "due_date": "2026-11-20",
+    "extracted": {
+      "contract_id": null,
+      "currency": "CAD",
+      "department_id": "D07",
+      "due_date": "2026-11-20",
+      "extraction_warnings": [],
+      "field_confidence": {},
+      "fx_rate_to_cad": "1",
+      "invoice_date": "2026-10-30",
+      "invoice_number": "DM-1007",
+      "is_credit_note": false,
+      "lines": [
+        {
+          "amount": "1860.00",
+          "coding": null,
+          "description": "Electrical repairs, Mississauga warehouse",
+          "line_no": 1,
+          "line_type": "services",
+          "quantity": "1",
+          "unit_price": "1860.00"
+        }
+      ],
+      "payment_terms_days": null,
+      "po_number": null,
+      "requester_user_id": null,
+      "ship_to_province": "ON",
+      "source": {
+        "email_id": null,
+        "file_hash": "sha256:demo-d07-delegate-queue",
+        "file_name": "demo-d07-delegate-queue.pdf",
+        "language": "en",
+        "sender_address": null,
+        "was_ocr": false
+      },
+      "subtotal": "1860.00",
+      "taxes": [
+        {
+          "amount": "241.80",
+          "code": "HST13",
+          "rate": "0.13"
+        }
+      ],
+      "total": "2101.80",
+      "total_cad": "2101.80",
+      "vendor": {
+        "address": null,
+        "bank": {
+          "account": "57551807",
+          "institution": "002",
+          "transit": "86503"
+        },
+        "gst_number": "511235570RT0001",
+        "match_method": "gst_number",
+        "match_score": 1.0,
+        "name_on_invoice": "Lakeshore Hydro Services",
+        "qst_number": null,
+        "vendor_id": "V040"
+      }
+    },
+    "file_hash": "sha256:demo-d07-delegate-queue",
+    "fx_rate_date": null,
+    "fx_rate_to_cad": "1",
+    "invoice_date": "2026-10-30",
+    "is_credit_note": false,
+    "latest_run": {
+      "can_auto_proceed": true,
+      "duplicates": [],
+      "evaluated_at": "2026-11-22T05:08:35Z",
+      "flags": [],
+      "recommendation": null,
+      "route": [
+        {
+          "decided_at": null,
+          "decided_by": null,
+          "decision": null,
+          "delegated_from": "U012",
+          "escalated_from": null,
+          "policy_ids": [
+            "P01",
+            "P08"
+          ],
+          "reason": "Total $2,101.80 \u2264 $10,000; Liam O'Connor is on leave since 2026-10-20; Elise Tremblay acts as delegate.",
+          "role": "dept_manager",
+          "step_no": 1,
+          "user_id": "U003"
+        }
+      ],
+      "run_id": 440,
+      "version": 2
+    },
+    "lines": [
+      {
+        "amount": "1860.00",
+        "coded_at": null,
+        "coded_by": null,
+        "coding_status": "none",
+        "department_id": null,
+        "description": "Electrical repairs, Mississauga warehouse",
+        "gl_account": null,
+        "gst_hst_code": null,
+        "line_no": 1,
+        "line_type": "services",
+        "pst_qst_code": null,
+        "quantity": "1",
+        "suggested_department_id": null,
+        "suggested_gl_account": null,
+        "suggestion_confidence": null,
+        "suggestion_reason": null,
+        "unit_price": "1860.00"
+      }
+    ],
+    "open_flags": {
+      "block": 0,
+      "info": 0,
+      "warn": 0
+    },
+    "origin": "app",
+    "payments": [],
+    "po_id": null,
+    "received_date": "2026-11-22",
+    "requester_user_id": null,
+    "row_version": 2,
+    "ship_to_province": "ON",
+    "source_email_id": null,
+    "status": "pending_approval",
+    "subtotal": "1860.00",
+    "taxes": [
+      {
+        "amount": "241.80",
+        "rate": "0.13",
+        "tax_code": "HST13"
+      }
+    ],
+    "top_flag_code": null,
+    "total": "2101.80",
+    "total_cad": "2101.80",
+    "updated_at": "2026-11-22T05:08:35Z",
+    "vendor_id": "V040",
+    "vendor_invoice_number": "DM-1007",
+    "vendor_name": "Lakeshore Hydro Services"
+  },
+  "last_step": {
+    "allowed_actions": {
+      "approve": {
+        "allowed": true,
+        "reason": "Step 2 (finance_manager) is yours."
+      },
+      "assign_step": {
+        "allowed": false,
+        "reason": "No approval step is waiting for an approver to be assigned."
+      },
+      "code_lines": {
+        "allowed": false,
+        "reason": "Your role (finance_manager) can't code lines."
+      },
+      "edit": {
+        "allowed": false,
+        "reason": "Your role (finance_manager) can't edit bills."
+      },
+      "override_blocking_flags": {
+        "allowed": false,
+        "reason": "The bill is pending_approval; it can only change while in review."
+      },
+      "reject": {
+        "allowed": true,
+        "reason": "Step 2 (finance_manager) is yours."
+      },
+      "resolve_flags": {
+        "allowed": false,
+        "reason": "The bill is pending_approval; it can only change while in review."
+      },
+      "schedule_payment": {
+        "allowed": false,
+        "reason": "Your role (finance_manager) can't schedule payments."
+      },
+      "submit": {
+        "allowed": false,
+        "reason": "Your role (finance_manager) can't submit bills."
+      },
+      "void": {
+        "allowed": false,
+        "reason": "Your role (finance_manager) can't void bills."
+      }
+    },
+    "audit": [
+      {
+        "action": "bill.created",
+        "actor_role": "system",
+        "actor_user_id": "system",
+        "after": {
+          "department_id": "D01",
+          "department_source": "submitter",
+          "email_id": null,
+          "file_name": "demo-d01-finance-queue.pdf",
+          "intake_item_id": 8,
+          "started_by": "U004",
+          "status": "needs_review",
+          "warnings": []
+        },
+        "at": "2026-11-22T05:08:36Z",
+        "before": null,
+        "comment": null,
+        "entity_id": "AP-00434",
+        "entity_type": "bill",
+        "event_id": "EV-56d320a3aab6475ca6b4821678fead94",
+        "on_behalf_of": null,
+        "request_id": null,
+        "seq": 24
+      },
+      {
+        "action": "bill.submitted",
+        "actor_role": "ap_clerk",
+        "actor_user_id": "U004",
+        "after": {
+          "route": [
+            {
+              "role": "dept_manager",
+              "step_no": 1,
+              "user_id": "U007"
+            },
+            {
+              "role": "finance_manager",
+              "step_no": 2,
+              "user_id": "U003"
+            }
+          ],
+          "status": "pending_approval"
+        },
+        "at": "2026-11-22T05:08:36Z",
+        "before": {
+          "status": "needs_review"
+        },
+        "comment": null,
+        "entity_id": "AP-00434",
+        "entity_type": "bill",
+        "event_id": "EV-2df907eebc3847d8bae5e504fb19256b",
+        "on_behalf_of": null,
+        "request_id": null,
+        "seq": 25
+      },
+      {
+        "action": "bill.approved",
+        "actor_role": "approver",
+        "actor_user_id": "U007",
+        "after": {
+          "final": false,
+          "status": "pending_approval",
+          "step_no": 1,
+          "step_role": "dept_manager"
+        },
+        "at": "2026-11-22T05:08:36Z",
+        "before": {
+          "status": "pending_approval",
+          "step_no": 1
+        },
+        "comment": "Approved for the demo.",
+        "entity_id": "AP-00434",
+        "entity_type": "bill",
+        "event_id": "EV-f87b48813bd24701b297082b0a41fea7",
+        "on_behalf_of": null,
+        "request_id": null,
+        "seq": 26
+      }
+    ],
+    "bill_id": "AP-00434",
+    "contract_id": null,
+    "created_at": "2026-11-22T05:08:36Z",
+    "created_by": "U004",
+    "currency": "CAD",
+    "current_step": {
+      "delegated_from": null,
+      "role": "finance_manager",
+      "step_no": 2,
+      "user_id": "U003"
+    },
+    "decisions": [
+      {
+        "acted_at": "2026-11-22T05:08:36Z",
+        "actor_role": "approver",
+        "actor_user_id": "U007",
+        "comment": "Approved for the demo.",
+        "decision": "approved",
+        "decision_id": "AP-A-00475",
+        "on_behalf_of": null,
+        "origin": "app",
+        "step_no": 1,
+        "step_role": "dept_manager"
+      }
+    ],
+    "department_id": "D01",
+    "department_source": "submitter",
+    "due_date": "2026-11-29",
+    "extracted": {
+      "contract_id": null,
+      "currency": "CAD",
+      "department_id": "D01",
+      "due_date": "2026-11-29",
+      "extraction_warnings": [],
+      "field_confidence": {},
+      "fx_rate_to_cad": "1",
+      "invoice_date": "2026-10-30",
+      "invoice_number": "DM-1008",
+      "is_credit_note": false,
+      "lines": [
+        {
+          "amount": "11800.00",
+          "coding": null,
+          "description": "Dedicated truckload runs, October 2026",
+          "line_no": 1,
+          "line_type": "services",
+          "quantity": "1",
+          "unit_price": "11800.00"
+        }
+      ],
+      "payment_terms_days": null,
+      "po_number": null,
+      "requester_user_id": "U013",
+      "ship_to_province": "ON",
+      "source": {
+        "email_id": null,
+        "file_hash": "sha256:demo-d01-finance-queue",
+        "file_name": "demo-d01-finance-queue.pdf",
+        "language": "en",
+        "sender_address": null,
+        "was_ocr": false
+      },
+      "subtotal": "11800.00",
+      "taxes": [
+        {
+          "amount": "1534.00",
+          "code": "HST13",
+          "rate": "0.13"
+        }
+      ],
+      "total": "13334.00",
+      "total_cad": "13334.00",
+      "vendor": {
+        "address": null,
+        "bank": {
+          "account": "234408577",
+          "institution": "010",
+          "transit": "66160"
+        },
+        "gst_number": "367912731RT0001",
+        "match_method": "gst_number",
+        "match_score": 1.0,
+        "name_on_invoice": "Great Lakes Carriers Inc.",
+        "qst_number": null,
+        "vendor_id": "V002"
+      }
+    },
+    "file_hash": "sha256:demo-d01-finance-queue",
+    "fx_rate_date": null,
+    "fx_rate_to_cad": "1",
+    "invoice_date": "2026-10-30",
+    "is_credit_note": false,
+    "latest_run": {
+      "can_auto_proceed": true,
+      "duplicates": [],
+      "evaluated_at": "2026-11-22T05:08:36Z",
+      "flags": [],
+      "recommendation": null,
+      "route": [
+        {
+          "decided_at": "2026-11-22T05:08:36Z",
+          "decided_by": "U007",
+          "decision": "approved",
+          "delegated_from": null,
+          "escalated_from": null,
+          "policy_ids": [
+            "P02"
+          ],
+          "reason": "Total $13,334.00 > $10,000",
+          "role": "dept_manager",
+          "step_no": 1,
+          "user_id": "U007"
+        },
+        {
+          "decided_at": null,
+          "decided_by": null,
+          "decision": null,
+          "delegated_from": null,
+          "escalated_from": null,
+          "policy_ids": [
+            "P02"
+          ],
+          "reason": "Total $13,334.00 > $10,000",
+          "role": "finance_manager",
+          "step_no": 2,
+          "user_id": "U003"
+        }
+      ],
+      "run_id": 442,
+      "version": 2
+    },
+    "lines": [
+      {
+        "amount": "11800.00",
+        "coded_at": null,
+        "coded_by": null,
+        "coding_status": "none",
+        "department_id": null,
+        "description": "Dedicated truckload runs, October 2026",
+        "gl_account": null,
+        "gst_hst_code": null,
+        "line_no": 1,
+        "line_type": "services",
+        "pst_qst_code": null,
+        "quantity": "1",
+        "suggested_department_id": null,
+        "suggested_gl_account": null,
+        "suggestion_confidence": null,
+        "suggestion_reason": null,
+        "unit_price": "11800.00"
+      }
+    ],
+    "open_flags": {
+      "block": 0,
+      "info": 0,
+      "warn": 0
+    },
+    "origin": "app",
+    "payments": [],
+    "po_id": null,
+    "received_date": "2026-11-22",
+    "requester_user_id": "U013",
+    "row_version": 3,
+    "ship_to_province": "ON",
+    "source_email_id": null,
+    "status": "pending_approval",
+    "subtotal": "11800.00",
+    "taxes": [
+      {
+        "amount": "1534.00",
+        "rate": "0.13",
+        "tax_code": "HST13"
+      }
+    ],
+    "top_flag_code": null,
+    "total": "13334.00",
+    "total_cad": "13334.00",
+    "updated_at": "2026-11-22T05:08:36Z",
+    "vendor_id": "V002",
+    "vendor_invoice_number": "DM-1008",
+    "vendor_name": "Great Lakes Carriers Inc."
+  },
+  "ready_to_submit": {
+    "allowed_actions": {
+      "approve": {
+        "allowed": false,
+        "reason": "Your role (ap_clerk) can't approve bills."
+      },
+      "assign_step": {
+        "allowed": false,
+        "reason": "Your role (ap_clerk) can't assign approvers."
+      },
+      "code_lines": {
+        "allowed": true,
+        "reason": null
+      },
+      "edit": {
+        "allowed": true,
+        "reason": null
+      },
+      "override_blocking_flags": {
+        "allowed": false,
+        "reason": "Your role (ap_clerk) can't override blocking flags."
+      },
+      "reject": {
+        "allowed": false,
+        "reason": "Your role (ap_clerk) can't reject bills."
+      },
+      "resolve_flags": {
+        "allowed": false,
+        "reason": "There are no open flags."
+      },
+      "schedule_payment": {
+        "allowed": false,
+        "reason": "This bill is needs_review; it must be approved."
+      },
+      "submit": {
+        "allowed": true,
+        "reason": "Ready for approval."
+      },
+      "void": {
+        "allowed": true,
+        "reason": null
+      }
+    },
+    "audit": [
+      {
+        "action": "bill.created",
+        "actor_role": "system",
+        "actor_user_id": "system",
+        "after": {
+          "department_id": "D01",
+          "department_source": "submitter",
+          "email_id": null,
+          "file_name": "demo-v004-hold.pdf",
+          "intake_item_id": 9,
+          "started_by": "U004",
+          "status": "needs_review",
+          "warnings": []
+        },
+        "at": "2026-11-22T05:08:36Z",
+        "before": null,
+        "comment": null,
+        "entity_id": "AP-00435",
+        "entity_type": "bill",
+        "event_id": "EV-55f8bf3a67354992aa133f482493ca7c",
+        "on_behalf_of": null,
+        "request_id": null,
+        "seq": 28
+      },
+      {
+        "action": "bill.flag_overridden",
+        "actor_role": "finance_manager",
+        "actor_user_id": "U003",
+        "after": {
+          "code": "BANK_CHANGE_UNVERIFIED",
+          "flag_id": 95,
+          "resolution": "overridden",
+          "severity": "block"
+        },
+        "at": "2026-11-22T05:08:36Z",
+        "before": {
+          "code": "BANK_CHANGE_UNVERIFIED",
+          "flag_id": 95,
+          "resolution": "open"
+        },
+        "comment": "Called Cascadia on file number",
+        "entity_id": "AP-00435",
+        "entity_type": "bill",
+        "event_id": "EV-d39bbeb4f27f4300aa66d2e65bfa6c1c",
+        "on_behalf_of": null,
+        "request_id": "79d60e00c9924e5bbc0a063d89d9d04e",
+        "seq": 45
+      }
+    ],
+    "bill_id": "AP-00435",
+    "contract_id": null,
+    "created_at": "2026-11-22T05:08:36Z",
+    "created_by": "U004",
+    "currency": "CAD",
+    "current_step": null,
+    "decisions": [],
+    "department_id": "D01",
+    "department_source": "submitter",
+    "due_date": "2026-11-29",
+    "extracted": {
+      "contract_id": null,
+      "currency": "CAD",
+      "department_id": "D01",
+      "due_date": "2026-11-29",
+      "extraction_warnings": [],
+      "field_confidence": {},
+      "fx_rate_to_cad": "1",
+      "invoice_date": "2026-10-30",
+      "invoice_number": "DM-1009",
+      "is_credit_note": false,
+      "lines": [
+        {
+          "amount": "3480.00",
+          "coding": null,
+          "description": "Cross-dock handling, Delta BC, Oct 29",
+          "line_no": 1,
+          "line_type": "services",
+          "quantity": "1",
+          "unit_price": "3480.00"
+        }
+      ],
+      "payment_terms_days": null,
+      "po_number": null,
+      "requester_user_id": "U013",
+      "ship_to_province": "BC",
+      "source": {
+        "email_id": null,
+        "file_hash": "sha256:demo-v004-hold",
+        "file_name": "demo-v004-hold.pdf",
+        "language": "en",
+        "sender_address": null,
+        "was_ocr": false
+      },
+      "subtotal": "3480.00",
+      "taxes": [
+        {
+          "amount": "174.00",
+          "code": "GST5",
+          "rate": "0.05"
+        }
+      ],
+      "total": "3654.00",
+      "total_cad": "3654.00",
+      "vendor": {
+        "address": null,
+        "bank": {
+          "account": "953389679",
+          "institution": "003",
+          "transit": "92968"
+        },
+        "gst_number": "669086667RT0001",
+        "match_method": "gst_number",
+        "match_score": 1.0,
+        "name_on_invoice": "Cascadia Cartage Ltd.",
+        "qst_number": null,
+        "vendor_id": "V004"
+      }
+    },
+    "file_hash": "sha256:demo-v004-hold",
+    "fx_rate_date": null,
+    "fx_rate_to_cad": "1",
+    "invoice_date": "2026-10-30",
+    "is_credit_note": false,
+    "latest_run": {
+      "can_auto_proceed": false,
+      "duplicates": [],
+      "evaluated_at": "2026-11-22T05:08:36Z",
+      "flags": [
+        {
+          "code": "BANK_CHANGE_UNVERIFIED",
+          "evidence": {
+            "change_id": "BC-009",
+            "changed_at": "2026-10-27",
+            "changed_by_user_id": "U005",
+            "new_account_last4": "9679",
+            "old_account_last4": "7504",
+            "request_channel": "email_request",
+            "vendor_id": "V004",
+            "verified_by_callback": "no"
+          },
+          "field": "vendor.bank",
+          "id": 95,
+          "message": "Bank account changed on 2026-10-27 via email_request (\u20267504 \u2192 \u20269679) and was never verified by callback.",
+          "resolution": "overridden",
+          "resolution_comment": "Called Cascadia on file number",
+          "resolved_at": "2026-11-22T05:08:36Z",
+          "resolved_by": "U003",
+          "severity": "block"
+        }
+      ],
+      "recommendation": "Hold: Bank account changed on 2026-10-27 via email_request (\u20267504 \u2192 \u20269679) and was never verified by callback.",
+      "route": [
+        {
+          "decided_at": null,
+          "decided_by": null,
+          "decision": null,
+          "delegated_from": null,
+          "escalated_from": null,
+          "policy_ids": [
+            "P01"
+          ],
+          "reason": "Total $3,654.00 \u2264 $10,000",
+          "role": "dept_manager",
+          "step_no": 1,
+          "user_id": "U007"
+        }
+      ],
+      "run_id": 443,
+      "version": 1
+    },
+    "lines": [
+      {
+        "amount": "3480.00",
+        "coded_at": null,
+        "coded_by": null,
+        "coding_status": "none",
+        "department_id": null,
+        "description": "Cross-dock handling, Delta BC, Oct 29",
+        "gl_account": null,
+        "gst_hst_code": null,
+        "line_no": 1,
+        "line_type": "services",
+        "pst_qst_code": null,
+        "quantity": "1",
+        "suggested_department_id": null,
+        "suggested_gl_account": null,
+        "suggestion_confidence": null,
+        "suggestion_reason": null,
+        "unit_price": "3480.00"
+      }
+    ],
+    "open_flags": {
+      "block": 0,
+      "info": 0,
+      "warn": 0
+    },
+    "origin": "app",
+    "payments": [],
+    "po_id": null,
+    "received_date": "2026-11-22",
+    "requester_user_id": "U013",
+    "row_version": 2,
+    "ship_to_province": "BC",
+    "source_email_id": null,
+    "status": "needs_review",
+    "subtotal": "3480.00",
+    "taxes": [
+      {
+        "amount": "174.00",
+        "rate": "0.05",
+        "tax_code": "GST5"
+      }
+    ],
+    "top_flag_code": null,
+    "total": "3654.00",
+    "total_cad": "3654.00",
+    "updated_at": "2026-11-22T05:08:36Z",
+    "vendor_id": "V004",
+    "vendor_invoice_number": "DM-1009",
+    "vendor_name": "Cascadia Cartage Ltd."
+  },
+  "submitted": {
+    "allowed_actions": {
+      "approve": {
+        "allowed": false,
+        "reason": "Your role (ap_clerk) can't approve bills."
+      },
+      "assign_step": {
+        "allowed": false,
+        "reason": "Your role (ap_clerk) can't assign approvers."
+      },
+      "code_lines": {
+        "allowed": false,
+        "reason": "The bill is pending_approval; it can only change while in review."
+      },
+      "edit": {
+        "allowed": false,
+        "reason": "The bill is pending_approval; it can only change while in review."
+      },
+      "override_blocking_flags": {
+        "allowed": false,
+        "reason": "Your role (ap_clerk) can't override blocking flags."
+      },
+      "reject": {
+        "allowed": false,
+        "reason": "Your role (ap_clerk) can't reject bills."
+      },
+      "resolve_flags": {
+        "allowed": false,
+        "reason": "The bill is pending_approval; it can only change while in review."
+      },
+      "schedule_payment": {
+        "allowed": false,
+        "reason": "This bill is pending_approval; it must be approved."
+      },
+      "submit": {
+        "allowed": false,
+        "reason": "The bill is pending_approval; it can only change while in review."
+      },
+      "void": {
+        "allowed": false,
+        "reason": "A pending_approval bill can't be voided by your role."
+      }
+    },
+    "audit": [
+      {
+        "action": "bill.created",
+        "actor_role": "system",
+        "actor_user_id": "system",
+        "after": {
+          "department_id": "D01",
+          "department_source": "submitter",
+          "email_id": null,
+          "file_name": "demo-v004-hold.pdf",
+          "intake_item_id": 9,
+          "started_by": "U004",
+          "status": "needs_review",
+          "warnings": []
+        },
+        "at": "2026-11-22T05:08:36Z",
+        "before": null,
+        "comment": null,
+        "entity_id": "AP-00435",
+        "entity_type": "bill",
+        "event_id": "EV-55f8bf3a67354992aa133f482493ca7c",
+        "on_behalf_of": null,
+        "request_id": null,
+        "seq": 28
+      },
+      {
+        "action": "bill.flag_overridden",
+        "actor_role": "finance_manager",
+        "actor_user_id": "U003",
+        "after": {
+          "code": "BANK_CHANGE_UNVERIFIED",
+          "flag_id": 95,
+          "resolution": "overridden",
+          "severity": "block"
+        },
+        "at": "2026-11-22T05:08:36Z",
+        "before": {
+          "code": "BANK_CHANGE_UNVERIFIED",
+          "flag_id": 95,
+          "resolution": "open"
+        },
+        "comment": "Called Cascadia on file number",
+        "entity_id": "AP-00435",
+        "entity_type": "bill",
+        "event_id": "EV-d39bbeb4f27f4300aa66d2e65bfa6c1c",
+        "on_behalf_of": null,
+        "request_id": "79d60e00c9924e5bbc0a063d89d9d04e",
+        "seq": 45
+      },
+      {
+        "action": "bill.submitted",
+        "actor_role": "ap_clerk",
+        "actor_user_id": "U004",
+        "after": {
+          "route": [
+            {
+              "role": "dept_manager",
+              "step_no": 1,
+              "user_id": "U007"
+            }
+          ],
+          "status": "pending_approval"
+        },
+        "at": "2026-11-22T05:08:36Z",
+        "before": {
+          "status": "needs_review"
+        },
+        "comment": null,
+        "entity_id": "AP-00435",
+        "entity_type": "bill",
+        "event_id": "EV-d3a6969cfd064ac68865d9d6aa58dd75",
+        "on_behalf_of": null,
+        "request_id": "d00a4457232f47fb94883e90614ac2ab",
+        "seq": 47
+      }
+    ],
+    "bill_id": "AP-00435",
+    "contract_id": null,
+    "created_at": "2026-11-22T05:08:36Z",
+    "created_by": "U004",
+    "currency": "CAD",
+    "current_step": {
+      "delegated_from": null,
+      "role": "dept_manager",
+      "step_no": 1,
+      "user_id": "U007"
+    },
+    "decisions": [],
+    "department_id": "D01",
+    "department_source": "submitter",
+    "due_date": "2026-11-29",
+    "extracted": {
+      "contract_id": null,
+      "currency": "CAD",
+      "department_id": "D01",
+      "due_date": "2026-11-29",
+      "extraction_warnings": [],
+      "field_confidence": {},
+      "fx_rate_to_cad": "1",
+      "invoice_date": "2026-10-30",
+      "invoice_number": "DM-1009",
+      "is_credit_note": false,
+      "lines": [
+        {
+          "amount": "3480.00",
+          "coding": null,
+          "description": "Cross-dock handling, Delta BC, Oct 29",
+          "line_no": 1,
+          "line_type": "services",
+          "quantity": "1",
+          "unit_price": "3480.00"
+        }
+      ],
+      "payment_terms_days": null,
+      "po_number": null,
+      "requester_user_id": "U013",
+      "ship_to_province": "BC",
+      "source": {
+        "email_id": null,
+        "file_hash": "sha256:demo-v004-hold",
+        "file_name": "demo-v004-hold.pdf",
+        "language": "en",
+        "sender_address": null,
+        "was_ocr": false
+      },
+      "subtotal": "3480.00",
+      "taxes": [
+        {
+          "amount": "174.00",
+          "code": "GST5",
+          "rate": "0.05"
+        }
+      ],
+      "total": "3654.00",
+      "total_cad": "3654.00",
+      "vendor": {
+        "address": null,
+        "bank": {
+          "account": "953389679",
+          "institution": "003",
+          "transit": "92968"
+        },
+        "gst_number": "669086667RT0001",
+        "match_method": "gst_number",
+        "match_score": 1.0,
+        "name_on_invoice": "Cascadia Cartage Ltd.",
+        "qst_number": null,
+        "vendor_id": "V004"
+      }
+    },
+    "file_hash": "sha256:demo-v004-hold",
+    "fx_rate_date": null,
+    "fx_rate_to_cad": "1",
+    "invoice_date": "2026-10-30",
+    "is_credit_note": false,
+    "latest_run": {
+      "can_auto_proceed": false,
+      "duplicates": [],
+      "evaluated_at": "2026-11-22T05:08:36Z",
+      "flags": [
+        {
+          "code": "BANK_CHANGE_UNVERIFIED",
+          "evidence": {
+            "change_id": "BC-009",
+            "changed_at": "2026-10-27",
+            "changed_by_user_id": "U005",
+            "new_account_last4": "9679",
+            "old_account_last4": "7504",
+            "request_channel": "email_request",
+            "vendor_id": "V004",
+            "verified_by_callback": "no"
+          },
+          "field": "vendor.bank",
+          "id": 96,
+          "message": "Bank account changed on 2026-10-27 via email_request (\u20267504 \u2192 \u20269679) and was never verified by callback.",
+          "resolution": "overridden",
+          "resolution_comment": "Called Cascadia on file number",
+          "resolved_at": "2026-11-22T05:08:36Z",
+          "resolved_by": "U003",
+          "severity": "block"
+        }
+      ],
+      "recommendation": "Hold: Bank account changed on 2026-10-27 via email_request (\u20267504 \u2192 \u20269679) and was never verified by callback.",
+      "route": [
+        {
+          "decided_at": null,
+          "decided_by": null,
+          "decision": null,
+          "delegated_from": null,
+          "escalated_from": null,
+          "policy_ids": [
+            "P01"
+          ],
+          "reason": "Total $3,654.00 \u2264 $10,000",
+          "role": "dept_manager",
+          "step_no": 1,
+          "user_id": "U007"
+        }
+      ],
+      "run_id": 450,
+      "version": 2
+    },
+    "lines": [
+      {
+        "amount": "3480.00",
+        "coded_at": null,
+        "coded_by": null,
+        "coding_status": "none",
+        "department_id": null,
+        "description": "Cross-dock handling, Delta BC, Oct 29",
+        "gl_account": null,
+        "gst_hst_code": null,
+        "line_no": 1,
+        "line_type": "services",
+        "pst_qst_code": null,
+        "quantity": "1",
+        "suggested_department_id": null,
+        "suggested_gl_account": null,
+        "suggestion_confidence": null,
+        "suggestion_reason": null,
+        "unit_price": "3480.00"
+      }
+    ],
+    "open_flags": {
+      "block": 0,
+      "info": 0,
+      "warn": 0
+    },
+    "origin": "app",
+    "payments": [],
+    "po_id": null,
+    "received_date": "2026-11-22",
+    "requester_user_id": "U013",
+    "row_version": 3,
+    "ship_to_province": "BC",
+    "source_email_id": null,
+    "status": "pending_approval",
+    "subtotal": "3480.00",
+    "taxes": [
+      {
+        "amount": "174.00",
+        "rate": "0.05",
+        "tax_code": "GST5"
+      }
+    ],
+    "top_flag_code": null,
+    "total": "3654.00",
+    "total_cad": "3654.00",
+    "updated_at": "2026-11-22T05:08:36Z",
+    "vendor_id": "V004",
+    "vendor_invoice_number": "DM-1009",
+    "vendor_name": "Cascadia Cartage Ltd."
+  }
+}
