@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { BillDetail } from '../api/types'
 import { envelope, installFakeApi, type FakeRoute } from '../test/fakeApi'
-import { billDetail, billScreenRoutes } from '../test/fixtures'
+import { billDetail, billScreenRoutes, controlsRun } from '../test/fixtures'
 import { renderApp } from '../test/renderApp'
 
 const CLERK = { role: 'ap_clerk', user_id: 'U005' } as const
@@ -163,5 +163,68 @@ describe('department', () => {
     await within(summary).findByText('Not confirmed: suggested from the line coding')
     expect(within(summary).queryByRole('button', { name: 'Confirm' })).not.toBeInTheDocument()
     expect(within(summary).queryByRole('button', { name: 'Change department' })).not.toBeInTheDocument()
+  })
+})
+
+describe('edit the header', () => {
+  it('sends only the changed fields and shows the re-run controls', async () => {
+    let sent: unknown = null
+    renderReview(inReview(), CLERK, (state) => ({
+      'PATCH /bills/AP-00407': async (request) => {
+        sent = await request.json()
+        state.bill = {
+          ...state.bill, vendor_invoice_number: '000805', po_id: null, row_version: 5,
+          latest_run: controlsRun({ version: 2, flags: [] }),
+        }
+        return { body: state.bill }
+      },
+    }))
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: 'Edit details' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit bill details' })
+    expect(within(dialog).getByText(/Amounts and lines come from the invoice and can't be edited here/)).toBeInTheDocument()
+    const save = within(dialog).getByRole('button', { name: 'Save and re-run controls' })
+    expect(save).toBeDisabled() // nothing changed yet
+
+    const number = within(dialog).getByRole('textbox', { name: /Invoice number/ })
+    await user.clear(number)
+    await user.type(number, '000805')
+    await user.clear(within(dialog).getByRole('textbox', { name: 'PO' }))
+    await user.click(save)
+
+    await waitFor(() => expect(sent).toEqual({ row_version: 4, vendor_invoice_number: '000805', po_id: null }))
+    expect(await screen.findByText('AP-00407: controls ran again, 0 open flags.')).toBeInTheDocument()
+    expect(await screen.findByText('No flags on this bill.')).toBeInTheDocument()
+
+    // Opening the form again starts from the saved values.
+    await user.click(screen.getByRole('button', { name: 'Edit details' }))
+    const again = await screen.findByRole('dialog', { name: 'Edit bill details' })
+    expect(within(again).getByRole('textbox', { name: /Invoice number/ })).toHaveValue('000805')
+  })
+
+  it('shows a refusal in the form', async () => {
+    renderReview(inReview(), CLERK, () => ({
+      'PATCH /bills/AP-00407': {
+        status: 422, body: envelope('bill.unknown_po_id', 'PO-2099-0001 doesn\'t exist.', 'rid-ed-1', { field: 'po_id' }),
+      },
+    }))
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Edit details' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit bill details' })
+    const po = within(dialog).getByRole('textbox', { name: 'PO' })
+    await user.clear(po)
+    await user.type(po, 'PO-2099-0001')
+    await user.click(within(dialog).getByRole('button', { name: 'Save and re-run controls' }))
+    expect(await within(dialog).findByText('PO-2099-0001 doesn\'t exist.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Request id: rid-ed-1')).toBeInTheDocument()
+  })
+
+  it('has no Edit details button without the edit action', async () => {
+    renderReview(inReview({ status: 'pending_approval', allowed_actions: {
+      edit: { allowed: false, reason: 'The bill is pending_approval; it can only change while in review.' },
+    } }))
+    await screen.findByRole('heading', { level: 1, name: 'Bill AP-00407' })
+    expect(screen.queryByRole('button', { name: 'Edit details' })).not.toBeInTheDocument()
   })
 })

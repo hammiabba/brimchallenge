@@ -21,6 +21,7 @@ import {
 import { vendorMatchLine } from '../labels'
 import { useCodeLine } from '../mutations'
 import { CodingModal } from './CodingModal'
+import { HeaderEditModal } from './HeaderEditModal'
 import { FieldRegion } from './FieldRegion'
 import type { InvoiceRegion } from './highlight'
 
@@ -208,7 +209,7 @@ function CodingActions({ bill, line }: { bill: BillDetail; line: BillLine }) {
       <Button size="xs" variant="default" onClick={() => setOpen(true)} aria-label={`Change coding of line ${line.line_no}`}>
         Change
       </Button>
-      <CodingModal bill={bill} line={line} opened={open} onClose={() => setOpen(false)} />
+      <CodingModal key={bill.row_version} bill={bill} line={line} opened={open} onClose={() => setOpen(false)} />
     </Group>
   )
 }
@@ -321,13 +322,20 @@ export function InvoicePanel({ bill }: { bill: BillDetail }) {
     ? [snapshotText(snapshot, 'source.file_name'), snapshotText(snapshot, 'source.email_id')]
       .filter(Boolean).join(', from email ')
     : null
+  const canEdit = bill.allowed_actions?.edit?.allowed ?? false
+  const [editing, setEditing] = useState(false)
 
   return (
     <Stack gap="md">
       <Group justify="space-between" align="baseline">
-        <Title order={2}>Invoice</Title>
+        <Group gap="sm" align="baseline">
+          <Title order={2}>Invoice</Title>
+          {canEdit && <Button size="xs" variant="default" onClick={() => setEditing(true)}>Edit details</Button>}
+        </Group>
         {source && <Text size="xs" c="dimmed">{source}</Text>}
       </Group>
+      {/* Keyed on the row version: after any write the form starts again from the bill as it now stands. */}
+      {canEdit && <HeaderEditModal key={bill.row_version} bill={bill} opened={editing} onClose={() => setEditing(false)} />}
 
       <SimpleGrid component="dl" cols={2} spacing="xs" verticalSpacing={6} m={0}
         style={{ gridTemplateColumns: 'max-content 1fr' }}>

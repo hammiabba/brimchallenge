@@ -45,7 +45,7 @@ function DepartmentActions({ bill, unconfirmed }: { bill: BillDetail; unconfirme
         <Button size="xs" onClick={confirmDepartment} loading={confirm.isPending}>Confirm</Button>
       )}
       <Button size="xs" variant="default" onClick={() => setOpen(true)} aria-label="Change department">Change</Button>
-      <DepartmentModal bill={bill} opened={open} onClose={() => setOpen(false)} />
+      <DepartmentModal key={bill.row_version} bill={bill} opened={open} onClose={() => setOpen(false)} />
     </Group>
   )
 }
