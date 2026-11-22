@@ -20,7 +20,7 @@ interface VendorsTableProps {
 /** The vendor master as a dense table, in the server's order. Each vendor id opens the vendor page. */
 export function VendorsTable({ vendors, loading, emptyMessage }: VendorsTableProps) {
   return (
-    <Table.ScrollContainer minWidth={900}>
+    <Table.ScrollContainer minWidth={900} type="native">
       <Table aria-label="Vendors" bg="white" withTableBorder>
         <Table.Thead>
           <Table.Tr>

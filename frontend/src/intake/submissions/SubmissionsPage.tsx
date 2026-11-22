@@ -99,7 +99,7 @@ export default function SubmissionsPage() {
         <ErrorAlert error={submissions.error} title="Can't load your submissions" onRetry={() => void submissions.refetch()} />
       ) : (
         <>
-          <Table.ScrollContainer minWidth={900}>
+          <Table.ScrollContainer minWidth={900} type="native">
             <Table aria-label="My submissions" bg="white" withTableBorder>
               <Table.Thead>
                 <Table.Tr>
