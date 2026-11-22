@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,8 @@ SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "demo_scenario.py"
 def _load_script():
     spec = importlib.util.spec_from_file_location("demo_scenario", SCRIPT)
     module = importlib.util.module_from_spec(spec)
+    # Registered before running it: dataclasses look the module up by name while the script defines them.
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
