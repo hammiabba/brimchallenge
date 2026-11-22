@@ -7,6 +7,8 @@ Input: the stored Email row (and its intake items). Output: SuggestedAction / Em
 """
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -24,7 +26,7 @@ class EmailItem(BaseModel):
     item_id: int
     file_name: str
     file_hash: str | None
-    status: str
+    status: Literal["ok", "llm_skipped", "failed", "queued", "processing"]  # db.models.INTAKE_STATUSES
     error: str | None
     warnings: list[str]
     bill_id: str | None
