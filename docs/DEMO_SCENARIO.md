@@ -74,8 +74,10 @@ The script prints both checks at the end.
    with the same message.)
 5. **U002 (controller).** Releases PAY-00416.
 6. **U006 (auditor).** The audit log shows every step above, with the actor, the role and `on_behalf_of`, and
-   **Export CSV** downloads it. The log is a hash chain (each event signs the one before it with `AUDIT_HMAC_KEY`).
-   The UI doesn't show the check; run it from `backend/`:
+   **Export CSV** downloads it. The log is a hash chain: each event stores the previous event's hash and its own
+   SHA-256 hash over that and its fields, so an edit, insertion or deletion in the middle breaks the chain.
+   `AUDIT_HMAC_KEY` doesn't sign the chain; it only protects bank account numbers in events (last 4 digits plus an
+   HMAC fingerprint). The UI doesn't show the check; run it from `backend/`:
    `python -c "from sqlalchemy.orm import Session; from app.db.database import make_engine; from app.db.audit import verify_chain; print(verify_chain(Session(make_engine())))"`
    prints `ChainReport(ok=True, ...)` with the number of events checked.
 
