@@ -169,3 +169,18 @@ describe('submit invoice', () => {
     expect(sentFiles()).toEqual(['a.pdf', 'b.png'])
   })
 })
+
+describe('submit invoice for roles that may not submit', () => {
+  it('says who submits instead of showing the upload controls', async () => {
+    installFakeApi(billScreenRoutes({ role: 'auditor', user_id: 'U015' }))
+    renderApp('/submit')
+    expect(await screen.findByText('Employees and AP submit invoices; your role reads them in Bills.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Choose files|Submit/ })).not.toBeInTheDocument()
+  })
+
+  it('gives AP the upload form', async () => {
+    installFakeApi(billScreenRoutes({ role: 'ap_clerk', user_id: 'U005' }))
+    renderApp('/submit')
+    expect(await screen.findByRole('button', { name: 'Choose files' })).toBeInTheDocument()
+  })
+})

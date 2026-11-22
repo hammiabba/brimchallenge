@@ -168,15 +168,11 @@ describe('inbox', () => {
     expect(currentLocation()).toBe('/inbox?job=b14d2229de36')
   })
 
-  it('lets the server refuse a run to a role that may only read the inbox', async () => {
-    installFakeApi(routes({
-      'POST /intake/inbox/jobs': { status: 403, body: envelope('auth.forbidden_role', "Your role (auditor) can't do this.", 'rid-403') },
-    }, { role: 'auditor', user_id: 'U015' }))
-    const user = userEvent.setup()
+  it('offers Run inbox only to AP, the one role the server lets start a run', async () => {
+    installFakeApi(routes({}, { role: 'auditor', user_id: 'U015' }))
     renderApp('/inbox')
-    await user.click(await screen.findByRole('button', { name: 'Run inbox' }))
-    expect(await screen.findByText("Your role (auditor) can't do this.")).toBeInTheDocument()
-    expect(screen.getByText("Can't start the inbox run")).toBeInTheDocument()
+    await screen.findByRole('table', { name: 'Inbox emails' })
+    expect(screen.queryByRole('button', { name: 'Run inbox' })).not.toBeInTheDocument()
   })
 
   it('shows only the 403 to an employee', async () => {

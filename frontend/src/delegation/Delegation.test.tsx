@@ -67,3 +67,12 @@ describe('out of office', () => {
     expect(screen.getByRole('button', { name: 'Save out of office' })).toBeDisabled()
   })
 })
+
+describe('out of office for roles without approvals', () => {
+  it('shows one line instead of a form the server would refuse', async () => {
+    installFakeApi(billScreenRoutes({ role: 'auditor', user_id: 'U015' }))
+    renderApp('/out-of-office')
+    expect(await screen.findByText(/your role has no approvals to hand over/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save out of office' })).not.toBeInTheDocument()
+  })
+})

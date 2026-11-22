@@ -8,6 +8,7 @@ import { ErrorAlert } from '../api/ErrorAlert'
 import { personName, usePeople } from '../api/reference'
 import type { DelegationInput, Role } from '../api/types'
 import { ME_QUERY_KEY, useCurrentUser } from '../auth/context'
+import { formatDate } from '../lib/dates'
 import { DateText } from '../ui/DataText'
 
 /** The roles that may sign for someone else. The server checks this too. */
@@ -60,13 +61,23 @@ export default function DelegationPage() {
       onSuccess: () => {
         notifications.show({
           title: 'Out of office saved',
-          message: `${personName(delegateId, people.data)} approves for you from ${startsOn}${endsOn ? ` to ${endsOn}` : ''}.`,
+          message: `${personName(delegateId, people.data)} approves for you from ${formatDate(startsOn)}${endsOn ? ` to ${formatDate(endsOn)}` : ''}.`,
         })
         setDelegateId(null)
         setStartsOn('')
         setEndsOn('')
       },
     })
+  }
+
+  // Only the roles that approve have approvals to hand over (PUT /me/delegation: approver, finance, controller).
+  if (!SIGNER_ROLES.includes(user.role)) {
+    return (
+      <Stack gap="lg" maw={720}>
+        <Title order={1}>Out of office</Title>
+        <Text size="sm">Out of office is for approvers, finance managers and the controller: your role has no approvals to hand over.</Text>
+      </Stack>
+    )
   }
 
   return (

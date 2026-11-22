@@ -5,6 +5,8 @@ import { useRef, useState, type DragEvent } from 'react'
 import { Link } from 'react-router'
 
 import { ApiError } from '../../api/errors'
+import type { Role } from '../../api/types'
+import { useCurrentUser } from '../../auth/context'
 import { BRAND, SURFACE } from '../../theme'
 import { Id } from '../../ui/DataText'
 import { Icon } from '../../ui/Icon'
@@ -75,7 +77,28 @@ function RowCells({ row, live }: { row: Row; live: IntakeItem | undefined }) {
  * each is followed by polling GET /submissions until it is final. File type and size are checked here only for
  * quick feedback: the server checks them again and its answer is shown.
  */
+/** The roles that may upload invoices, as the API's role gate decides (POST /submissions: employee and AP clerk). */
+const SUBMITTER_ROLES: readonly Role[] = ['employee', 'ap_clerk']
+
+/**
+ * /submit for anyone: the upload form for the roles that may submit; for anyone else who opens it by its address,
+ * one line saying who submits instead of a form the server would refuse.
+ */
 export default function SubmitPage() {
+  const user = useCurrentUser()
+  if (!SUBMITTER_ROLES.includes(user.role)) {
+    return (
+      <Stack gap="md" maw={960}>
+        <Title order={1}>Submit invoice</Title>
+        <Text size="sm">Employees and AP submit invoices; your role reads them in Bills.</Text>
+      </Stack>
+    )
+  }
+  return <SubmitForm />
+}
+
+/** The upload form: pick or drop files, then submit them; each one's progress and the bill it became. */
+function SubmitForm() {
   const queryClient = useQueryClient()
   const input = useRef<HTMLInputElement>(null)
   const nextKey = useRef(0)
