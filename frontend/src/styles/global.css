@@ -156,3 +156,87 @@
   left: 0;
   top: 1px;
 }
+
+/* ---------------------------------------------------------------- sign-in page */
+
+/* The page fills the viewport: the 3px Robin's Egg bar on top, then two columns from the md breakpoint (62em),
+   stacked below it. No floating card. */
+.app-signin {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--app-page);
+}
+
+.app-signin-bar {
+  flex: none;
+  height: 3px;
+  background-color: var(--app-accent);
+}
+
+.app-signin-columns {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* The brand panel: solid Blumine, white text, the logo at the top and the demo note at the bottom. */
+.app-signin-brand {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 32px 24px;
+  background-color: var(--mantine-primary-color-filled);
+  color: #ffffff;
+}
+
+.app-signin-main {
+  display: flex;
+  justify-content: center;
+  padding: 32px 24px 48px;
+}
+
+@media (min-width: 62em) {
+  .app-signin-columns {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  }
+
+  .app-signin-brand {
+    padding: 48px;
+  }
+
+  .app-signin-main {
+    align-items: center;
+    padding: 48px;
+  }
+}
+
+/* One demo persona: a full-width row button with a thin border, a hover state and the Blumine focus ring. */
+.app-persona {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  text-align: left;
+  background-color: #ffffff;
+  border: 1px solid var(--app-border);
+  border-radius: 4px;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.app-persona:hover:not(:disabled) {
+  background-color: var(--app-primary-tint);
+  border-color: var(--mantine-primary-color-filled);
+}
+
+.app-persona:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+}
+
+.app-persona:disabled {
+  cursor: progress;
+}

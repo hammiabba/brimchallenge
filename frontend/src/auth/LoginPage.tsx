@@ -1,4 +1,4 @@
-import { Button, Center, Group, Loader, Paper, Select, Stack, Text, Title } from '@mantine/core'
+import { Button, Group, Loader, Select, Stack, Text, Title, UnstyledButton, rem } from '@mantine/core'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { IconLogin2, IconSearch } from '@tabler/icons-react'
 import { useMemo, useState } from 'react'
@@ -7,13 +7,19 @@ import { Navigate, useLocation } from 'react-router'
 import { api, unwrap } from '../api/client'
 import { ErrorAlert } from '../api/ErrorAlert'
 import type { PickerUser } from '../api/types'
-import { APP_NAME } from '../config'
-import { StatusBadge } from '../ui/Badges'
+// The Robin's Egg wordmark on a transparent background: the logo file with the most contrast on Blumine (DESIGN.md).
+import brimLogo from '../assets/brand/brim_clear.png'
+import { APP_NAME, DEMO_PERSONAS } from '../config'
+import { RoleBadge, StatusBadge } from '../ui/Badges'
 import { Icon } from '../ui/Icon'
 import { useAuth } from './context'
 import { groupUsersByRole, makeUserFilter } from './pickerOptions'
 import type { LoginRedirectState } from './RequireAuth'
 import { ROLE_LABELS } from './roles'
+
+/** The logo's display size: 88 x 29 CSS px, half the file's 177 x 59, so it stays sharp on 2x screens. */
+const LOGO_WIDTH = 88
+const LOGO_HEIGHT = 29
 
 /** GET /auth/users: the people who may sign in (the server leaves out terminated users). */
 function usePickerUsers() {
@@ -42,9 +48,72 @@ function UserOption({ user }: { user: PickerUser }) {
 }
 
 /**
- * The demo sign-in: pick a person from GET /auth/users (searchable, grouped by role) and sign in as them with
- * POST /auth/login. There is no password; the server sets the session cookie. After signing in the user goes back
- * to the page they first asked for, or to their role's home page.
+ * The left panel: solid Blumine with the Brim logo, the app name in the serif title style, one line about the app,
+ * and the demo note at the bottom. All text is white or the muted panel colour (both pass 4.5:1 on Blumine).
+ */
+function BrandPanel() {
+  return (
+    <section className="app-signin-brand" aria-label={`About ${APP_NAME}`}>
+      <Stack gap={32}>
+        <img src={brimLogo} alt="Brim" width={LOGO_WIDTH} height={LOGO_HEIGHT} style={{ display: 'block' }} />
+        <Stack gap="sm">
+          <Text component="p" ff="var(--app-font-serif)" fz={rem(28)} fw={600} lh={1.25} c="white" m={0}>
+            {APP_NAME}
+          </Text>
+          <Text c="white" maw={440}>
+            Accounts payable for Harborline Logistics: invoices from inbox to payment, with approvals and a full audit
+            trail.
+          </Text>
+        </Stack>
+      </Stack>
+      <Text size="sm" c="var(--app-on-primary-muted)">
+        Demo environment. All data is synthetic and no real payments are made.
+      </Text>
+    </section>
+  )
+}
+
+interface PersonaRowProps {
+  person: PickerUser
+  /** True while this person's sign-in is in flight. */
+  pending: boolean
+  /** True while any sign-in is in flight. */
+  disabled: boolean
+  onPick: (userId: string) => void
+}
+
+/**
+ * One demo persona as a full-width button: name, "title, department" and the role badge. Clicking it (or Enter /
+ * Space on it) signs in as that person straight away.
+ */
+function PersonaRow({ person, pending, disabled, onPick }: PersonaRowProps) {
+  return (
+    <UnstyledButton
+      className="app-persona"
+      onClick={() => onPick(person.user_id)}
+      disabled={disabled}
+      aria-busy={pending || undefined}
+      // The visible text, in reading order, after "Sign in as" (so the accessible name contains the visible label).
+      aria-label={`Sign in as ${person.full_name}, ${person.title}, ${person.department_id}, ${ROLE_LABELS[person.role]}`}
+    >
+      {/* Spans only: a button may hold phrasing content, and its text is its accessible name. */}
+      <Stack component="span" gap={0} style={{ minWidth: 0 }}>
+        <Text component="span" display="block" size="sm" fw={600}>{person.full_name}</Text>
+        <Text component="span" display="block" size="xs" c="dimmed">{`${person.title}, ${person.department_id}`}</Text>
+      </Stack>
+      <Group component="span" gap="xs" wrap="nowrap">
+        {pending && <Loader size="xs" component="span" />}
+        <RoleBadge role={person.role} />
+      </Group>
+    </UnstyledButton>
+  )
+}
+
+/**
+ * The demo sign-in. Left: the brand panel. Right: one-click personas (one per role, from DEMO_PERSONAS; names and
+ * titles from GET /auth/users, and a persona that list doesn't include is skipped), then the searchable picker for
+ * anyone else. Both sign in through login(user_id), POST /auth/login; there is no password, the server sets the
+ * session cookie. After signing in the user goes back to the page they first asked for, or to their role's home.
  */
 export function LoginPage() {
   const { user, login } = useAuth()
@@ -56,6 +125,10 @@ export function LoginPage() {
   const byId = useMemo(() => new Map((users.data ?? []).map((u) => [u.user_id, u])), [users.data])
   const options = useMemo(() => groupUsersByRole(users.data ?? []), [users.data])
   const filter = useMemo(() => makeUserFilter(byId), [byId])
+  const personas = useMemo(
+    () => DEMO_PERSONAS.map((id) => byId.get(id)).filter((person): person is PickerUser => person !== undefined),
+    [byId],
+  )
 
   const signIn = useMutation({ mutationFn: (userId: string) => login(userId) })
 
@@ -69,21 +142,14 @@ export function LoginPage() {
   const selectedUser = selected ? byId.get(selected) : undefined
 
   return (
-    <Center mih="100vh" bg="var(--app-page)" p="md">
-      <Paper withBorder p="xl" w={420} maw="100%">
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (selected) signIn.mutate(selected)
-          }}
-        >
-          <Stack gap="md">
-            <Stack gap={4}>
-              <Title order={1}>{APP_NAME}</Title>
-              <Text size="sm" c="dimmed">
-                Demo sign-in: choose the person to act as. The server decides what their role can see and do.
-              </Text>
-            </Stack>
+    <div className="app-signin">
+      <div className="app-signin-bar" aria-hidden />
+      <div className="app-signin-columns">
+        <BrandPanel />
+
+        <main className="app-signin-main">
+          <Stack w="100%" maw={460} gap="lg">
+            <Title order={1}>Sign in</Title>
 
             {users.isPending && (
               <Group gap="xs">
@@ -95,45 +161,73 @@ export function LoginPage() {
               <ErrorAlert error={users.error} title="Can't load the people list" onRetry={() => void users.refetch()} />
             )}
 
-            {users.isSuccess && (
-              <Select
-                label="Sign in as"
-                placeholder="Search by name, title, department or role"
-                leftSection={<Icon icon={IconSearch} />}
-                data={options}
-                value={selected}
-                onChange={setSelected}
-                searchable
-                clearable
-                filter={filter}
-                nothingFoundMessage="Nobody matches"
-                maxDropdownHeight={360}
-                renderOption={({ option }) => {
-                  const person = byId.get(option.value)
-                  return person ? <UserOption user={person} /> : option.label
-                }}
-              />
+            {users.isSuccess && personas.length > 0 && (
+              <Stack component="section" aria-labelledby="signin-personas" gap="xs">
+                <Title order={2} id="signin-personas">Choose a role to try</Title>
+                <Stack component="ul" gap="xs" m={0} p={0} style={{ listStyle: 'none' }}>
+                  {personas.map((person) => (
+                    <li key={person.user_id}>
+                      <PersonaRow
+                        person={person}
+                        pending={signIn.isPending && signIn.variables === person.user_id}
+                        disabled={signIn.isPending}
+                        onPick={(userId) => signIn.mutate(userId)}
+                      />
+                    </li>
+                  ))}
+                </Stack>
+              </Stack>
             )}
 
-            {selectedUser && (
-              <Text size="sm" c="dimmed">
-                {ROLE_LABELS[selectedUser.role]}: {selectedUser.title}, {selectedUser.department_id}
-              </Text>
+            {users.isSuccess && (
+              <Stack component="section" aria-labelledby="signin-picker" gap="xs">
+                <Title order={2} id="signin-picker">Or sign in as someone else</Title>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    if (selected) signIn.mutate(selected)
+                  }}
+                >
+                  <Stack gap="sm">
+                    <Select
+                      label="Sign in as"
+                      placeholder="Search by name, title, department or role"
+                      leftSection={<Icon icon={IconSearch} />}
+                      data={options}
+                      value={selected}
+                      onChange={setSelected}
+                      searchable
+                      clearable
+                      filter={filter}
+                      nothingFoundMessage="Nobody matches"
+                      maxDropdownHeight={360}
+                      renderOption={({ option }) => {
+                        const person = byId.get(option.value)
+                        return person ? <UserOption user={person} /> : option.label
+                      }}
+                    />
+                    {selectedUser && (
+                      <Text size="sm" c="dimmed">
+                        {ROLE_LABELS[selectedUser.role]}: {selectedUser.title}, {selectedUser.department_id}
+                      </Text>
+                    )}
+                    <Button
+                      type="submit"
+                      disabled={!selected || signIn.isPending}
+                      loading={signIn.isPending && signIn.variables === selected}
+                      leftSection={<Icon icon={IconLogin2} />}
+                    >
+                      Sign in
+                    </Button>
+                  </Stack>
+                </form>
+              </Stack>
             )}
 
             {signIn.isError && <ErrorAlert error={signIn.error} title="Sign-in failed" />}
-
-            <Button
-              type="submit"
-              disabled={!selected}
-              loading={signIn.isPending}
-              leftSection={<Icon icon={IconLogin2} />}
-            >
-              Sign in
-            </Button>
           </Stack>
-        </form>
-      </Paper>
-    </Center>
+        </main>
+      </div>
+    </div>
   )
 }

@@ -53,6 +53,8 @@ export const SURFACE = {
   sandTintBorder: '#EAD7AE',
   /** Row hover and the active navigation background: the lightest Blumine tint. */
   primaryTint: '#EAF2F6',
+  /** Small secondary text on a Blumine panel (the sign-in brand panel's demo note): 6.1:1 on Blumine. */
+  onPrimaryMuted: '#D2E3EC',
 } as const
 
 // ---------------------------------------------------------------- Mantine palettes (shade 6 is the base)
@@ -136,6 +138,8 @@ export const CONTRAST_PAIRS: ReadonlyArray<{ name: string; fg: string; bg: strin
   { name: 'Secondary text on page background', fg: TEXT.secondary, bg: SURFACE.page, min: 4.5 },
   { name: 'Placeholder on white', fg: TEXT.placeholder, bg: SURFACE.white, min: 4.5 },
   { name: 'White on primary (buttons)', fg: TEXT.onSolid, bg: BRAND.blumine, min: 4.5 },
+  { name: 'White text on the Blumine sign-in panel', fg: TEXT.onSolid, bg: BRAND.blumine, min: 4.5 },
+  { name: 'Muted text on the Blumine sign-in panel', fg: SURFACE.onPrimaryMuted, bg: BRAND.blumine, min: 4.5 },
   { name: 'Primary text and links on white', fg: BRAND.blumine, bg: SURFACE.white, min: 4.5 },
   { name: 'Primary text on page background', fg: BRAND.blumine, bg: SURFACE.page, min: 4.5 },
   { name: 'Active navigation text on its tint', fg: BRAND.blumine, bg: SURFACE.primaryTint, min: 4.5 },
@@ -271,6 +275,7 @@ export const cssVariablesResolver: CSSVariablesResolver = () => ({
     '--app-page': SURFACE.page,
     '--app-border': SURFACE.border,
     '--app-primary-tint': SURFACE.primaryTint,
+    '--app-on-primary-muted': SURFACE.onPrimaryMuted,
     '--app-font-serif': FONT.serif,
     // The warn colour, for the low-confidence underline (a decoration next to text, at 5.4:1 on white).
     '--app-warn': orange[6],
