@@ -67,3 +67,9 @@ backend/files/
 *.db
 *.db-wal
 *.db-shm
+
+# Internal hackathon notes (kept locally, not in the repo)
+docs/JUDGE_PREP.md
+docs/ISSUES_FOR_B.md
+docs/PERSON_A_HANDOFF.md
+docs/RUN_LOG.md
