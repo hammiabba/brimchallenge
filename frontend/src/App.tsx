@@ -14,11 +14,13 @@ import { PlaceholderPage } from './shell/PlaceholderPage'
 const BillsPage = lazy(() => import('./bills/BillsPage'))
 const ReviewQueuePage = lazy(() => import('./bills/ReviewQueuePage'))
 const BillDetailPage = lazy(() => import('./bills/BillDetailPage'))
+const SubmitPage = lazy(() => import('./intake/submit/SubmitPage'))
 
 /** The screens built so far, by navigation item. Every other item still shows its placeholder. */
 const SCREENS: Partial<Record<NavKey, LazyExoticComponent<ComponentType>>> = {
   bills: BillsPage,
   review: ReviewQueuePage,
+  submit: SubmitPage,
 }
 
 /** Shown while a screen's code loads. */

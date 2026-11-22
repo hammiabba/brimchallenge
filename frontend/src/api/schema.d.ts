@@ -468,23 +468,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/intake/drafts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Drafts */
-        get: operations["list_drafts_intake_drafts_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/intake/emails": {
         parameters: {
             query?: never;
@@ -497,6 +480,47 @@ export interface paths {
          * @description The AP inbox with each email's triage (class, reason) and the intake items made from it.
          */
         get: operations["intake_emails_intake_emails_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/intake/emails/{email_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Email
+         * @description One inbox email: body, triage (class, reason), the suggested next step (with a ready reply or the payment
+         *     answer where useful), and the intake items and bills made from it.
+         */
+        get: operations["get_email_intake_emails__email_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/intake/files/{file_hash}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get File
+         * @description The original invoice file (PDF or image), by the sha256 shown on the bill and the intake item.
+         */
+        get: operations["get_file_intake_files__file_hash__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -542,26 +566,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/intake/inbox/run": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Run Inbox
-         * @description Process the dataset inbox. Returns one entry per email with its triage and per-file status.
-         */
-        post: operations["run_inbox_intake_inbox_run_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/intake/items": {
         parameters: {
             query?: never;
@@ -573,23 +577,6 @@ export interface paths {
         get: operations["intake_items_intake_items_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/intake/upload": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Upload */
-        post: operations["upload_intake_upload_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -931,6 +918,11 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /**
+         * ActionKind
+         * @enum {string}
+         */
+        ActionKind: "create_drafts" | "request_resend" | "answer_status" | "reconcile_later" | "ignore";
         /** ActionState */
         ActionState: {
             /** Allowed */
@@ -1082,15 +1074,6 @@ export interface components {
             verified_by: string | null;
             /** Verified By Callback */
             verified_by_callback: boolean;
-        };
-        /** BankDetails */
-        BankDetails: {
-            /** Account */
-            account?: string | null;
-            /** Institution */
-            institution?: string | null;
-            /** Transit */
-            transit?: string | null;
         };
         /** BillDetail */
         BillDetail: {
@@ -1389,27 +1372,6 @@ export interface components {
             /** File */
             file: string;
         };
-        /** Body_upload_intake_upload_post */
-        Body_upload_intake_upload_post: {
-            /** File */
-            file: string;
-        };
-        /** CodingSuggestion */
-        CodingSuggestion: {
-            /**
-             * Accepted
-             * @default false
-             */
-            accepted: boolean;
-            /** Confidence */
-            confidence: number;
-            /** Department Id */
-            department_id: string;
-            /** Gl Account */
-            gl_account: string;
-            /** Reason */
-            reason: string;
-        };
         /** CommentIn */
         CommentIn: {
             /** Comment */
@@ -1515,72 +1477,6 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** DraftBill */
-        DraftBill: {
-            /** Contract Id */
-            contract_id?: string | null;
-            /**
-             * Currency
-             * @default CAD
-             */
-            currency: string;
-            /** Department Id */
-            department_id?: string | null;
-            /** Due Date */
-            due_date?: string | null;
-            /**
-             * Extraction Warnings
-             * @default []
-             */
-            extraction_warnings: string[];
-            /**
-             * Field Confidence
-             * @default {}
-             */
-            field_confidence: {
-                [key: string]: number;
-            };
-            /**
-             * Fx Rate To Cad
-             * @default 1
-             */
-            fx_rate_to_cad: string;
-            /**
-             * Invoice Date
-             * Format: date
-             */
-            invoice_date: string;
-            /** Invoice Number */
-            invoice_number: string;
-            /**
-             * Is Credit Note
-             * @default false
-             */
-            is_credit_note: boolean;
-            /** Lines */
-            lines: components["schemas"]["InvoiceLine"][];
-            /** Payment Terms Days */
-            payment_terms_days?: number | null;
-            /** Po Number */
-            po_number?: string | null;
-            /** Requester User Id */
-            requester_user_id?: string | null;
-            /** Ship To Province */
-            ship_to_province?: string | null;
-            source: components["schemas"]["SourceInfo"];
-            /** Subtotal */
-            subtotal: string;
-            /**
-             * Taxes
-             * @default []
-             */
-            taxes: components["schemas"]["TaxLine"][];
-            /** Total */
-            total: string;
-            /** Total Cad */
-            total_cad: string;
-            vendor: components["schemas"]["VendorOnInvoice"];
-        };
         /** DuplicateOut */
         DuplicateOut: {
             /** Kind */
@@ -1596,6 +1492,59 @@ export interface components {
             reasons: string[];
             /** Score */
             score: number;
+        };
+        /** EmailDetail */
+        EmailDetail: {
+            /** Attachments */
+            attachments: string[];
+            /** Bill Ids */
+            bill_ids: string[];
+            /** Body */
+            body: string;
+            /** Email Class */
+            email_class: string | null;
+            /** Email Id */
+            email_id: string;
+            /** From Address */
+            from_address: string;
+            /** From Name */
+            from_name: string | null;
+            /** Items */
+            items: components["schemas"]["EmailItem"][];
+            /**
+             * Received At
+             * Format: date-time
+             */
+            received_at: string;
+            /** Subject */
+            subject: string;
+            suggested_action: components["schemas"]["SuggestedAction"] | null;
+            /** To Address */
+            to_address: string | null;
+            /** Triage Reason */
+            triage_reason: string | null;
+            /** Triaged At */
+            triaged_at: string | null;
+        };
+        /**
+         * EmailItem
+         * @description One file from the email, as intake handled it.
+         */
+        EmailItem: {
+            /** Bill Id */
+            bill_id: string | null;
+            /** Error */
+            error: string | null;
+            /** File Hash */
+            file_hash: string | null;
+            /** File Name */
+            file_name: string;
+            /** Item Id */
+            item_id: number;
+            /** Status */
+            status: string;
+            /** Warnings */
+            warnings: string[];
         };
         /** EmailOut */
         EmailOut: {
@@ -1622,6 +1571,7 @@ export interface components {
             received_at: string;
             /** Subject */
             subject: string;
+            suggested_action?: components["schemas"]["SuggestedAction"] | null;
             /** Triage Reason */
             triage_reason: string | null;
             /** Triaged At */
@@ -1741,21 +1691,33 @@ export interface components {
             /** Warnings */
             warnings: string[];
         };
-        /** InvoiceLine */
-        InvoiceLine: {
-            /** Amount */
-            amount: string;
-            coding?: components["schemas"]["CodingSuggestion"] | null;
-            /** Description */
-            description: string;
-            /** Line No */
-            line_no: number;
-            /** @default services */
-            line_type: components["schemas"]["LineType"];
-            /** Quantity */
-            quantity: string;
-            /** Unit Price */
-            unit_price: string;
+        /** InvoiceStatus */
+        InvoiceStatus: {
+            /** Currency */
+            currency?: string | null;
+            /** Due Date */
+            due_date?: string | null;
+            /** Invoice Date */
+            invoice_date?: string | null;
+            /** Invoice Id */
+            invoice_id?: string | null;
+            /** Invoice Number */
+            invoice_number: string;
+            /**
+             * Payments
+             * @default []
+             */
+            payments: components["schemas"]["PaymentRecord"][];
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: string;
+            /** Total */
+            total?: string | null;
+            /** Vendor Id */
+            vendor_id: string;
+            /** Vendor Name */
+            vendor_name: string;
         };
         /** JobOut */
         JobOut: {
@@ -1803,21 +1765,11 @@ export interface components {
             /** Row Version */
             row_version: number;
         };
-        /**
-         * LineType
-         * @enum {string}
-         */
-        LineType: "goods" | "services";
         /** LoginIn */
         LoginIn: {
             /** User Id */
             user_id: string;
         };
-        /**
-         * MatchMethod
-         * @enum {string}
-         */
-        MatchMethod: "gst_number" | "bank_account" | "email_domain" | "fuzzy_name" | "none";
         /** Me */
         Me: {
             /**
@@ -2023,6 +1975,25 @@ export interface components {
             /** Vendor Name */
             vendor_name: string | null;
         };
+        /** PaymentRecord */
+        PaymentRecord: {
+            /** Amount */
+            amount: string;
+            /** Currency */
+            currency: string;
+            /** Method */
+            method: string;
+            /** Paid Date */
+            paid_date?: string | null;
+            /** Payment Id */
+            payment_id: string;
+            /** Reference */
+            reference: string;
+            /** Scheduled Date */
+            scheduled_date?: string | null;
+            /** Status */
+            status: string;
+        };
         /** PaymentSummary */
         PaymentSummary: {
             /**
@@ -2180,27 +2151,6 @@ export interface components {
              */
             scheduled_date: string;
         };
-        /** SourceInfo */
-        SourceInfo: {
-            /** Email Id */
-            email_id?: string | null;
-            /** File Hash */
-            file_hash: string;
-            /** File Name */
-            file_name: string;
-            /**
-             * Language
-             * @default en
-             */
-            language: string;
-            /** Sender Address */
-            sender_address?: string | null;
-            /**
-             * Was Ocr
-             * @default false
-             */
-            was_ocr: boolean;
-        };
         /** SpendReport */
         SpendReport: {
             /**
@@ -2254,18 +2204,21 @@ export interface components {
              */
             total_cad: string;
         };
-        /**
-         * TaxCode
-         * @enum {string}
-         */
-        TaxCode: "HST13" | "GST5" | "PST7_BC" | "QST9975" | "EXEMPT" | "FOREIGN";
-        /** TaxLine */
-        TaxLine: {
-            /** Amount */
-            amount: string;
-            code: components["schemas"]["TaxCode"];
-            /** Rate */
-            rate: string;
+        /** SuggestedAction */
+        SuggestedAction: {
+            invoice_status?: components["schemas"]["InvoiceStatus"] | null;
+            kind: components["schemas"]["ActionKind"];
+            /**
+             * Language
+             * @enum {string}
+             */
+            language: "en" | "fr";
+            /** Message */
+            message: string;
+            /** Reply Text */
+            reply_text?: string | null;
+            /** Vendor Id */
+            vendor_id?: string | null;
         };
         /** UserOut */
         UserOut: {
@@ -2433,28 +2386,6 @@ export interface components {
              * @default false
              */
             requires_po: boolean;
-        };
-        /** VendorOnInvoice */
-        VendorOnInvoice: {
-            /** Address */
-            address?: string | null;
-            /** @default {} */
-            bank: components["schemas"]["BankDetails"];
-            /** Gst Number */
-            gst_number?: string | null;
-            /** @default none */
-            match_method: components["schemas"]["MatchMethod"];
-            /**
-             * Match Score
-             * @default 0
-             */
-            match_score: number;
-            /** Name On Invoice */
-            name_on_invoice: string;
-            /** Qst Number */
-            qst_number?: string | null;
-            /** Vendor Id */
-            vendor_id?: string | null;
         };
         /** VendorSummary */
         VendorSummary: {
@@ -4243,26 +4174,6 @@ export interface operations {
             };
         };
     };
-    list_drafts_intake_drafts_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DraftBill"][];
-                };
-            };
-        };
-    };
     intake_emails_intake_emails_get: {
         parameters: {
             query?: {
@@ -4284,6 +4195,125 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Page_EmailOut_"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_email_intake_emails__email_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                email_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_file_intake_files__file_hash__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_hash: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "application/pdf": unknown;
+                    "image/jpeg": unknown;
+                    "image/png": unknown;
                 };
             };
             /** @description Unauthorized */
@@ -4447,28 +4477,6 @@ export interface operations {
             };
         };
     };
-    run_inbox_intake_inbox_run_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
-                };
-            };
-        };
-    };
     intake_items_intake_items_get: {
         parameters: {
             query?: {
@@ -4517,39 +4525,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    upload_intake_upload_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_upload_intake_upload_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DraftBill"];
                 };
             };
             /** @description Validation Error */
