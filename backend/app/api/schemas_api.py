@@ -95,6 +95,8 @@ class PickerUser(ApiModel):
     title: str
     role: Role
     department_id: str
+    department_name: str | None = Field(
+        None, description="The department's name from the departments table ('Operations'); null if unknown")
     status: UserStatus
 
 

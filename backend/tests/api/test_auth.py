@@ -1,8 +1,11 @@
 """Sign-in, session cookie and identity rules."""
 from __future__ import annotations
 
+from sqlalchemy import select
+
 from app.auth import session as signed_session
 from app.auth.settings import get_auth_settings
+from app.db import models
 from tests.api.conftest import ON_LEAVE_USER, TERMINATED_USER, forge_cookie
 
 COOKIE = get_auth_settings().session_cookie_name
@@ -13,6 +16,38 @@ def test_picker_lists_active_and_on_leave_but_not_terminated(client):
     assert len(users) == 39
     assert TERMINATED_USER not in users
     assert users[ON_LEAVE_USER]["status"] == "on_leave"
+
+
+def test_picker_gives_each_user_their_department_name(client, db_factory):
+    users = {u["user_id"]: u for u in client.get("/auth/users").json()}
+    assert (users["U013"]["title"], users["U013"]["department_id"], users["U013"]["department_name"]) == (
+        "Dispatcher", "D01", "Operations")
+    assert users["U004"]["department_name"] == "Finance"
+    with db_factory() as db:
+        names = dict(db.execute(select(models.Department.department_id, models.Department.name)).all())
+    assert all(u["department_name"] == names[u["department_id"]] for u in users.values())
+    # Nothing else in the response changed.
+    assert set(users["U013"]) == {"user_id", "full_name", "title", "role", "department_id", "department_name", "status"}
+
+
+def test_picker_still_lists_a_user_whose_department_is_missing(fresh_client, fresh_engine):
+    # Plant a dangling department id on this test's private copy. Foreign keys are on for every connection, so switch
+    # them off on one raw (autocommit) connection for the update, and back on before it returns to the pool.
+    raw = fresh_engine.raw_connection()
+    try:
+        cursor = raw.driver_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=OFF")
+        cursor.execute("UPDATE users SET department_id = 'D99' WHERE user_id = 'U013'")
+        cursor.execute("PRAGMA foreign_keys=ON")
+    finally:
+        raw.close()
+    users = {u["user_id"]: u for u in fresh_client.get("/auth/users").json()}
+    assert (users["U013"]["department_id"], users["U013"]["department_name"]) == ("D99", None)
+
+
+def test_picker_is_public(client):
+    client.cookies.clear()
+    assert client.get("/auth/users").status_code == 200
 
 
 def test_login_sets_http_only_lax_cookie(client):

@@ -31,10 +31,15 @@ def me_out(db: Session, user: CurrentUser) -> Me:
 
 
 @router.get("/users", response_model=list[PickerUser], summary="Users for the demo sign-in picker")
-def picker_users(db: Session = Depends(get_session)) -> list[models.User]:
-    """Active and on-leave users. Terminated users aren't listed and can't sign in."""
-    return list(db.scalars(select(models.User).where(models.User.status != "terminated")
-                           .order_by(models.User.user_id)))
+def picker_users(db: Session = Depends(get_session)) -> list[PickerUser]:
+    """Active and on-leave users, each with their department's name. Terminated users aren't listed and can't sign
+    in."""
+    # An outer join, so a user whose department row is missing is still listed, with department_name null.
+    rows = db.execute(select(models.User, models.Department.name)
+                      .outerjoin(models.Department, models.Department.department_id == models.User.department_id)
+                      .where(models.User.status != "terminated")
+                      .order_by(models.User.user_id))
+    return [PickerUser.model_validate(user).model_copy(update={"department_name": name}) for user, name in rows]
 
 
 @router.post("/login", response_model=Me, responses=READ_ERRORS)
