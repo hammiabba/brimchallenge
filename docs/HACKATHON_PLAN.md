@@ -152,7 +152,7 @@ From my analysis of the 56 files and 59 emails. Not exhaustive: the hidden batch
 |---|---|
 | `Invoice 000961.pdf` (Polar), `cloudbarnsoftwar_INV01561.pdf`, `harlowsternllp_001468.pdf` | **Exact duplicate** of history. Cloudbarn's was paid by card |
 | `brightlinesafety-inv-032.pdf` "583" | **Reformatted duplicate** of history FA-000583 |
-| `voyageurcorporat-inv-017.pdf` "000903-A" | **Near duplicate** of history 000903 |
+| `voyageurcorporat-inv-017.pdf` "000903-A" | **Exact duplicate** of history 000903 (suffix stripped on purpose, so it blocks: see ISSUES_FOR_B #2) |
 | `Invoice 002935.pdf` (Queen St rent, $18,758) | Same amount every month = **contract rent, NOT a duplicate** |
 | `Invoice 4443.pdf` Blue Heron, `zephyrdataservic_7590.pdf` | **Vendor not in master** |
 | `riverbendcaterin_1739.pdf` | Vendor **pending_review**, requires PO but none, no GST number, no tax charged |

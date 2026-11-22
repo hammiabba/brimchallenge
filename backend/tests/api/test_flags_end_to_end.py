@@ -114,17 +114,14 @@ def test_monthly_rent_is_not_a_duplicate(flags):
     assert not any(c.startswith("DUPLICATE") for c in codes(flags["Invoice 002935.pdf"]))
 
 
-@pytest.mark.xfail(strict=True, reason="controls calls 000903-A an exact duplicate of 000903; the plan expects "
-                                       "DUPLICATE_LIKELY (ISSUES_FOR_B.md item 2). Extraction reads 000903-A.")
-def test_suffixed_number_is_a_near_duplicate(flags):
-    got = codes(flags["voyageurcorporat-inv-017.pdf"])
-    assert "DUPLICATE_LIKELY" in got and "DUPLICATE_EXACT" not in got
-
-
-def test_suffixed_number_is_still_held_as_a_duplicate(flags):
-    # Whatever the code, the near duplicate must block payment.
-    assert any(f["code"].startswith("DUPLICATE") and f["severity"] == "block"
-               for f in flags["voyageurcorporat-inv-017.pdf"])
+def test_suffixed_number_is_an_exact_duplicate(flags):
+    # Voyageur 000903-A against history 000903 (AP-00277, already paid). Controls strips the suffix on purpose
+    # (Person B's call): DUPLICATE_LIKELY is only a warning, so the bill wouldn't be held although the original is
+    # paid, and in history Redline 1655-A vs FA-001655 was a real double payment caught only because the suffix is
+    # stripped. A revised invoice should replace the original, so it's held until someone checks.
+    [dup] = [f for f in flags["voyageurcorporat-inv-017.pdf"] if f["code"].startswith("DUPLICATE")]
+    assert (dup["code"], dup["severity"]) == ("DUPLICATE_EXACT", "block")
+    assert "AP-00277" in dup["evidence"]["matches"]
 
 
 @pytest.mark.parametrize("name", CLEAN)
