@@ -1,4 +1,5 @@
-import { Stack, Table, Text, Title } from '@mantine/core'
+import { Anchor, Stack, Table, Text, Title } from '@mantine/core'
+import { Link } from 'react-router'
 
 import { personName, usePeople } from '../../api/reference'
 import type { BillDetail } from '../../api/types'
@@ -6,7 +7,10 @@ import { StatusBadge } from '../../ui/Badges'
 import { DateText, Id, MoneyText } from '../../ui/DataText'
 import { PAYMENT_METHOD_LABELS } from '../labels'
 
-/** The bill's payments: id, method, scheduled and paid dates, amount, status and who released it. */
+/**
+ * The bill's payments: id (a link to the payment detail), method, scheduled and paid dates, amount, status and who
+ * released it.
+ */
 export function PaymentsTable({ bill }: { bill: BillDetail }) {
   const people = usePeople()
   return (
@@ -31,7 +35,11 @@ export function PaymentsTable({ bill }: { bill: BillDetail }) {
             <Table.Tbody>
               {bill.payments.map((p) => (
                 <Table.Tr key={p.payment_id}>
-                  <Table.Td><Id>{p.payment_id}</Id></Table.Td>
+                  <Table.Td>
+                    <Anchor component={Link} to={`/payments/${p.payment_id}`} underline="hover">
+                      <Id>{p.payment_id}</Id>
+                    </Anchor>
+                  </Table.Td>
                   <Table.Td>{PAYMENT_METHOD_LABELS[p.method] ?? p.method}</Table.Td>
                   <Table.Td><DateText value={p.scheduled_date} /></Table.Td>
                   <Table.Td>{p.paid_date ? <DateText value={p.paid_date} /> : <Text span c="dimmed" size="sm">Not yet</Text>}</Table.Td>
