@@ -140,7 +140,8 @@ export const NAV_ITEMS: Record<NavKey, NavItem> = {
     description:
       'Approval steps that found nobody eligible to sign (for example, when the only approver is the requester or ' +
       'away). Assign someone who may sign.',
-    endpoints: ['GET /bills (no unassigned-step filter yet)', 'POST /bills/{bill_id}/route/{step_no}/assign'],
+    endpoints: ['GET /bills?status=pending_approval (no unassigned-step filter yet: filtered here)',
+      'POST /bills/{bill_id}/route/{step_no}/assign'],
   },
   bills: {
     key: 'bills',
