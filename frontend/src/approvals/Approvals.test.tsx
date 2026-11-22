@@ -147,11 +147,15 @@ describe('approve and reject on the bill screen', () => {
 
     await user.click(within(bar).getByRole('button', { name: 'Approve' }))
     const dialog = await screen.findByRole('dialog', { name: 'Approve bill' })
-    expect(within(dialog).getByText('The bill moves on to the next step of its approval route.')).toBeInTheDocument()
+    // The dialog restates what is being approved: the bill, its amount and its vendor.
+    expect(within(dialog).getByText('AP-00433: $2,101.80 to Lakeshore Hydro Services. '
+      + 'The bill moves on to the next step of its approval route.')).toBeInTheDocument()
     await user.click(within(dialog).getByRole('button', { name: 'Approve bill' }))
 
     await waitFor(() => expect(sent).toEqual({ row_version: 3, comment: null }))
     expect(await screen.findByText('Bill approved')).toBeInTheDocument()
+    // The confirmation offers the way back to the queue, even though the decision bar has gone.
+    expect(screen.getByRole('link', { name: 'Back to My approvals' })).toHaveAttribute('href', '/approvals')
     // The new detail has no decision allowed, so the buttons go away.
     await waitFor(() => expect(screen.queryByRole('region', { name: 'Your decision' })).not.toBeInTheDocument())
     expect(fake.calls).toContain('POST /bills/AP-00433/approve')
