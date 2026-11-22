@@ -15,7 +15,10 @@ export function EvidenceValueView({ value }: { value: EvidenceValue }) {
     case 'date':
       return <DateText value={value.value} />
     case 'id':
-      return <Id>{value.value}</Id>
+      // A bank-change id opens the bank changes list, where it can be verified or rejected.
+      return value.value.startsWith('BC-')
+        ? <Anchor component={Link} to="/bank-changes?status=all" underline="hover"><Id>{value.value}</Id></Anchor>
+        : <Id>{value.value}</Id>
     case 'text':
       return <>{value.value}</>
     case 'list':

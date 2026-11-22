@@ -46,6 +46,13 @@ describe('expected vs found', () => {
 })
 
 describe('duplicates', () => {
+  it('words code values ("one_off", "email_request") and keeps free text as written', () => {
+    expect(evidenceValue('kind', 'one_off', CAD)).toEqual({ kind: 'text', value: 'One-off charge' })
+    expect(evidenceValue('request_channel', 'email_request', CAD)).toEqual({ kind: 'text', value: 'Email request' })
+    expect(evidenceValue('status', 'pending_review', CAD)).toEqual({ kind: 'text', value: 'Pending review' })
+    expect(evidenceValue('ship_to', 'AB', CAD)).toEqual({ kind: 'text', value: 'AB' })
+  })
+
   it('lists bill matches as links with the run\'s kind and score', () => {
     // DUPLICATE_EXACT on AP-00407.
     const blocks = classifyEvidence({ matches: ['AP-00394'], kinds: ['exact'], best_score: 1.0 }, {

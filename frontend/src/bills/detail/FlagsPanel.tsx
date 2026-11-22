@@ -1,7 +1,8 @@
-import { Box, Button, Divider, Group, Stack, Text, Title } from '@mantine/core'
+import { Anchor, Box, Button, Divider, Group, Stack, Text, Title } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { IconFocus2 } from '@tabler/icons-react'
 import { useState } from 'react'
+import { Link } from 'react-router'
 
 import { codeAsWords, personName, useFlagHelp, usePeople } from '../../api/reference'
 import type { BillDetail, BillFlag } from '../../api/types'
@@ -39,6 +40,9 @@ function Resolution({ flag }: { flag: BillFlag }) {
   )
 }
 
+/** Flags only their own workflow clears (backend services/bills.py VERIFY_TO_CLEAR): no Resolve button for them. */
+const VERIFY_TO_CLEAR: ReadonlySet<string> = new Set(['BANK_CHANGE_UNVERIFIED'])
+
 /**
  * Resolve and Override for one open flag, from the bill's allowed_actions: resolve_flags for resolving any flag and
  * overriding a warning, override_blocking_flags for overriding a block (finance manager or controller only). Both
@@ -49,10 +53,12 @@ function FlagActions({ flag, bill, title }: { flag: BillFlag; bill: BillDetail; 
   const resolve = useResolveFlag(bill, flag.id, 'resolved')
   const override = useResolveFlag(bill, flag.id, 'overridden')
   const actions = bill.allowed_actions ?? {}
-  const canResolve = actions.resolve_flags?.allowed ?? false
+  // An unverified bank change is cleared by verifying it, not by marking it fixed (the server refuses that too).
+  const clearedByVerification = VERIFY_TO_CLEAR.has(flag.code)
+  const canResolve = (actions.resolve_flags?.allowed ?? false) && !clearedByVerification
   const overrideAction = flag.severity === 'block' ? actions.override_blocking_flags : actions.resolve_flags
   const canOverride = overrideAction?.allowed ?? false
-  if (!canResolve && !canOverride) return null
+  if (!canResolve && !canOverride && !clearedByVerification) return null
   // The dialogs stay mounted once the flag is closed, so their success handling still runs after the bill refreshes.
   const isOpen = flag.resolution === 'open'
 
@@ -68,6 +74,13 @@ function FlagActions({ flag, bill, title }: { flag: BillFlag; bill: BillDetail; 
           {canResolve && <Button size="xs" onClick={() => setOpen('resolved')}>Resolve</Button>}
           {canOverride && <Button size="xs" variant="default" onClick={() => setOpen('overridden')}>Override</Button>}
         </Group>
+      )}
+      {isOpen && clearedByVerification && (
+        <Text size="xs" c="dimmed">
+          {'Verify the bank change in '}
+          <Anchor component={Link} to="/bank-changes" inherit>Bank changes</Anchor>
+          {' to clear this flag.'}
+        </Text>
       )}
       {isOpen && !canOverride && flag.severity === 'block' && (
         <Text size="xs" c="dimmed">Only a finance manager or the controller can override a blocking flag.</Text>
@@ -120,6 +133,14 @@ function FlagSection({ flag, bill }: { flag: BillFlag; bill: BillDetail }) {
           <Title order={3} id={titleId}>{help?.title ?? codeAsWords(flag.code)}</Title>
         </Group>
         <Text size="sm">{flag.message}</Text>
+        {/* On a bill that is already paid the flag can no longer hold anything up; say so before "What to do",
+            which was written for bills on their way to payment. */}
+        {bill.status === 'paid' && flag.resolution === 'open' && (
+          <Text size="sm" fw={500}>
+            Found after payment: this bill was already paid. If the problem holds, ask the vendor for a credit note or a
+            refund.
+          </Text>
+        )}
         {help?.help && (
           <Text size="sm"><Text span fw={600} inherit>What to do: </Text>{help.help}</Text>
         )}

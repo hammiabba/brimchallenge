@@ -35,6 +35,19 @@ function renderReview(bill: BillDetail, role: Parameters<typeof billScreenRoutes
   return fake
 }
 
+describe('an unverified bank change flag', () => {
+  it('has no Resolve button and points to Bank changes instead', async () => {
+    const bankFlag = flag({ id: 95, code: 'BANK_CHANGE_UNVERIFIED', field: 'vendor.bank', message: 'The bank account changed.',
+      evidence: { change_id: 'BC-009', vendor_id: 'V004' } })
+    renderReview(inReview({ latest_run: controlsRun({ flags: [bankFlag] }) }))
+    const section = await screen.findByRole('region', { name: /Bank change not verified|Bank change unverified/ })
+    expect(within(section).queryByRole('button', { name: 'Resolve' })).not.toBeInTheDocument()
+    expect(within(section).getByRole('link', { name: 'Bank changes' })).toHaveAttribute('href', '/bank-changes')
+    // The change id in the evidence opens the bank changes list.
+    expect(within(section).getByRole('link', { name: 'BC-009' })).toHaveAttribute('href', '/bank-changes?status=all')
+  })
+})
+
 describe('line coding', () => {
   it('accepts a suggestion in one click, sending the row version', async () => {
     let sent: unknown = null
@@ -62,11 +75,13 @@ describe('line coding', () => {
     expect(within(lines).queryByRole('button', { name: 'Accept suggestion for line 2' })).not.toBeInTheDocument()
   })
 
-  it('changes a line\'s GL account and department', async () => {
+  it('changes a line\'s GL account and department, then confirms and closes once the bill comes back changed', async () => {
     let sent: unknown = null
     renderReview(inReview(), CLERK, (state) => ({
       'PATCH /bills/AP-00407/lines/2': async (request) => {
         sent = await request.json()
+        // The saved bill has a new row version, as the server's would: the dialog must still confirm and close.
+        state.bill = { ...state.bill, row_version: 5 }
         return { body: state.bill }
       },
     }))
@@ -83,6 +98,20 @@ describe('line coding', () => {
 
     await waitFor(() => expect(sent).toEqual({ row_version: 4, gl_account: '5030', department_id: 'D02' }))
     expect(await screen.findByText('Coding saved')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Code line 2' })).not.toBeInTheDocument())
+  })
+
+  it('keeps the department when its selected option is picked again', async () => {
+    renderReview(inReview())
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('button', { name: 'Change coding of line 2' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Code line 2' })
+    const department = within(dialog).getByRole('combobox', { name: 'Department' })
+    const before = (department as HTMLInputElement).value
+    expect(before).not.toBe('')
+    await user.click(department)
+    await user.click(await screen.findByRole('option', { name: before }))
+    expect(department).toHaveValue(before)
   })
 
   it('shows a refusal in the dialog', async () => {

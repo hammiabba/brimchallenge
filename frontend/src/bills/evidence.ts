@@ -90,6 +90,29 @@ const ACRONYMS: Record<string, string> = {
   gl: 'GL', pct: 'percent',
 }
 
+/** A code value the controls write (lower case with underscores), such as an evidence "kind" or a status. */
+const CODE_VALUE = /^[a-z]+(_[a-z]+)+$/
+
+/** Code values that read better than their words with spaces; anything else becomes "Words like this". */
+const CODE_WORDS: Record<string, string> = {
+  one_off: 'One-off charge',
+  no_tax: 'No tax charged',
+  tax_charged: 'Tax charged',
+  account_before_change: 'Account dated after the invoice',
+  due_before_invoice: 'Due before the invoice date',
+  email_request: 'Email request',
+  vendor_portal: 'Vendor portal',
+  phone_callback_verified: 'Phone, confirmed by callback',
+}
+
+/** "one_off" -> "One-off charge", "pending_review" -> "Pending review". */
+function codeValueWords(code: string): string {
+  const known = CODE_WORDS[code]
+  if (known) return known
+  const words = code.replace(/_/g, ' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
 /** "po_remaining" -> "PO remaining", "this_status" -> "This status". */
 export function keyLabel(key: string): string {
   const words = key.split('_').map((w) => ACRONYMS[w] ?? w)
@@ -121,6 +144,8 @@ export function evidenceValue(key: string, raw: unknown, context: EvidenceContex
   }
   if (parseDateOnly(text)) return { kind: 'date', value: text }
   if (ID_PATTERN.test(text)) return { kind: 'id', value: text }
+  // A code ("one_off", "email_request") reads as words; free text is kept as the server wrote it.
+  if (CODE_VALUE.test(text)) return { kind: 'text', value: codeValueWords(text) }
   return { kind: 'text', value: text }
 }
 
