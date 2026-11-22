@@ -117,6 +117,8 @@ CASES: list[Case] = [
     Case("GET", "/audit", "X Au", ok=200),
     Case("GET", "/audit/bill/" + B, "X Au", ok=200),
     Case("GET", "/audit/export", "X Au", ok=200),
+    # bank reconciliation (read-only, same roles as the audit log)
+    Case("GET", "/reconciliation/bank", "X Au", ok=200),
     # reference data and the inbox
     Case("GET", "/reference/flag-help", ALL, ok=200),
     Case("GET", "/reference/departments", ALL, ok=200),

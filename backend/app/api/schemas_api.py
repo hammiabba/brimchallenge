@@ -622,3 +622,74 @@ class EmailOut(ApiModel):
     triaged_at: UtcDateTime | None
     items: list[IntakeItemOut] = []
     suggested_action: SuggestedAction | None = None  # intake lane: app.intake.review.action_for
+
+
+# ---------------------------------------------------------------- bank reconciliation (controls.reconciliation)
+
+class ReconIssueOut(ApiModel):
+    code: str
+    severity: Literal["info", "review"]
+    message: str
+
+
+class ReconLineOut(ApiModel):
+    bank_txn_id: str
+    posted_date: date
+    description: str
+    amount: Money = Field(description="Debit positive, credit negative")
+    status: Literal["matched", "bank_fee", "unexplained"]
+    payment_ids: list[str]
+    bill_ids: list[str]
+    vendor_id: str | None
+    difference: Money | None = Field(None, description="Bank amount minus payment amount, when they differ")
+    issues: list[ReconIssueOut]
+
+
+class ReconPaymentOut(ApiModel):
+    payment_id: str
+    bill_id: str
+    vendor_id: str
+    method: str
+    status: str
+    amount_cad: Money
+    on_date: date | None = Field(None, description="Paid date, or the scheduled date when not paid yet")
+    bank_txn_id: str | None
+    issues: list[ReconIssueOut]
+
+
+class ReconDoublePaymentOut(ApiModel):
+    bill_ids: list[str]
+    card_txn_ids: list[str]
+    payment_ids: list[str]
+    bank_txn_ids: list[str]
+    extra_payment_ids: list[str]
+    at_risk_payment_ids: list[str]
+    confirmed: bool
+    extra_paid_cad: Money
+    at_risk_cad: Money
+    message: str
+
+
+class ReconSummaryOut(ApiModel):
+    lines: int
+    debits_cad: Money
+    matched: int
+    matched_cad: Money
+    bank_fees: int
+    bank_fees_cad: Money
+    unexplained: int
+    unexplained_cad: Money
+    double_payments: int
+    double_paid_extra_cad: Money
+    double_at_risk_cad: Money
+    needs_review: int
+    issues: dict[str, int]
+
+
+class BankReconciliation(ApiModel):
+    statement_from: date | None
+    statement_to: date | None
+    summary: ReconSummaryOut
+    lines: list[ReconLineOut]
+    payments: list[ReconPaymentOut]
+    double_payments: list[ReconDoublePaymentOut]
