@@ -35,6 +35,10 @@ Every endpoint is live. Writes run in one write session (`get_write_session`) wi
   `/reference/departments`, `/reference/gl-accounts`; `/intake/emails`; `duplicates` on the controls run. Every
   timestamp is ISO 8601 UTC with `Z`.
 
+- Optional params (defaults unchanged): `GET /auth/me?optional=true` answers 204 instead of 401 when no one is
+  signed in (the sign-in page's check); `GET /bills?mine=true` keeps the caller's own requests. Vendors carry
+  `lookalike_of` (the VENDOR_LOOKALIKE rule, `controls.validate.suspicious_lookalikes`).
+
 The permission matrix (`tests/api/matrix.py`) lists every endpoint x role.
 
 ## Adding an endpoint

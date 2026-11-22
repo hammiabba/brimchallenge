@@ -219,7 +219,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Me */
+        /**
+         * Me
+         * @description The signed-in user. Without a valid session this is a 401, as on every other route; with `optional=true` it
+         *     is a 204 with no body instead (and a bad or expired cookie is still cleared).
+         */
         get: operations["me_auth_me_get"];
         put?: never;
         post?: never;
@@ -1975,6 +1979,18 @@ export interface components {
             /** User Id */
             user_id: string;
         };
+        /**
+         * LookalikeOut
+         * @description An existing vendor record this one looks like (the VENDOR_LOOKALIKE control's own rule), and why.
+         */
+        LookalikeOut: {
+            /** Legal Name */
+            legal_name: string;
+            /** Vendor Id */
+            vendor_id: string;
+            /** Why */
+            why: string;
+        };
         /** Me */
         Me: {
             /**
@@ -2704,6 +2720,11 @@ export interface components {
             /** Legal Name */
             legal_name: string;
             /**
+             * Lookalike Of
+             * @default []
+             */
+            lookalike_of: components["schemas"]["LookalikeOut"][];
+            /**
              * Onboarded At
              * Format: date
              */
@@ -2786,6 +2807,11 @@ export interface components {
             country: string;
             /** Legal Name */
             legal_name: string;
+            /**
+             * Lookalike Of
+             * @default []
+             */
+            lookalike_of: components["schemas"]["LookalikeOut"][];
             /** Payment Terms Days */
             payment_terms_days: number;
             /**
@@ -3582,7 +3608,10 @@ export interface operations {
     };
     me_auth_me_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Answer 204 instead of 401 when no one is signed in, so a signed-out visit isn't reported as an error. */
+                optional?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3597,6 +3626,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Me"];
                 };
+            };
+            /** @description No valid session (only with `optional=true`). */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unauthorized */
             401: {
@@ -3623,6 +3659,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3854,6 +3899,8 @@ export interface operations {
                 vendor_id?: string | null;
                 department_id?: string | null;
                 q?: string | null;
+                /** @description Only bills where you are the requester. */
+                mine?: boolean;
                 limit?: number;
                 offset?: number;
             };

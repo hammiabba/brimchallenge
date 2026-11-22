@@ -3085,6 +3085,30 @@
         "title": "LoginIn",
         "type": "object"
       },
+      "LookalikeOut": {
+        "description": "An existing vendor record this one looks like (the VENDOR_LOOKALIKE control's own rule), and why.",
+        "properties": {
+          "legal_name": {
+            "title": "Legal Name",
+            "type": "string"
+          },
+          "vendor_id": {
+            "title": "Vendor Id",
+            "type": "string"
+          },
+          "why": {
+            "title": "Why",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vendor_id",
+          "legal_name",
+          "why"
+        ],
+        "title": "LookalikeOut",
+        "type": "object"
+      },
       "Me": {
         "properties": {
           "acting_for": {
@@ -5150,6 +5174,14 @@
             "title": "Legal Name",
             "type": "string"
           },
+          "lookalike_of": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LookalikeOut"
+            },
+            "title": "Lookalike Of",
+            "type": "array"
+          },
           "onboarded_at": {
             "format": "date",
             "title": "Onboarded At",
@@ -5366,6 +5398,14 @@
           "legal_name": {
             "title": "Legal Name",
             "type": "string"
+          },
+          "lookalike_of": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LookalikeOut"
+            },
+            "title": "Lookalike Of",
+            "type": "array"
           },
           "payment_terms_days": {
             "title": "Payment Terms Days",
@@ -6563,7 +6603,22 @@
     },
     "/auth/me": {
       "get": {
+        "description": "The signed-in user. Without a valid session this is a 401, as on every other route; with `optional=true` it\nis a 204 with no body instead (and a bad or expired cookie is still cleared).",
         "operationId": "me_auth_me_get",
+        "parameters": [
+          {
+            "description": "Answer 204 instead of 401 when no one is signed in, so a signed-out visit isn't reported as an error.",
+            "in": "query",
+            "name": "optional",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Answer 204 instead of 401 when no one is signed in, so a signed-out visit isn't reported as an error.",
+              "title": "Optional",
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -6574,6 +6629,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "204": {
+            "description": "No valid session (only with `optional=true`)."
           },
           "401": {
             "content": {
@@ -6604,6 +6662,16 @@
               }
             },
             "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Me",
@@ -6986,6 +7054,18 @@
                 }
               ],
               "title": "Q"
+            }
+          },
+          {
+            "description": "Only bills where you are the requester.",
+            "in": "query",
+            "name": "mine",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Only bills where you are the requester.",
+              "title": "Mine",
+              "type": "boolean"
             }
           },
           {
