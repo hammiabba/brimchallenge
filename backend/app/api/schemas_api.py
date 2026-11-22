@@ -461,6 +461,7 @@ class VendorSummary(ApiModel):
 class BankChangeOut(ApiModel):
     change_id: str
     vendor_id: str
+    vendor_name: str | None = None
     requested_at: UtcDateTime
     requested_by: str | None
     request_channel: Literal["phone_callback_verified", "vendor_portal", "email_request"]
@@ -657,6 +658,7 @@ class PastDiscountOut(ApiModel):
     payment_id: str
     bill_id: str
     vendor_id: str
+    vendor_name: str | None = None
     invoice_date: date
     paid_date: date
     days_to_pay: int

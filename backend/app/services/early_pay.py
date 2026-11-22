@@ -12,6 +12,7 @@ from app.controls.early_pay import OPEN_STATUSES, PENDING_STATUSES, discount_his
 from app.db import models
 from app.db.refdata_db import refdata_from_db
 from app.db.types import from_cents
+from app.services.controls_runner import open_blocking_codes
 
 
 def _date(value) -> str:
@@ -29,10 +30,14 @@ def payment_rows(db: Session) -> list[dict[str, str]]:
 
 
 def early_pay_report(db: Session, *, include_pending: bool = False) -> s.EarlyPayReport:
+    """The pay-date suggestions (bills held by a blocking flag left out) and the discount history."""
     ref = refdata_from_db(db)
     payments = payment_rows(db)
     statuses = OPEN_STATUSES + (PENDING_STATUSES if include_pending else ())
-    found = suggest_pay_dates(ref, payments, statuses=statuses)
+    # A bill with an open blocking flag (a duplicate, a closed PO, an unverified bank change) is on hold: never advise
+    # paying it now or early. Its flags say what to do instead, on the bill and in reconciliation.
+    found = [x for x in suggest_pay_dates(ref, payments, statuses=statuses)
+             if not open_blocking_codes(db, x.invoice_id)]
     history = discount_history(ref, payments)
     names = {vid: v["legal_name"] for vid, v in ref.vendors.items()}
     return s.EarlyPayReport(
@@ -52,6 +57,7 @@ def early_pay_report(db: Session, *, include_pending: bool = False) -> s.EarlyPa
             taken=len(history.taken), taken_cad=history.taken_cad, missed=len(history.missed),
             missed_cad=history.missed_cad,
             missed_payments=[s.PastDiscountOut(payment_id=m.payment_id, bill_id=m.invoice_id, vendor_id=m.vendor_id,
+                                               vendor_name=names.get(m.vendor_id),
                                                invoice_date=m.invoice_date, paid_date=m.paid_date,
                                                days_to_pay=m.days_to_pay, discount_cad=m.discount_cad)
                              for m in history.missed]),

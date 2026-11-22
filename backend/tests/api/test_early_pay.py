@@ -59,3 +59,24 @@ def test_pending_bill_from_a_discount_vendor_shows_what_approving_in_time_saves(
     assert s["terms"] == "2% off if paid within 10 days, net 30"
     assert body["suggestions"][0]["bill_id"] == bill  # biggest saving first
     assert body["summary"]["with_discount_open"] == 1 and body["summary"]["saving_cad"] == "10.94"
+
+
+def test_bills_held_by_a_blocking_flag_are_left_out(fresh_engine, act_as):
+    # Back-filled history: AP-00407 is a scheduled duplicate of AP-00394 on a closed PO (two open blocking flags), so
+    # nobody should be told to pay it now. AP-00394, the original, still gets its suggestion.
+    from sqlalchemy.orm import Session
+
+    from app.db.backfill import backfill_history_controls
+    from app.db.database import as_write_engine
+    with Session(as_write_engine(fresh_engine)) as session:
+        backfill_history_controls(session)
+        session.commit()
+    ids = [x["bill_id"] for x in act_as("U004").get(URL).json()["suggestions"]]
+    assert "AP-00407" not in ids
+    assert "AP-00394" in ids
+
+
+def test_missed_discounts_name_their_vendor(as_role):
+    missed = as_role("auditor").get(URL).json()["history"]["missed_payments"]
+    assert missed and all(m["vendor_name"] for m in missed)
+    assert {m["vendor_id"]: m["vendor_name"] for m in missed}["V010"]

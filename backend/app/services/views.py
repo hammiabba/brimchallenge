@@ -123,9 +123,12 @@ def bank_account_out(role: str, acct: models.VendorBankAccount | None) -> s.Bank
                             masked=not can_see_full_bank(role), valid_from=acct.valid_from, valid_to=acct.valid_to)
 
 
-def bank_change_out(role: str, c: models.BankChangeRequest) -> s.BankChangeOut:
+def bank_change_out(role: str, c: models.BankChangeRequest, vendor_name: str | None = None) -> s.BankChangeOut:
+    """A bank-change request for `role` (full account numbers only for roles that may see them), with the vendor's
+    name when the caller has it."""
     return s.BankChangeOut(
-        change_id=c.change_id, vendor_id=c.vendor_id, requested_at=c.requested_at, requested_by=c.requested_by,
+        change_id=c.change_id, vendor_id=c.vendor_id, vendor_name=vendor_name, requested_at=c.requested_at,
+        requested_by=c.requested_by,
         request_channel=c.request_channel, old_account_last4=c.old_account_last4,
         new_account_last4=c.new_account_last4, new_institution=c.new_institution, new_transit=c.new_transit,
         new_account=account_for(role, c.new_account), verified_by_callback=c.verified_by_callback, status=c.status,
