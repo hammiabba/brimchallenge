@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { Link, Outlet, matchPath, useLocation } from 'react-router'
 
 import { notifyError } from '../api/notify'
-import { departmentLabel, useDepartments } from '../api/reference'
+import { useDepartments } from '../api/reference'
 import { useAuth, useCurrentUser } from '../auth/context'
 import { APP_NAME } from '../config'
 import { RoleBadge } from '../ui/Badges'
@@ -13,7 +13,7 @@ import { Icon } from '../ui/Icon'
 import { ActingForBanner } from './ActingForBanner'
 import { navItemsFor } from './navigation'
 
-/** The right side of the header: who is signed in (name; title and department), their role, and sign out. */
+/** The right side of the header: who is signed in (name; title and department name), their role, and sign out. */
 function UserSummary() {
   const user = useCurrentUser()
   const { logout } = useAuth()
@@ -37,8 +37,9 @@ function UserSummary() {
         <Text size="sm" fw={500} lh={1.3}>
           {user.full_name}
         </Text>
+        {/* "Title, department name": the department's name, not its code (the code until the list has loaded). */}
         <Text size="xs" c="dimmed" lh={1.3}>
-          {user.title}, {departmentLabel(user.department_id, departments.data)}
+          {user.title}, {departments.data?.find((d) => d.department_id === user.department_id)?.name ?? user.department_id}
         </Text>
       </Stack>
       <RoleBadge role={user.role} />

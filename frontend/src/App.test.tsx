@@ -88,7 +88,7 @@ describe('signed out', () => {
     expect(await screen.findByRole('heading', { name: 'Bills' })).toBeInTheDocument()
     expect(sidebarLabels()).toEqual(navItemsFor('ap_clerk').map((item) => item.label))
     // 5. The header shows the department name once /reference/departments answers.
-    expect(await screen.findByText('AP Specialist, Finance (D02)')).toBeInTheDocument()
+    expect(await screen.findByText('AP Specialist, Finance')).toBeInTheDocument()
     expect(fake.calls.filter((call) => call.includes('/auth/'))).toEqual(['GET /auth/me', 'GET /auth/users', 'POST /auth/login'])
     expect(fake.calls.filter((call) => call === 'GET /reference/departments')).toHaveLength(1)
     expect(fake.calls.indexOf('GET /reference/departments')).toBeGreaterThan(fake.calls.indexOf('POST /auth/login'))
