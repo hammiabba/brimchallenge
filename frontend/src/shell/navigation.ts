@@ -13,6 +13,7 @@
 import {
   IconBuildingBank,
   IconBuildingStore,
+  IconCalendarDollar,
   IconCalendarUser,
   IconCash,
   IconChartBar,
@@ -21,6 +22,7 @@ import {
   IconFileInvoice,
   IconFiles,
   IconHistory,
+  IconScale,
   IconInbox,
   IconShieldCheck,
   IconUpload,
@@ -41,6 +43,8 @@ export type NavKey =
   | 'unassigned'
   | 'bills'
   | 'payments'
+  | 'reconciliation'
+  | 'earlyPay'
   | 'vendors'
   | 'bankChanges'
   | 'spend'
@@ -174,6 +178,28 @@ export const NAV_ITEMS: Record<NavKey, NavItem> = {
       'POST /payments/{payment_id}/cancel',
     ],
   },
+  reconciliation: {
+    key: 'reconciliation',
+    path: '/reconciliation',
+    label: 'Bank reconciliation',
+    icon: IconScale,
+    placeholder: 'Bank reconciliation is not built yet. It will match the bank statement to the payments.',
+    description:
+      'The bank statement against the payments: every line matched to its payment, a bank fee or unexplained, with ' +
+      'totals; bills paid twice; payments the statement doesn\'t show; and an "only issues" view for what needs action.',
+    endpoints: ['GET /reconciliation/bank'],
+  },
+  earlyPay: {
+    key: 'earlyPay',
+    path: '/early-pay',
+    label: 'Early payment',
+    icon: IconCalendarDollar,
+    placeholder: 'Early payment is not built yet. It will suggest the best day to pay each bill.',
+    description:
+      'The best pay date for each approved or scheduled bill under its vendor\'s terms ("2/10 net 30"), what paying ' +
+      'early saves, which scheduled payments should move, and the discounts the history took and missed.',
+    endpoints: ['GET /early-pay'],
+  },
   vendors: {
     key: 'vendors',
     path: '/vendors',
@@ -264,12 +290,14 @@ export const NAV_ITEMS: Record<NavKey, NavItem> = {
 /** Each role's sidebar, in order. The first item is the role's home page. */
 export const NAV_BY_ROLE: Record<Role, readonly NavKey[]> = {
   employee: ['submit', 'submissions', 'bills'],
-  ap_clerk: ['inbox', 'review', 'bills', 'payments', 'vendors', 'bankChanges'],
+  ap_clerk: ['inbox', 'review', 'bills', 'payments', 'earlyPay', 'vendors', 'bankChanges'],
   approver: ['approvals', 'bills', 'spend', 'delegation'],
-  finance_manager: ['approvals', 'payments', 'bills', 'vendors', 'bankChanges', 'unassigned', 'spend', 'delegation'],
-  controller_admin: ['approvals', 'payments', 'bills', 'vendors', 'bankChanges', 'unassigned', 'spend', 'audit',
-    'users', 'policies', 'absences', 'delegation'],
-  auditor: ['audit', 'bills', 'payments', 'vendors', 'bankChanges', 'spend', 'users', 'policies', 'absences'],
+  finance_manager: ['approvals', 'payments', 'earlyPay', 'bills', 'vendors', 'bankChanges', 'unassigned', 'spend',
+    'delegation'],
+  controller_admin: ['approvals', 'payments', 'earlyPay', 'reconciliation', 'bills', 'vendors', 'bankChanges', 'unassigned',
+    'spend', 'audit', 'users', 'policies', 'absences', 'delegation'],
+  auditor: ['audit', 'bills', 'payments', 'earlyPay', 'reconciliation', 'vendors', 'bankChanges', 'spend', 'users', 'policies',
+    'absences'],
 }
 
 /** Every screen, for building the routes. */
