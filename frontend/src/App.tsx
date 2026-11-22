@@ -14,11 +14,14 @@ import { PlaceholderPage } from './shell/PlaceholderPage'
 const BillsPage = lazy(() => import('./bills/BillsPage'))
 const ReviewQueuePage = lazy(() => import('./bills/ReviewQueuePage'))
 const BillDetailPage = lazy(() => import('./bills/BillDetailPage'))
+const VendorsPage = lazy(() => import('./vendors/VendorsPage'))
+const VendorDetailPage = lazy(() => import('./vendors/VendorDetailPage'))
 
 /** The screens built so far, by navigation item. Every other item still shows its placeholder. */
 const SCREENS: Partial<Record<NavKey, LazyExoticComponent<ComponentType>>> = {
   bills: BillsPage,
   review: ReviewQueuePage,
+  vendors: VendorsPage,
 }
 
 /** Shown while a screen's code loads. */
@@ -55,6 +58,10 @@ export function App() {
           <Route
             path="/bills/:billId"
             element={<Suspense fallback={<ScreenLoading />}><BillDetailPage /></Suspense>}
+          />
+          <Route
+            path="/vendors/:vendorId"
+            element={<Suspense fallback={<ScreenLoading />}><VendorDetailPage /></Suspense>}
           />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
