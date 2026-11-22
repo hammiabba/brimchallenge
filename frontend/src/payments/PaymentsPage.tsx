@@ -30,7 +30,7 @@ type Tab = (typeof TABS)[number]['value']
 const SKELETON_ROWS = 5
 
 /** Roles that act on payments (release; cancel). The server decides each action per payment. */
-const ACTION_ROLES: readonly Role[] = ['finance_manager', 'controller_admin']
+const ACTION_ROLES: readonly Role[] = ['ap_clerk', 'finance_manager', 'controller_admin']
 
 /** The tab in the URL (?status=released); anything unknown falls back to scheduled. */
 function tabFromSearch(search: URLSearchParams): Tab {

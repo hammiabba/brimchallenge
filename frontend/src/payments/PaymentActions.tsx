@@ -7,7 +7,8 @@ import type { PaymentDetail, Role } from '../api/types'
 import { useCurrentUser } from '../auth/context'
 import { PAYMENT_METHOD_LABELS } from '../bills/labels'
 import { MoneyText } from '../ui/DataText'
-import { newIdempotencyKey, usePayment, useReleasePayment } from './queries'
+import { CommentActionModal } from '../vendors/CommentActionModal'
+import { newIdempotencyKey, useCancelPayment, usePayment, useReleasePayment } from './queries'
 
 /** The roles that release payments; they are told why when they can't release this one. */
 const RELEASER_ROLES: readonly Role[] = ['finance_manager', 'controller_admin']
@@ -61,15 +62,18 @@ function ReleaseModal({ payment, opened, onClose }: { payment: PaymentDetail; op
 
 /**
  * The actions on one payment, from its allowed_actions (GET /payments/{id}): only what the server says the signed-in
- * user may do now. A releaser who can't release it sees why (for example P11: they approved the bill).
+ * user may do now (release; cancel a scheduled payment). A releaser who can't release it sees why (for example P11:
+ * they approved the bill).
  */
 export function PaymentActions({ paymentId }: { paymentId: string }) {
   const user = useCurrentUser()
   const payment = usePayment(paymentId)
-  const [open, setOpen] = useState<'release' | null>(null)
+  const [open, setOpen] = useState<'release' | 'cancel' | null>(null)
+  const cancel = useCancelPayment(paymentId)
   const data = payment.data
   if (!data) return null
   const release = data.allowed_actions?.release
+  const canCancel = data.allowed_actions?.cancel?.allowed ?? false
   const releaser = RELEASER_ROLES.includes(user.role)
 
   return (
@@ -78,7 +82,22 @@ export function PaymentActions({ paymentId }: { paymentId: string }) {
       {release && !release.allowed && releaser && data.status === 'scheduled' && release.reason && (
         <Text size="sm" c="dimmed">{release.reason}</Text>
       )}
+      {canCancel && <Button size="xs" variant="default" onClick={() => setOpen('cancel')}>Cancel payment</Button>}
       {release?.allowed && <ReleaseModal payment={data} opened={open === 'release'} onClose={() => setOpen(null)} />}
+      {canCancel && (
+        <CommentActionModal
+          opened={open === 'cancel'}
+          onClose={() => setOpen(null)}
+          title="Cancel payment"
+          description={`${data.payment_id} won't be sent. ${data.bill_id} goes back to approved, so AP can schedule it again.`}
+          mutation={cancel}
+          onDone={() => {
+            notifications.show({ title: 'Payment cancelled', message: `${data.payment_id} for ${data.bill_id}` })
+            setOpen(null)
+          }}
+          danger
+        />
+      )}
     </Group>
   )
 }
