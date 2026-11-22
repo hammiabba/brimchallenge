@@ -288,3 +288,56 @@ wouldn't be held although the original (AP-00277) is paid; the Redline `1655-A` 
 history is caught only because the suffix is stripped. The strict xfail became
 `test_suffixed_number_is_an_exact_duplicate` (block, matched against AP-00277). `ISSUES_FOR_B.md` #2 is closed by
 design; the handoff and the HACKATHON_PLAN §4 row now say exact duplicate. `pytest`: 1332 passed, 0 xfailed.
+
+## 3. Discovery for the intake pages
+
+- Frontend: `DESIGN.md` and `design.test.ts` (bans gradients, blur, shadows, purple, other icon sets, Inter, emojis,
+  buzzwords, raw HTML, uppercase transforms; Tabler only through `<Icon>`). Reused `Id`, `MoneyText`, `DateText`,
+  `Icon`, `StatusBadge`, `ErrorAlert`, `notifyError`, `lib/money`, `api`/`unwrap`, `src/test/*`, and `useBill` from
+  `src/bills/queries.ts`. Nav entries for `/submit`, `/submissions`, `/inbox` already existed per role in
+  `navigation.ts`; each page adds one lazy import and one `SCREENS` entry in `App.tsx` (inbox also `/inbox/:emailId`).
+- Backend contracts used:
+  - `POST /submissions` (employee, ap_clerk): one file per request, multipart field `file`; 202 with the queued item;
+    415 `intake.unsupported_file` (by extension), 413 `request.too_large` (10 MB body), 403. `already_received` is not
+    on the 202: it arrives later as a warning on the item, with `bill_id` set to the existing bill.
+  - `GET /submissions` (employee, ap_clerk): the caller's own uploads, newest first, **no filters or paging**.
+  - `POST /intake/inbox/jobs` (ap_clerk): 202 job; 409 `intake.job_running` with `details.job_id`.
+    `GET /intake/inbox/jobs/{id}` (back office): status, processed/total, items. **No "current job" endpoint.**
+  - `GET /intake/emails` (back office): page, filters `email_class`, `triaged`; `GET /intake/emails/{id}`;
+    `GET /intake/files/{hash}` (back office).
+- **Gaps in my lane, fixed on `a/intake-api-utc-times`:** `EmailDetail.received_at`/`triaged_at` were naive
+  (`2026-10-30T14:36:00`, read as local time by a browser) while the list sends UTC with `Z`; `EmailItem.status` was a
+  plain `str`, so the generated type wasn't the status enum. Both fixed, with a test.
+
+## 4. The three pages
+
+- **Decision: stacked branches.** All three pages add lines to the same block of `App.tsx`, so three branches cut
+  from main would conflict. `fe/intake-submissions` is cut from `fe/intake-submit`, `fe/intake-inbox` from
+  `fe/intake-submissions`; each compare link is against the previous branch so the PR shows only its page.
+- `npm run gen:api` output (`openapi.json`, `schema.d.ts`) is committed once, on `fe/intake-submit`.
+- Shared intake bits in `src/intake/common/`: generated-type aliases, labels/tones for item statuses and email
+  classes, `IntakeStatusBadge`/`EmailClassBadge`, `useMySubmissions` (polls every 2 s while anything is queued or
+  processing; TanStack skips intervals in a hidden tab), `submitFile`.
+- My submissions filters and pages on the client (URL `?status=&page=`), because `GET /submissions` has no
+  parameters. Vendor and total come from `GET /bills/{id}` per row (shared cache with the bill page).
+- Inbox: the followed run is in the URL (`?job=`); a 409 joins the running job. Without a "current job" endpoint a
+  run started elsewhere shows only once someone presses Run (the 409 then names it). The Run button is always shown
+  to roles that can read the inbox; the server's 403 explains a refusal. A 403 on the list hides everything else.
+- Real run (uvicorn on the seeded DB + Vite proxy, driven with curl since no browser was available here):
+  - U013 (employee): `/submissions` empty, submitted `Invoice HA26-2766.pdf` -> 202 queued -> ok, bill AP-00427
+    (Harlow and Stern LLP, 6452.30 CAD, `VENDOR_LOOKALIKE`, needs review). Same file again -> ok + `already_received`
+    -> AP-00427. `package.json` -> 415. Inbox list, email detail and run -> 403.
+  - U004 (AP clerk): own submissions empty. Run -> 202, second press -> 409 with the job id, done 59/59 emails,
+    56 files. Classes: 53 invoice, 2 credit note, 1 each statement, payment inquiry, missing attachment, not AP; 0
+    untriaged. EM-057 -> answer_status AP-00049 paid 2026-03-09 EFT BRIM-EFT-26388945; EM-058 -> resend reply;
+    EM-029 -> AP-00459, AP-00460; file link -> 200 application/pdf.
+  - Controller (U001) `POST /submissions` -> 403.
+
+## 5. Requests for other lanes
+
+- API lane: `GET /submissions` could take `status`, `limit`, `offset` and return vendor/total (removes N bill
+  requests); a `GET /intake/inbox/jobs?active=true` (or "current") would let the page show a run started by someone
+  else without pressing Run.
+- Frontend owner, candidates for `src/ui/`: a generic `ToneBadge` (`IntakeBadges.tsx` copies the private one in
+  `Badges.tsx`), `StatusBadge` kinds for intake items and email classes, and a copy-to-clipboard text block
+  (`SuggestedActionView.tsx` `ReplyText`).
