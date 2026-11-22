@@ -2,9 +2,9 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 
-import type { Payment, PaymentDashboard } from '../api/types'
+import type { Payment, PaymentDashboard, PaymentDetail } from '../api/types'
 import { envelope, installFakeApi, type FakeRoute } from '../test/fakeApi'
-import { billScreenRoutes, billSummary, billsPage } from '../test/fixtures'
+import { billDetail, billScreenRoutes, billSummary, billsPage, vendorDetail } from '../test/fixtures'
 import { currentLocation, renderApp } from '../test/renderApp'
 
 export const CLERK = { role: 'ap_clerk', user_id: 'U005' } as const
@@ -28,6 +28,19 @@ export function payment(overrides: Partial<Payment> = {}): Payment {
     paid_date: null, status: 'scheduled', reference: null, prepared_by: 'U005', released_by: null, released_at: null,
     ...overrides,
   }
+}
+
+/** GET /payments/{id}: the payment with its bill and empty history, and the given allowed_actions. */
+export function paymentDetail(overrides: Partial<PaymentDetail> = {}): PaymentDetail {
+  return {
+    ...payment(), fx_rate_to_cad: '1', fx_rate_date: null, discount_taken: '0.00',
+    bank_account: { id: 7, institution: '004', transit: '55123', account: '0094410', account_last4: '4410', masked: false,
+      valid_from: '2026-01-01', valid_to: null },
+    bill: billSummary({ bill_id: 'AP-00436', status: 'scheduled', vendor_id: 'V040', vendor_name: 'Lakeshore Hydro Services',
+      vendor_invoice_number: 'DM-1010', total: '1604.60', total_cad: '1604.60', current_step: null }),
+    lines: [], decisions: [], audit: [], allowed_actions: {},
+    ...overrides,
+  } as PaymentDetail
 }
 
 /** An approved bill with no payment yet (AP-00426, Cascadia, held by its pending bank change). */
@@ -119,5 +132,76 @@ describe('payments dashboard', () => {
     expect(await screen.findByText('No scheduled payments.')).toBeInTheDocument()
     expect(await screen.findByText('The totals are unavailable.')).toBeInTheDocument()
     expect(screen.getByText('Request id: rid-sum-1')).toBeInTheDocument()
+  })
+})
+
+/** GET /bills/{id} for an approved bill, with the given schedule_payment answer. */
+function approvedDetail(schedule: { allowed: boolean; reason?: string | null }) {
+  return billDetail({ ...APPROVED, payments: [], allowed_actions: { schedule_payment: { allowed: schedule.allowed, reason: schedule.reason ?? null } } })
+}
+
+describe('schedule a payment', () => {
+  it('schedules with the vendor\'s method and the chosen date', async () => {
+    let sent: unknown = null
+    const fake = installFakeApi(paymentsRoutes(CLERK, {
+      'GET /bills/AP-00426': { body: approvedDetail({ allowed: true }) },
+      'GET /vendors/V004': { body: vendorDetail({ vendor_id: 'V004', legal_name: 'Cascadia Cartage Ltd.', preferred_payment_method: 'CHEQUE' }) },
+      'POST /bills/AP-00426/payments': async (request) => {
+        sent = await request.json()
+        return { status: 201, body: paymentDetail({ payment_id: 'PAY-00419', bill_id: 'AP-00426' }) }
+      },
+    }))
+    const user = userEvent.setup()
+    renderApp('/payments')
+
+    const approved = await screen.findByRole('table', { name: 'Approved bills' })
+    await user.click(await within(approved).findByRole('button', { name: 'Schedule' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Schedule payment' })
+    expect(within(dialog).getByText(/you can't release a payment you prepared/)).toBeInTheDocument()
+    await waitFor(() => expect(within(dialog).getByRole('combobox', { name: 'Method' })).toHaveValue('Cheque'))
+    const date = within(dialog).getByLabelText(/Payment date/)
+    expect(date).toHaveValue('2026-11-23') // the due date, still ahead of the business date
+    await user.clear(date)
+    await user.type(date, '2026-11-20')
+    await user.click(within(dialog).getByRole('button', { name: 'Schedule payment' }))
+
+    await waitFor(() => expect(sent).toEqual({ scheduled_date: '2026-11-20', method: 'CHEQUE' }))
+    expect(await screen.findByText('Payment scheduled')).toBeInTheDocument()
+    // The payments and bills lists are read again.
+    await waitFor(() => expect(fake.calls.filter((c) => c === 'GET /payments').length).toBeGreaterThan(1))
+  })
+
+  it('shows why AP can\'t schedule a bill instead of the button', async () => {
+    installFakeApi(paymentsRoutes(CLERK, {
+      'GET /bills/AP-00426': { body: approvedDetail({ allowed: false, reason: "Bank change BC-009 for this vendor isn't verified yet." }) },
+    }))
+    renderApp('/payments')
+    const approved = await screen.findByRole('table', { name: 'Approved bills' })
+    expect(await within(approved).findByText("Bank change BC-009 for this vendor isn't verified yet.")).toBeInTheDocument()
+    expect(within(approved).queryByRole('button', { name: 'Schedule' })).not.toBeInTheDocument()
+  })
+
+  it('shows a refusal from the server in the dialog', async () => {
+    installFakeApi(paymentsRoutes(CLERK, {
+      'GET /bills/AP-00426': { body: approvedDetail({ allowed: true }) },
+      'POST /bills/AP-00426/payments': {
+        status: 409, body: envelope('payment.already_exists', 'Payment PAY-00419 already covers this bill.', 'rid-sch-1'),
+      },
+    }))
+    const user = userEvent.setup()
+    renderApp('/payments')
+    await user.click(await screen.findByRole('button', { name: 'Schedule' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Schedule payment' })
+    await user.click(within(dialog).getByRole('button', { name: 'Schedule payment' }))
+    expect(await within(dialog).findByText('Payment PAY-00419 already covers this bill.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Request id: rid-sch-1')).toBeInTheDocument()
+  })
+
+  it('has no Actions column for roles that don\'t schedule', async () => {
+    installFakeApi(paymentsRoutes(FINANCE))
+    renderApp('/payments')
+    const approved = await screen.findByRole('table', { name: 'Approved bills' })
+    await within(approved).findByText('AP-00426')
+    expect(within(approved).queryByText('Actions')).not.toBeInTheDocument()
   })
 })
