@@ -81,6 +81,7 @@ result.recommendation     # "Hold: This bill is on V052 Harlow and Stern LLP, ..
 | `history.replay(ref)` | Replays all historical invoices, each judged as of its own date, plus checks on `approvals.csv` and `payments.csv`. Printed by `backend/scripts/replay_history.py`. |
 | `flag_help.help_for(code)` / `flag_help.FLAG_HELP` | **For the UI team.** A short title and one plain-English help sentence (what it means, what to do) for every code in `FLAG_CODES`, plus its severity. Show the title as the badge, the flag's own `message` for this bill's details, and the help as a tooltip or help panel. A test fails if a code has no help. |
 | `refdata.history_taxes(ref, invoice, lines)` | Tax lines for a historical invoice, with the same tax codes the engine uses. Public now, so the DB seed uses it directly (`_history_taxes` still works as an alias). |
+| `reconciliation.reconcile(bank_rows, payment_rows, ref)` | **Bank reconciliation.** Matches every bank statement line to its payment and explains the rest. Rows are CSV-shaped dicts (`bank_statement.csv`, `payments.csv`), so the CSV loader (`load_bank_and_payments()`) and the DB adapter (`services/reconciliation.py`) feed it the same way. Returns `Reconciliation` (lines, payments, double payments, `summary()`). See "Bank reconciliation" below. |
 
 `controls.permissions` re-exports `can_approve` / `can_release` (the API guide refers to that module).
 
@@ -107,6 +108,7 @@ shows what the server allows. File paths are under `backend/app/`.
 | `can_approve(user, step, bill, ref, route=, amount_cad=)` | `services/approvals.py` `decision_check()`, used by `approve`, `reject` and the allowed-actions check in `services/actions.py` | Before an approval or rejection is recorded | The stored `route` (`db/bills.py` `route_for_bill`). A manually assigned approver replaces the step's user. `amount_cad` is the split's combined amount when controls saw a split (`controls_runner.routed_amount`). A delegate's decision is stored with `on_behalf_of`. |
 | `can_release(user, amount_cad, approver_ids, flags, approval_complete, ref, bill=)` | `services/payments.py` `release_check()`, used by `release` and the allowed-actions check | Before a scheduled payment is released (simulated EFT) | `approver_ids` = everyone who approved, plus everyone a delegate approved for (`db/bills.py` `approver_ids_for_bill`). `flags` = only the flags still open in the latest stored run (`controls_runner.open_flags`), so an overridden flag no longer holds the payment. `approval_complete` = the bill's status is `approved` or `scheduled` (a bill only reaches `approved` through its final step). `bill` = the current `DraftBill`. |
 | `flag_help.help_for(code)` | `api/routes_reference.py`: `GET /reference/flag-help`, every role | Loaded by the UI | Title, help and severity for every code in `FLAG_CODES`. |
+| `reconciliation.reconcile(bank_rows, payment_rows, ref)` | `api/routes_reconciliation.py`: `GET /reconciliation/bank` (`?only_issues=true` for just what needs review), controller and auditor only (`AUDIT_READERS`), via `services/reconciliation.py` `bank_reconciliation()` | On request (read-only) | Statement lines and payments read from the database in CSV row shape, and `ref` from `refdata_from_db()`. The response models are at the end of `api/schemas_api.py` (`BankReconciliation` and the `Recon*` models). |
 
 Checks the API adds around these: the payment's preparer can't release it, a bank change after scheduling blocks
 release, release needs an `Idempotency-Key`, and one person can't sign two steps of the same bill. Every write
@@ -452,6 +454,53 @@ moved from can proceed to review. Cascadia `scan_8049.png` was already on hold f
 is flagged: Evergreen's weak total is left to `TOTAL_MISMATCH`, and Blue Heron's and Zephyr's weak vendor to
 `VENDOR_NOT_FOUND`. History replay: identical, because history bills have no confidence scores. The coverage map
 now lists the scans under this flag.
+
+## Bank reconciliation (`controls/reconciliation.py`)
+
+`reconcile(bank_rows, payment_rows, ref)` matches each line of `bank_statement.csv` (the CAD operating account) to the
+payment behind it and classifies everything else. API: `GET /reconciliation/bank`, controller and auditor only.
+
+**Matching**
+- **EFT** (`EFT PMT <payee> <ref>`): the line's reference is the last 6 digits of the payment's `BRIM-EFT-` reference.
+  If the reference matches nothing, the line is matched by amount and payee to an EFT paid within 5 days, and says so
+  (`MATCHED_WITHOUT_REFERENCE`). A payee that isn't the payment's vendor is `PAYEE_DIFFERS`.
+- **Cheques** (`CHEQUE <no> CLEARED`): the payment record doesn't carry the cheque number, so each cleared cheque goes
+  to the cheque payment issued closest before it, within 60 days. Exact amounts are paired first, then amounts within
+  $1.00 (reported as `AMOUNT_DIFFERS`). This matters for the 10 identical $6,990.48 rent cheques: each month's
+  clearing goes to that month's cheque.
+- **Fees** (`... FEE`, `SERVICE CHARGE`): `bank_fee`. A wire fee on a day no payment went by wire is
+  `WIRE_FEE_WITHOUT_WIRE`.
+- **Anything else** is `unexplained` (`UNEXPLAINED_DEBIT` / `UNEXPLAINED_CREDIT`).
+
+**Payments with no bank line**:
+- `PAID_BY_CARD` (info): the payment settles on the card account.
+- `SCHEDULED` (info): not sent yet.
+- `IN_TRANSIT` (info): sent in the last 3 days.
+- `OUTSTANDING_CHEQUE` (info), or `STALE_CHEQUE` (review) after 90 days.
+- `NOT_ON_STATEMENT` (review): settled in the records but missing from the statement.
+
+**Double payments** use the duplicate checks' rules: the same vendor and normalized invoice number, or an AP payment
+plus an employee card charge for the same amount. Instalments of one invoice don't count. A test checks the groups
+equal the history replay's. The extra copy's bank line gets `DOUBLE_PAYMENT`, and a scheduled extra copy gets
+`DOUBLE_PAYMENT_AT_RISK`. Payments sent after an unverified bank change get `PAID_AFTER_UNVERIFIED_BANK_CHANGE`.
+
+**Results on the dataset** (statement 2026-01-05 to 2026-11-02, 354 lines, $1,742,643.22 out). The API reading the
+seeded database gives exactly the same answer (`tests/api/test_reconciliation.py`).
+- **Matched: 333 lines, $1,740,825.21.** That's all 313 EFTs and all 20 cheques. Every settled EFT and every cheque in
+  `payments.csv` is on the statement.
+- **Bank fees: 16, $385.00.** 10 monthly account fees ($29.50) and 6 wire fees ($15.00). **No payment in the data was
+  sent by wire**, so the 6 wire fees need an explanation from the bank.
+- **Unexplained: 5 pre-authorized debits, $1,433.01** (BK-00064, BK-00088, BK-00192, BK-00193, BK-00207). They match no
+  payment, bill or card charge, and no vendor pays by pre-authorized debit. Someone authorized a pull from the account,
+  or nobody did.
+- **Double payments: 10 bills, $23,536.76 paid out extra, and $2,457.19 scheduled to go out again** (Summit
+  AP-00394/AP-00407, `PAY-00399`: cancel it). 7 of the extra copies are bank lines. The other 3 extra copies were card
+  charges.
+- **Amounts that differ: 4.** Cheque 5018 (BK-00296) cleared for $6,990.53 against a $6,990.48 cheque, 5 cents over.
+  Three EFTs took one cent more than the payment (BK-00121, BK-00190, BK-00230).
+- **Records not updated: 20.** All 20 cheques cleared the bank, but every one is still `outstanding` in `payments.csv`.
+- **Paid after an unverified bank change: 1.** Cascadia AP-00388 (BK-00347, $3,290.01) went out 2 days after the
+  email-requested change.
 
 ## Bugs not fixed yet
 
