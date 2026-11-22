@@ -6,6 +6,7 @@ import { ErrorAlert } from '../api/ErrorAlert'
 import { personName, usePeople } from '../api/reference'
 import type { Policy, PolicyPatch } from '../api/types'
 import { useCurrentUser } from '../auth/context'
+import { stepRoleLabel } from '../bills/labels'
 import { DateText, Id } from '../ui/DataText'
 import { ADMIN_WRITE_ROLES, usePolicies, useUpdatePolicy } from './queries'
 import { TableShell } from './TableShell'
@@ -64,17 +65,55 @@ function EditPolicyModal({ policy, onClose }: { policy: Policy; onClose: () => v
   )
 }
 
+/** Policy steps that aren't approval roles, in words. */
+const REQUIRED_WORDS: Record<string, string> = {
+  delegate_user_id: "The absent approver's delegate",
+}
+
 /**
- * The approver chain ("dept_manager > finance_manager > controller_admin"), one step per line: each step is a code
- * that never breaks across lines, so the whole chain on one line would make the column very wide.
+ * One step of a rule's "Required" text in words: a role code as the approval route names it ("dept_manager" ->
+ * "Department manager"), a known field ("delegate_user_id"), or the rule's own prose ("approver's manager") with a
+ * capital letter.
+ */
+function requiredStep(step: string): string {
+  if (REQUIRED_WORDS[step]) return REQUIRED_WORDS[step]
+  if (/^[a-z]+(_[a-z]+)*$/.test(step) && step.includes('_') || step === 'cfo') return stepRoleLabel(step)
+  return step.charAt(0).toUpperCase() + step.slice(1)
+}
+
+/**
+ * The approver chain ("dept_manager > finance_manager > controller_admin") in words, one step per line:
+ * "Department manager", "then Finance manager", "then Controller". The stored text is unchanged (routing reads it).
  */
 function RequiredCell({ required }: { required: string }) {
   const steps = required.split('>').map((step) => step.trim()).filter(Boolean)
   return (
     <Stack gap={0}>
       {steps.map((step, index) => (
-        <Text key={`${step}-${index}`} size="sm">{index > 0 && '> '}<Id>{step}</Id></Text>
+        <Text key={`${step}-${index}`} size="sm">{`${index > 0 ? 'then ' : ''}${requiredStep(step)}`}</Text>
       ))}
+    </Stack>
+  )
+}
+
+/**
+ * When a rule last changed. A rule nobody has edited still has the date the dataset was loaded (stored as midnight
+ * UTC, which would read as the evening before in Toronto), so it shows that date alone; an edit shows its time and
+ * who made it.
+ */
+function LastChanged({ policy, people }: { policy: Policy; people: ReturnType<typeof usePeople>['data'] }) {
+  if (!policy.updated_by) {
+    return (
+      <Stack gap={0}>
+        <Text size="sm"><DateText value={policy.updated_at.slice(0, 10)} /></Text>
+        <Text size="xs" c="dimmed">From the dataset</Text>
+      </Stack>
+    )
+  }
+  return (
+    <Stack gap={0}>
+      <Text size="sm"><DateText value={policy.updated_at} kind="timestamp" /></Text>
+      <Text size="xs" c="dimmed">{personName(policy.updated_by, people)}</Text>
     </Stack>
   )
 }
@@ -101,15 +140,11 @@ export default function PoliciesPage() {
             <Table.Tr key={policy.rule_id}>
               <Table.Td><Id>{policy.rule_id}</Id></Table.Td>
               <Table.Td>{TYPE_LABELS[policy.rule_type]}</Table.Td>
-              <Table.Td>{policy.condition}</Table.Td>
+              {/* Shown with spaces for underscores ("pending_review" -> "pending review"); the stored text is kept. */}
+              <Table.Td>{policy.condition.replace(/_/g, ' ')}</Table.Td>
               <Table.Td><RequiredCell required={policy.required} /></Table.Td>
               <Table.Td><Text size="sm">{policy.notes ?? ''}</Text></Table.Td>
-              <Table.Td>
-                <Stack gap={0}>
-                  <Text size="sm"><DateText value={policy.updated_at} kind="timestamp" /></Text>
-                  {policy.updated_by && <Text size="xs" c="dimmed">{personName(policy.updated_by, people.data)}</Text>}
-                </Stack>
-              </Table.Td>
+              <Table.Td><LastChanged policy={policy} people={people.data} /></Table.Td>
               {mayEdit && (
                 <Table.Td>
                   <Button size="xs" variant="default" onClick={() => setEditing(policy)}

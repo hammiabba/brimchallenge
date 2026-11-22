@@ -19,6 +19,8 @@ import { TableShell } from './TableShell'
  * 1008 px content column at 1280 px.
  */
 const COLUMNS = ['Name', 'Role', 'Department', 'Status', 'Approval limit (CAD)', 'Manager', 'Delegate'] as const
+/** The roles that approve bills (backend app/auth/roles.py SIGNERS); anyone else has no approval limit to show. */
+const SIGNER_ROLES: readonly Role[] = ['approver', 'finance_manager', 'controller_admin']
 /** The Edit column has no heading: its buttons say what they do ("Edit Morgan Lee"). */
 const EDIT_COLUMN = ''
 const ROLE_OPTIONS = ROLES.map((role) => ({ value: role, label: ROLE_LABELS[role] }))
@@ -139,7 +141,11 @@ export default function UsersPage() {
               <Table.Td>{ROLE_LABELS[user.role]}</Table.Td>
               <Table.Td>{departmentLabel(user.department_id, departments.data)}</Table.Td>
               <Table.Td><StatusBadge kind="user" status={user.status} /></Table.Td>
-              <Table.Td data-numeric><MoneyText value={user.approval_limit_cad} align="right" /></Table.Td>
+              <Table.Td data-numeric>
+                {SIGNER_ROLES.includes(user.role)
+                  ? <MoneyText value={user.approval_limit_cad} align="right" />
+                  : <Text span size="sm" c="dimmed">Can't approve</Text>}
+              </Table.Td>
               <Table.Td>{userLabel(user.manager_id, all)}</Table.Td>
               <Table.Td>{userLabel(user.delegate_user_id, all)}</Table.Td>
               {mayEdit && (

@@ -5,13 +5,16 @@ import { useState } from 'react'
 
 import { ErrorAlert } from '../api/ErrorAlert'
 import { personName, usePeople } from '../api/reference'
-import type { PickerUser, Role } from '../api/types'
+import type { Absence, PickerUser, Role } from '../api/types'
+import { useCurrentUser } from '../auth/context'
 import { DateText } from '../ui/DataText'
 import { Icon } from '../ui/Icon'
-import { useAbsences, useAddAbsence } from './queries'
+import { ADMIN_WRITE_ROLES, useAbsences, useAddAbsence, useBusinessDate, useEndAbsence } from './queries'
 import { TableShell } from './TableShell'
 
 const COLUMNS = ['Who', 'Delegate', 'From', 'To'] as const
+/** The actions column has no heading: its buttons say what they do ("End absence of Liam O'Connor"). */
+const ACTIONS_COLUMN = ''
 
 /** The roles that approve bills, so need (and can be) a delegate. The server checks this too. */
 const SIGNER_ROLES: readonly Role[] = ['approver', 'finance_manager', 'controller_admin']
@@ -68,23 +71,65 @@ function AddAbsenceModal({ onClose }: { onClose: () => void }) {
   )
 }
 
-/** /admin/absences: who is or will be away, and who signs in their place. */
+/** True when the absence covers the business date: started, and not over yet (ISO dates compare as text). */
+function underWay(absence: Absence, today: string | undefined): boolean {
+  return today !== undefined && absence.starts_on <= today && (absence.ends_on === null || absence.ends_on >= today)
+}
+
+/** Confirm ending an absence: the person is back and approves their own steps again. */
+function EndAbsenceModal({ absence, onClose }: { absence: Absence; onClose: () => void }) {
+  const people = usePeople()
+  const end = useEndAbsence()
+  const who = personName(absence.user_id, people.data)
+  const delegate = personName(absence.delegate_user_id, people.data)
+
+  function confirm() {
+    end.mutate(absence.id, {
+      onSuccess: () => {
+        notifications.show({ title: 'Absence ended', message: `${who} approves their own steps again.` })
+        onClose()
+      },
+    })
+  }
+
+  return (
+    <Modal opened onClose={onClose} title="End absence">
+      <Stack gap="sm">
+        <Text size="sm">{`${who} is back: their approval steps go to them again, not to ${delegate}.`}</Text>
+        {end.isError && <ErrorAlert error={end.error} />}
+        <Group justify="flex-end" gap="sm">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button onClick={confirm} loading={end.isPending}>End absence</Button>
+        </Group>
+      </Stack>
+    </Modal>
+  )
+}
+
+/**
+ * /admin/absences: who is or will be away, and who signs in their place. The controller adds absences and ends the
+ * ones under way; auditors read the list without those buttons (the server refuses them anyway).
+ */
 export default function AbsencesPage() {
   const absences = useAbsences()
   const people = usePeople()
+  const today = useBusinessDate()
+  const mayEdit = ADMIN_WRITE_ROLES.includes(useCurrentUser().role)
   const [adding, setAdding] = useState(false)
+  const [ending, setEnding] = useState<Absence | null>(null)
   const rows = absences.data ?? []
+  const columns = mayEdit ? [...COLUMNS, ACTIONS_COLUMN] : COLUMNS
 
   return (
     <Stack gap="md">
       <Group justify="space-between" align="flex-end">
         <Title order={1}>Absences</Title>
-        <Button leftSection={<Icon icon={IconPlus} />} onClick={() => setAdding(true)}>Add absence</Button>
+        {mayEdit && <Button leftSection={<Icon icon={IconPlus} />} onClick={() => setAdding(true)}>Add absence</Button>}
       </Group>
       {absences.isError ? (
         <ErrorAlert error={absences.error} title="Can't load absences" onRetry={() => void absences.refetch()} />
       ) : (
-        <TableShell label="Absences" columns={COLUMNS} loading={absences.isPending} empty={rows.length === 0}
+        <TableShell label="Absences" columns={columns} loading={absences.isPending} empty={rows.length === 0}
           emptyMessage="No absences recorded." minWidth={700}>
           {rows.map((absence) => (
             <Table.Tr key={absence.id}>
@@ -92,11 +137,22 @@ export default function AbsencesPage() {
               <Table.Td>{personName(absence.delegate_user_id, people.data)}</Table.Td>
               <Table.Td><DateText value={absence.starts_on} /></Table.Td>
               <Table.Td>{absence.ends_on ? <DateText value={absence.ends_on} /> : <Text size="sm" c="dimmed">Open-ended</Text>}</Table.Td>
+              {mayEdit && (
+                <Table.Td>
+                  {underWay(absence, today) && (
+                    <Button size="xs" variant="default" onClick={() => setEnding(absence)}
+                      aria-label={`End absence of ${personName(absence.user_id, people.data)}`}>
+                      End absence
+                    </Button>
+                  )}
+                </Table.Td>
+              )}
             </Table.Tr>
           ))}
         </TableShell>
       )}
       {adding && <AddAbsenceModal onClose={() => setAdding(false)} />}
+      {ending && <EndAbsenceModal absence={ending} onClose={() => setEnding(null)} />}
     </Stack>
   )
 }

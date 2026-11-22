@@ -30,6 +30,16 @@ export function useAbsences() {
 }
 
 /**
+ * The business date the server treats as today ("2026-11-02", from GET /health), or undefined until it has loaded.
+ * Whether an absence is under way is decided against it, as the server decides it.
+ */
+export function useBusinessDate(): string | undefined {
+  const health = useQuery({ queryKey: ['health'], queryFn: () => unwrap(api.GET('/health')), staleTime: Infinity })
+  const value = health.data?.as_of_date
+  return typeof value === 'string' ? value : undefined
+}
+
+/**
  * Refreshes the admin lists and the people directory after a write: a role, status or delegate change shows up in
  * names and approval routes elsewhere, and the signed-in user's own limits may have changed.
  */
@@ -66,6 +76,16 @@ export function useAddAbsence() {
   const invalidate = useInvalidateAdmin()
   return useMutation({
     mutationFn: (body: AbsenceInput) => unwrap(api.POST('/admin/absences', { body })),
+    onSuccess: invalidate,
+  })
+}
+
+/** POST /admin/absences/{id}/end: the person is back; their approval steps go to them again. Controller only. */
+export function useEndAbsence() {
+  const invalidate = useInvalidateAdmin()
+  return useMutation({
+    mutationFn: (absenceId: number) =>
+      unwrap(api.POST('/admin/absences/{absence_id}/end', { params: { path: { absence_id: absenceId } } })),
     onSuccess: invalidate,
   })
 }
