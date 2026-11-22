@@ -28,10 +28,10 @@ function fullVendor(overrides: Partial<VendorDetail> = {}): VendorDetail {
   })
 }
 
-/** Routes for the vendor screens: the shared ones plus the page and detail endpoints. */
-function vendorRoutes(detail = fullVendor()) {
+/** Routes for the vendor screens: the shared ones plus the page and detail endpoints, signed in as AP by default. */
+function vendorRoutes(detail = fullVendor(), role: Parameters<typeof billScreenRoutes>[0] = {}) {
   return {
-    ...billScreenRoutes(),
+    ...billScreenRoutes(role),
     'GET /vendors/V011': { body: detail },
   }
 }
@@ -107,9 +107,9 @@ describe('vendor page', () => {
 
   it('shows the server refusal inside the dialog', async () => {
     installFakeApi({
-      ...vendorRoutes(fullVendor({ status: 'pending_review' })),
+      ...vendorRoutes(fullVendor({ status: 'pending_review' }), { role: 'finance_manager', user_id: 'U003' }),
       'POST /vendors/V011/approve': {
-        status: 403, body: envelope('auth.forbidden_role', "Your role (ap_clerk) can't do this.", 'rid-v-01'),
+        status: 409, body: envelope('vendor.invalid_state', 'The vendor is active; it must be pending review or on hold.', 'rid-v-01'),
       },
     })
     const user = userEvent.setup()
@@ -118,7 +118,7 @@ describe('vendor page', () => {
     await user.click(await screen.findByRole('button', { name: 'Approve vendor' }))
     const dialog = await screen.findByRole('dialog', { name: 'Approve vendor' })
     await user.click(within(dialog).getByRole('button', { name: 'Approve vendor' }))
-    expect(await within(dialog).findByText("Your role (ap_clerk) can't do this.")).toBeInTheDocument()
+    expect(await within(dialog).findByText('The vendor is active; it must be pending review or on hold.')).toBeInTheDocument()
     expect(within(dialog).getByText('Request id: rid-v-01')).toBeInTheDocument()
   })
 
@@ -153,5 +153,43 @@ describe('vendor page', () => {
     installFakeApi(billScreenRoutes())
     renderApp('/vendors/V404')
     expect(await screen.findByRole('heading', { name: 'Vendor not found' })).toBeInTheDocument()
+  })
+})
+
+describe('vendor buttons by role', () => {
+  const buttons = () => ['Onboard vendor', 'Approve vendor', 'Put on hold', 'Request bank change']
+    .filter((name) => screen.queryByRole('button', { name }) !== null)
+
+  it('AP onboards, holds and requests bank changes, but doesn\'t approve', async () => {
+    installFakeApi(vendorRoutes(fullVendor({ status: 'pending_review' })))
+    renderApp('/vendors/V011')
+    await screen.findByRole('button', { name: 'Put on hold' })
+    expect(buttons()).toEqual(['Put on hold', 'Request bank change'])
+  })
+
+  it('finance approves and holds, but doesn\'t request bank changes or onboard', async () => {
+    installFakeApi(vendorRoutes(fullVendor({ status: 'pending_review' }), { role: 'finance_manager', user_id: 'U003' }))
+    renderApp('/vendors/V011')
+    await screen.findByRole('button', { name: 'Approve vendor' })
+    expect(buttons()).toEqual(['Approve vendor', 'Put on hold'])
+  })
+
+  it('an auditor sees no vendor buttons, on the page or the list', async () => {
+    installFakeApi({
+      ...vendorRoutes(fullVendor({ status: 'pending_review' }), { role: 'auditor', user_id: 'U015' }),
+      'GET /vendors': { body: { items: [], total: 0, limit: 50, offset: 0 } },
+    })
+    renderApp('/vendors/V011')
+    await screen.findByRole('heading', { level: 1 })
+    expect(buttons()).toEqual([])
+    expect(screen.queryByText('No bank account on file. Request a change to add one.')).not.toBeInTheDocument()
+  })
+
+  it('only AP gets Onboard vendor on the list', async () => {
+    installFakeApi({ ...vendorRoutes(fullVendor(), { role: 'controller_admin', user_id: 'U002' }),
+      'GET /vendors': { body: { items: [], total: 0, limit: 50, offset: 0 } } })
+    renderApp('/vendors')
+    await screen.findByRole('heading', { level: 1, name: 'Vendors' })
+    expect(screen.queryByRole('button', { name: 'Onboard vendor' })).not.toBeInTheDocument()
   })
 })

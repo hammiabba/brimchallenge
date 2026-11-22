@@ -91,7 +91,8 @@ def bill_detail(db: Session, user: CurrentUser, bill_id: str) -> s.BillDetail:
     from app.services.actions import bill_actions  # actions builds on this module's rules
 
     bill = get_bill_for(db, user, bill_id)
-    summary = views.bill_summary(bill, views.vendor_names(db, {bill.vendor_id}).get(bill.vendor_id))
+    # The same summary as the bills list: open-flag counts, the top flag and, while pending, the current step.
+    [summary] = views.bill_summaries(db, [bill])
     lines = db.scalars(select(models.BillLine).where(models.BillLine.bill_id == bill.bill_id)
                        .order_by(models.BillLine.line_no))
     taxes = db.scalars(select(models.BillTax).where(models.BillTax.bill_id == bill.bill_id)

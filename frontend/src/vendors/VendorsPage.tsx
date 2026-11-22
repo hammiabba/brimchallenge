@@ -9,6 +9,7 @@ import { Icon } from '../ui/Icon'
 import { VENDOR_STATUS } from '../ui/statusStyles'
 import { PAGE_SIZE, apiQuery, filtersFromSearch, searchFromFilters, type VendorListFilters } from './listQuery'
 import { OnboardVendorModal } from './OnboardVendorModal'
+import { useMayDo } from './roles'
 import { useVendorsPage } from './queries'
 import { VendorsTable } from './VendorsTable'
 
@@ -66,6 +67,7 @@ export default function VendorsPage() {
   const query = useMemo(() => apiQuery(filters), [filters])
   const vendors = useVendorsPage(query)
   const [onboarding, setOnboarding] = useState(false)
+  const mayOnboard = useMayDo('onboard')
 
   const setFilters = useCallback(
     (next: VendorListFilters) => setSearchParams(searchFromFilters(next), { replace: true }),
@@ -82,7 +84,7 @@ export default function VendorsPage() {
     <Stack gap="md">
       <Group justify="space-between" align="flex-end">
         <Title order={1}>Vendors</Title>
-        <Button leftSection={<Icon icon={IconPlus} />} onClick={() => setOnboarding(true)}>Onboard vendor</Button>
+        {mayOnboard && <Button leftSection={<Icon icon={IconPlus} />} onClick={() => setOnboarding(true)}>Onboard vendor</Button>}
       </Group>
       <VendorFilters filters={filters} onChange={setFilters} />
       {vendors.isError && !vendors.data ? (
@@ -110,7 +112,7 @@ export default function VendorsPage() {
           </Group>
         </>
       )}
-      <OnboardVendorModal opened={onboarding} onClose={() => setOnboarding(false)} />
+      {mayOnboard && <OnboardVendorModal opened={onboarding} onClose={() => setOnboarding(false)} />}
     </Stack>
   )
 }

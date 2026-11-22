@@ -15,6 +15,7 @@ import { BankChangesTable } from './BankChangesTable'
 import { CommentActionModal } from './CommentActionModal'
 import { PAYMENT_METHOD_LABELS, termsLabel } from './labels'
 import { useVendorDecision } from './queries'
+import { useMayDo } from './roles'
 
 /** One label and value in the details grid. */
 function Field({ label, children }: { label: string; children: ReactNode }) {
@@ -26,11 +27,17 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-/** Approve (pending review or on hold) and Hold (anything not on hold). Who may do either is the server's call. */
+/**
+ * Approve (pending review or on hold: finance and the controller) and Hold (anything not on hold: AP, finance and the
+ * controller), each shown only to the roles the API allows. The server checks every request.
+ */
 function VendorActions({ vendor }: { vendor: VendorDetail }) {
   const [open, setOpen] = useState<'approve' | 'hold' | null>(null)
   const approve = useVendorDecision(vendor.vendor_id, 'approve')
   const hold = useVendorDecision(vendor.vendor_id, 'hold')
+  const mayApprove = useMayDo('approve') && vendor.status !== 'active'
+  const mayHold = useMayDo('hold') && vendor.status !== 'on_hold'
+  if (!mayApprove && !mayHold) return null
 
   function done(title: string) {
     notifications.show({ title, message: `${vendor.legal_name} (${vendor.vendor_id})` })
@@ -39,8 +46,8 @@ function VendorActions({ vendor }: { vendor: VendorDetail }) {
 
   return (
     <Group gap="sm">
-      {vendor.status !== 'active' && <Button onClick={() => setOpen('approve')}>Approve vendor</Button>}
-      {vendor.status !== 'on_hold' && <Button variant="default" onClick={() => setOpen('hold')}>Put on hold</Button>}
+      {mayApprove && <Button onClick={() => setOpen('approve')}>Approve vendor</Button>}
+      {mayHold && <Button variant="default" onClick={() => setOpen('hold')}>Put on hold</Button>}
       <CommentActionModal
         opened={open === 'approve'}
         onClose={() => setOpen(null)}
@@ -62,15 +69,19 @@ function VendorActions({ vendor }: { vendor: VendorDetail }) {
   )
 }
 
-/** The bank account on file: full numbers for AP, finance and the controller; the last 4 for everyone else. */
+/**
+ * The bank account on file: full numbers for AP, finance and the controller; the last 4 for everyone else. Only AP
+ * may request a change (someone else verifies it).
+ */
 function BankAccountSection({ vendor }: { vendor: VendorDetail }) {
   const [requesting, setRequesting] = useState(false)
+  const mayRequest = useMayDo('requestBankChange')
   const account = vendor.bank_account
   return (
     <Stack gap="sm">
       <Group justify="space-between">
         <Title order={2}>Bank account</Title>
-        <Button variant="default" size="xs" onClick={() => setRequesting(true)}>Request bank change</Button>
+        {mayRequest && <Button variant="default" size="xs" onClick={() => setRequesting(true)}>Request bank change</Button>}
       </Group>
       {account ? (
         <SimpleGrid cols={{ base: 2, md: 4 }} spacing="md">
@@ -80,7 +91,7 @@ function BankAccountSection({ vendor }: { vendor: VendorDetail }) {
           <Field label="On file since"><DateText value={account.valid_from} /></Field>
         </SimpleGrid>
       ) : (
-        <Text size="sm" c="dimmed">No bank account on file. Request a change to add one.</Text>
+        <Text size="sm" c="dimmed">{mayRequest ? 'No bank account on file. Request a change to add one.' : 'No bank account on file.'}</Text>
       )}
       <Title order={3} mt="xs">Change requests</Title>
       <BankChangesTable
@@ -89,8 +100,10 @@ function BankAccountSection({ vendor }: { vendor: VendorDetail }) {
         emptyMessage="No bank change has been requested for this vendor."
         label="Bank change requests"
       />
-      <BankChangeModal vendorId={vendor.vendor_id} vendorName={vendor.legal_name} opened={requesting}
-        onClose={() => setRequesting(false)} />
+      {mayRequest && (
+        <BankChangeModal vendorId={vendor.vendor_id} vendorName={vendor.legal_name} opened={requesting}
+          onClose={() => setRequesting(false)} />
+      )}
     </Stack>
   )
 }
