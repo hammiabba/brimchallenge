@@ -39,7 +39,7 @@ const REPORT: EarlyPayReport = {
   ],
   history: {
     taken: 9, taken_cad: '296.18', missed: 10, missed_cad: '827.77',
-    missed_payments: [{ payment_id: 'PAY-00175', bill_id: 'AP-00180', vendor_id: 'V010', invoice_date: '2026-05-01',
+    missed_payments: [{ payment_id: 'PAY-00175', bill_id: 'AP-00180', vendor_id: 'V010', vendor_name: 'Cloudbarn Software Inc.', invoice_date: '2026-05-01',
       paid_date: '2026-06-02', days_to_pay: 32, discount_cad: '201.93' }],
   },
 }
@@ -61,7 +61,9 @@ describe('early payment', () => {
     expect(within(urgent).queryByText('AP-00418')).not.toBeInTheDocument() // on its due date: nothing to do
 
     const all = screen.getByRole('table', { name: 'Best pay dates' })
-    const paper = within(all).getByRole('link', { name: 'AP-00427' }).closest('tr')!
+    // A bill is listed once: the urgent ones only in the first table.
+    expect(within(all).queryByRole('link', { name: 'AP-00427' })).not.toBeInTheDocument()
+    const paper = within(urgent).getByRole('link', { name: 'AP-00427' }).closest('tr')!
     expect(within(paper).getByText('2% off if paid within 10 days, net 30')).toBeInTheDocument()
     expect(within(paper).getByText('Nov 4, 2026')).toBeInTheDocument() // best pay date
     expect(within(paper).getByText('Nov 5, 2026')).toBeInTheDocument() // the discount deadline
@@ -75,6 +77,14 @@ describe('early payment', () => {
     const missed = within(history).getByRole('table', { name: 'Missed discounts' })
     expect(within(missed).getByRole('link', { name: 'PAY-00175' })).toHaveAttribute('href', '/payments/PAY-00175')
     expect(within(missed).getByText('$201.93')).toBeInTheDocument()
+    expect(within(missed).getByText('Cloudbarn Software Inc.')).toBeInTheDocument() // the vendor's name, not V010
+  })
+
+  it('calls the last column "Suggestion" for the read-only auditor', async () => {
+    installFakeApi({ ...billScreenRoutes({ role: 'auditor', user_id: 'U015' }), 'GET /early-pay': { body: REPORT } })
+    renderApp('/early-pay')
+    const table = await screen.findByRole('table', { name: 'To reschedule or pay now' })
+    expect(within(table).getAllByRole('columnheader').map((th) => th.textContent).at(-1)).toBe('Suggestion')
   })
 
   it('includes bills in review through the URL', async () => {

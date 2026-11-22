@@ -3,7 +3,8 @@ import type { ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
 import { ErrorAlert } from '../api/ErrorAlert'
-import type { BillStatus, EarlyPayReport, EarlyPaySuggestion, PastDiscount } from '../api/types'
+import type { BillStatus, EarlyPayReport, EarlyPaySuggestion, PastDiscount, Role } from '../api/types'
+import { useCurrentUser } from '../auth/context'
 import { StatusBadge } from '../ui/Badges'
 import { DateText, Id, MoneyText } from '../ui/DataText'
 import { useEarlyPay } from './queries'
@@ -22,6 +23,9 @@ const ACTIONS: Record<EarlyPaySuggestion['action'], string> = {
   reschedule: 'Reschedule',
 }
 
+/** Roles that only read this page: the last column is a suggestion to them, not their to-do. */
+const READ_ONLY_ROLES: readonly Role[] = ['auditor']
+
 /** One label and value in the summary grid. */
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -32,12 +36,15 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-/** A table with headers (numeric ones right-aligned) and a one-line empty state. */
+/**
+ * A table with headers (numeric ones right-aligned) and a one-line empty state. The tables here fit the 752 px
+ * content column at 1024 px (secondary details sit under the main value), and scroll sideways below that.
+ */
 function SimpleTable({ label, columns, numeric, empty, rows }: {
   label: string; columns: readonly string[]; numeric: readonly string[]; empty: string; rows: ReactNode[]
 }) {
   return (
-    <Table.ScrollContainer minWidth={960}>
+    <Table.ScrollContainer minWidth={700}>
       <Table aria-label={label} bg="white" withTableBorder>
         <Table.Thead>
           <Table.Tr>
@@ -54,22 +61,34 @@ function SimpleTable({ label, columns, numeric, empty, rows }: {
   )
 }
 
-const COLUMNS = ['Bill', 'Vendor', 'Terms', 'Status', 'Due', 'Scheduled', 'Best pay date', 'Saving', 'What to do'] as const
+/** The suggestion tables' columns; the last one is "Suggestion" for roles that only read. */
+function suggestionColumns(readOnly: boolean): string[] {
+  return ['Bill', 'Terms', 'Dates', 'Best pay date', 'Saving', readOnly ? 'Suggestion' : 'What to do']
+}
 
-/** One bill: its terms, dates, the suggested pay date and saving, and what to do with the reason (and any notes). */
+/**
+ * One bill: the bill with its vendor and status under it, its terms, its due and scheduled dates, the suggested pay
+ * date and saving, and what to do with the reason (and any notes).
+ */
 function SuggestionRow({ s }: { s: EarlyPaySuggestion }) {
   const urgent = s.action === 'reschedule' || s.action === 'pay_now'
   return (
     <Table.Tr>
       <Table.Td>
-        <Anchor component={Link} to={`/bills/${s.bill_id}`} underline="hover" fw={500}><Id>{s.bill_id}</Id></Anchor>
+        <Stack gap={2} align="flex-start">
+          <Anchor component={Link} to={`/bills/${s.bill_id}`} underline="hover" fw={500}><Id>{s.bill_id}</Id></Anchor>
+          <Text size="xs">{s.vendor_name ?? s.vendor_id}</Text>
+          {/* The API types the status as a string; it is a bill status, and an unknown one shows no badge. */}
+          <StatusBadge kind="bill" status={s.status as BillStatus} />
+        </Stack>
       </Table.Td>
-      <Table.Td>{s.vendor_name ?? s.vendor_id}</Table.Td>
       <Table.Td>{s.terms}</Table.Td>
-      {/* The API types the status as a string; it is a bill status, and an unknown one shows no badge. */}
-      <Table.Td><StatusBadge kind="bill" status={s.status as BillStatus} /></Table.Td>
-      <Table.Td><DateText value={s.due_date} /></Table.Td>
-      <Table.Td>{s.scheduled_date ? <DateText value={s.scheduled_date} /> : <Text span c="dimmed" size="sm">Not scheduled</Text>}</Table.Td>
+      <Table.Td>
+        <Text size="sm">{'Due '}<DateText value={s.due_date} /></Text>
+        <Text size="xs" c="dimmed">
+          {s.scheduled_date ? <>{'Scheduled '}<DateText value={s.scheduled_date} /></> : 'Not scheduled'}
+        </Text>
+      </Table.Td>
       <Table.Td>
         <DateText value={s.pay_on} />
         {s.discount_deadline && <Text size="xs" c="dimmed">{'Discount ends '}<DateText value={s.discount_deadline} /></Text>}
@@ -97,7 +116,7 @@ function MissedRow({ m }: { m: PastDiscount }) {
         <Anchor component={Link} to={`/payments/${m.payment_id}`} underline="hover"><Id>{m.payment_id}</Id></Anchor>
       </Table.Td>
       <Table.Td><Anchor component={Link} to={`/bills/${m.bill_id}`} underline="hover"><Id>{m.bill_id}</Id></Anchor></Table.Td>
-      <Table.Td><Id>{m.vendor_id}</Id></Table.Td>
+      <Table.Td>{m.vendor_name ?? <Id>{m.vendor_id}</Id>}</Table.Td>
       <Table.Td><DateText value={m.invoice_date} /></Table.Td>
       <Table.Td><DateText value={m.paid_date} /></Table.Td>
       <Table.Td data-numeric>{m.days_to_pay}</Table.Td>
@@ -106,10 +125,17 @@ function MissedRow({ m }: { m: PastDiscount }) {
   )
 }
 
-/** The summary, the bills to reschedule (or pay now), every bill's pay date, and the history. */
+/**
+ * The summary, the bills to reschedule (or pay now), the best pay dates of the other bills, and the history. A bill
+ * is listed once: an urgent one only in the first table.
+ */
 function Report({ data, includePending }: { data: EarlyPayReport; includePending: boolean }) {
   const s = data.summary
-  const urgent = data.suggestions.filter((x) => x.action === 'reschedule' || x.action === 'pay_now')
+  const readOnly = READ_ONLY_ROLES.includes(useCurrentUser().role)
+  const columns = suggestionColumns(readOnly)
+  const isUrgent = (x: EarlyPaySuggestion) => x.action === 'reschedule' || x.action === 'pay_now'
+  const urgent = data.suggestions.filter(isUrgent)
+  const others = data.suggestions.filter((x) => !isUrgent(x))
   const h = data.history
   return (
     <Stack gap="lg">
@@ -127,19 +153,20 @@ function Report({ data, includePending }: { data: EarlyPayReport; includePending
 
       <Stack component="section" aria-label="To reschedule or pay now" gap="sm">
         <Title order={2}>To reschedule or pay now</Title>
-        <SimpleTable label="To reschedule or pay now" columns={COLUMNS} numeric={['Saving']}
+        <SimpleTable label="To reschedule or pay now" columns={columns} numeric={['Saving']}
           empty="Every payment is on its best date." rows={urgent.map((x) => <SuggestionRow key={x.bill_id} s={x} />)} />
       </Stack>
 
       <Stack component="section" aria-label="Best pay dates" gap="sm">
         <Title order={2}>Best pay dates</Title>
         <Text size="sm" c="dimmed">
-          A discount open: pay on the last day that still earns it. Otherwise: pay on the due date, since paying earlier
-          saves nothing. Biggest saving first.
+          The other bills. A discount open: pay in time to arrive by its last day. Otherwise: pay on the due date, since
+          paying earlier saves nothing. Biggest saving first.
         </Text>
-        <SimpleTable label="Best pay dates" columns={COLUMNS} numeric={['Saving']}
-          empty={includePending ? 'No bill is approved, scheduled or in review.' : 'No bill is approved or scheduled.'}
-          rows={data.suggestions.map((x) => <SuggestionRow key={x.bill_id} s={x} />)} />
+        <SimpleTable label="Best pay dates" columns={columns} numeric={['Saving']}
+          empty={data.suggestions.length > 0 ? 'Every bill is listed above.'
+            : includePending ? 'No bill is approved, scheduled or in review.' : 'No bill is approved or scheduled.'}
+          rows={others.map((x) => <SuggestionRow key={x.bill_id} s={x} />)} />
       </Stack>
 
       <Stack component="section" aria-label="Discounts in the history" gap="sm">
