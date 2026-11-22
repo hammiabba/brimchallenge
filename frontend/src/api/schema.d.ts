@@ -22,6 +22,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/absences/{absence_id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End Absence
+         * @description End an absence that is under way: the person is back, and approves their own steps again.
+         */
+        post: operations["end_absence_admin_absences__absence_id__end_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/policies": {
         parameters: {
             query?: never;
@@ -1110,6 +1130,8 @@ export interface components {
             status: "pending_verification" | "verified" | "rejected";
             /** Vendor Id */
             vendor_id: string;
+            /** Vendor Name */
+            vendor_name?: string | null;
             /** Verified At */
             verified_at: string | null;
             /** Verified By */
@@ -2084,6 +2106,8 @@ export interface components {
             payment_id: string;
             /** Vendor Id */
             vendor_id: string;
+            /** Vendor Name */
+            vendor_name?: string | null;
         };
         /** PaymentDashboard */
         PaymentDashboard: {
@@ -2859,6 +2883,73 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AbsenceOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    end_absence_admin_absences__absence_id__end_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                absence_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -515,6 +515,17 @@
             "title": "Vendor Id",
             "type": "string"
           },
+          "vendor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Name"
+          },
           "verified_at": {
             "anyOf": [
               {
@@ -3375,6 +3386,17 @@
           "vendor_id": {
             "title": "Vendor Id",
             "type": "string"
+          },
+          "vendor_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Name"
           }
         },
         "required": [
@@ -5552,6 +5574,89 @@
           }
         },
         "summary": "Create Absence",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/admin/absences/{absence_id}/end": {
+      "post": {
+        "description": "End an absence that is under way: the person is back, and approves their own steps again.",
+        "operationId": "end_absence_admin_absences__absence_id__end_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "absence_id",
+            "required": true,
+            "schema": {
+              "title": "Absence Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AbsenceOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        },
+        "summary": "End Absence",
         "tags": [
           "admin"
         ]
