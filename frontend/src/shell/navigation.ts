@@ -154,7 +154,7 @@ export const NAV_ITEMS: Record<NavKey, NavItem> = {
     icon: IconFileInvoice,
     placeholder: 'The bill list is not built yet. It will list the bills you may see and open each one in full.',
     description:
-      'Every bill you may see (your department for employees and approvers; all bills for AP, finance, the ' +
+      'Every bill you may see (your department for approvers; all bills for AP, finance, the ' +
       'controller and auditors), filtered by status, vendor or department. Each opens the one-screen bill detail: ' +
       'invoice, coding, flags, approval route and decisions, payments and the audit trail.',
     endpoints: ['GET /bills', 'GET /bills/{bill_id}', 'GET /reference/flag-help'],
@@ -289,7 +289,10 @@ export const NAV_ITEMS: Record<NavKey, NavItem> = {
 
 /** Each role's sidebar, in order. The first item is the role's home page. */
 export const NAV_BY_ROLE: Record<Role, readonly NavKey[]> = {
-  employee: ['submit', 'submissions', 'bills'],
+  // Employees get only what they can act on (tests/api/matrix.py: POST and GET /submissions are their only routes
+  // beyond reads). Their own bills are listed on My submissions; the department-wide Bills list stays out of their
+  // sidebar.
+  employee: ['submit', 'submissions'],
   // AP uploads paper or emailed invoices by hand too (POST /submissions allows AP), next to the inbox.
   ap_clerk: ['inbox', 'submit', 'review', 'bills', 'payments', 'earlyPay', 'vendors', 'bankChanges'],
   approver: ['approvals', 'bills', 'spend', 'delegation'],

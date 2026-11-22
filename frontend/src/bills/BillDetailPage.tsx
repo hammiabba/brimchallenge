@@ -4,6 +4,9 @@ import { Link, useParams } from 'react-router'
 
 import { ApiError } from '../api/errors'
 import { ErrorAlert } from '../api/ErrorAlert'
+import type { Role } from '../api/types'
+import { useCurrentUser } from '../auth/context'
+import { homePathFor, isInNavigation } from '../shell/navigation'
 import { Id } from '../ui/DataText'
 import { ApprovalRoute } from './detail/ApprovalRoute'
 import { AuditTrail } from './detail/AuditTrail'
@@ -33,13 +36,21 @@ function DetailSkeleton() {
   )
 }
 
+/** Where "back" goes from a bill: the Bills list, or My submissions for a role without the list (employees). */
+function backLink(role: Role): { to: string; label: string } {
+  if (isInNavigation(role, 'bills')) return { to: '/bills', label: 'Back to bills' }
+  if (isInNavigation(role, 'submissions')) return { to: '/submissions', label: 'Back to my submissions' }
+  return { to: homePathFor(role), label: 'Back to your home page' }
+}
+
 /** Shown for a 404: the bill doesn't exist, or the server keeps it outside the signed-in user's scope. */
 function BillNotFound({ billId }: { billId: string }) {
+  const back = backLink(useCurrentUser().role)
   return (
     <Stack gap="sm" maw={720}>
       <Title order={1}>Bill not found</Title>
       <Text>There is no bill <Id>{billId}</Id> that you can see.</Text>
-      <Anchor component={Link} to="/bills" size="sm" w="fit-content">Back to bills</Anchor>
+      <Anchor component={Link} to={back.to} size="sm" w="fit-content">{back.label}</Anchor>
     </Stack>
   )
 }

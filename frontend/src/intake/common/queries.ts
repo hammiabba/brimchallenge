@@ -1,5 +1,8 @@
-/** TanStack Query hooks for the signed-in user's own submissions: ['intake', 'submissions']. */
-import { useQuery } from '@tanstack/react-query'
+/**
+ * TanStack Query hooks for the signed-in user's own submissions (['intake', 'submissions']) and the bills they are
+ * the requester on.
+ */
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import { api, unwrap } from '../../api/client'
 import { isFinalStatus } from './labels'
@@ -26,6 +29,23 @@ export function useMySubmissions(enabled = true) {
     queryFn: () => unwrap(api.GET('/submissions')),
     enabled,
     refetchInterval: (query) => (hasPending(query.state.data) ? POLL_MS : false),
+  })
+}
+
+/** How many of the user's requested bills one page of "Bills where you're the requester" shows. */
+export const REQUESTED_PAGE_SIZE = 20
+
+/**
+ * GET /bills?mine=true: the bills where the signed-in user is the requester (including ones AP created for them
+ * from an emailed invoice), newest first, one page at a time. Shares the ['bills', 'list'] key prefix, so the cache
+ * is refreshed whenever bills change.
+ */
+export function useMyRequestedBills(page: number) {
+  const query = { mine: true, limit: REQUESTED_PAGE_SIZE, offset: (page - 1) * REQUESTED_PAGE_SIZE }
+  return useQuery({
+    queryKey: ['bills', 'list', query],
+    queryFn: () => unwrap(api.GET('/bills', { params: { query } })),
+    placeholderData: keepPreviousData,
   })
 }
 

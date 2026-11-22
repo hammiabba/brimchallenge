@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { envelope, installFakeApi } from '../../test/fakeApi'
-import { billDetail, billScreenRoutes } from '../../test/fixtures'
+import { billDetail, billScreenRoutes, billSummary } from '../../test/fixtures'
 import { currentLocation, renderApp } from '../../test/renderApp'
 import { POLL_MS } from '../common/queries'
 import { intakeItem } from '../common/testData'
@@ -21,11 +21,17 @@ const DUPLICATE = intakeItem({
   warnings: ['already_received: this exact file was already received as bill AP-00427 (status needs_review); no new bill was created'],
 })
 
+/** GET /bills?mine=true answering `items` (no bills by default). */
+function requested(items: unknown[] = []) {
+  return { body: { items, total: items.length, limit: 20, offset: 0 } }
+}
+
 /** The routes the page needs, with GET /submissions answering `items` and the bill AP-00427 behind it. */
 function routes(items: unknown) {
   return {
     ...billScreenRoutes(EMPLOYEE),
     'GET /submissions': { body: items },
+    'GET /bills': requested(),
     'GET /bills/AP-00427': {
       body: billDetail({ bill_id: 'AP-00427', vendor_name: 'Harlow and Stern LLP', total: '6452.30', currency: 'CAD' }),
     },
@@ -137,8 +143,40 @@ describe('my submissions', () => {
   it('says so in one line when there are none, with a way to submit', async () => {
     installFakeApi(routes([]))
     renderApp('/submissions')
-    expect(await screen.findByText(/No submissions yet\./)).toBeInTheDocument()
+    expect(await screen.findByText(/You haven't submitted a file yet\./)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Submit an invoice.' })).toHaveAttribute('href', '/submit')
+  })
+
+  it("lists the bills where the user is the requester, asking with mine=true", async () => {
+    const fake = installFakeApi({
+      ...routes([]),
+      'GET /bills': requested([billSummary({
+        bill_id: 'AP-00427', vendor_name: 'Harlow and Stern LLP', vendor_invoice_number: 'HA26-2766',
+        received_date: '2026-10-30', status: 'needs_review', total: '6452.30', currency: 'CAD',
+      })]),
+    })
+    renderApp('/submissions')
+
+    const table = await screen.findByRole('table', { name: "Bills where you're the requester" })
+    expect(within(table).getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
+      'Bill', 'Vendor', 'Invoice number', 'Received', 'Status', 'Total',
+    ])
+    const row = (await within(table).findByText('Harlow and Stern LLP')).closest('tr')!
+    expect(within(row).getByRole('link', { name: 'AP-00427' })).toHaveAttribute('href', '/bills/AP-00427')
+    expect(within(row).getByText('HA26-2766')).toBeInTheDocument()
+    expect(within(row).getByText('Oct 30, 2026')).toBeInTheDocument()
+    expect(within(row).getByText('$6,452.30')).toBeInTheDocument()
+    const asked = fake.urls.filter((url) => url.pathname.endsWith('/bills'))
+    expect(asked.length).toBeGreaterThan(0)
+    expect(asked.every((url) => url.searchParams.get('mine') === 'true')).toBe(true)
+    // The files table still says it has none: the two lists answer different questions.
+    expect(screen.getByText(/You haven't submitted a file yet\./)).toBeInTheDocument()
+  })
+
+  it('says so in one line when no bill names the user as requester', async () => {
+    installFakeApi(routes([]))
+    renderApp('/submissions')
+    expect(await screen.findByText('No bill names you as the requester yet.')).toBeInTheDocument()
   })
 
   it('shows the server error inline', async () => {

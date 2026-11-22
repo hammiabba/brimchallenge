@@ -53,6 +53,10 @@ describe('navigation config', () => {
     expect(homePathFor('auditor')).toBe('/audit')
   })
 
+  it('gives employees only the pages they can act on: submit and their own submissions', () => {
+    expect(NAV_BY_ROLE.employee).toEqual(['submit', 'submissions'])
+  })
+
   it("keeps work queues out of the auditor's read-only sidebar", () => {
     const auditor = new Set(NAV_BY_ROLE.auditor)
     for (const key of ['submit', 'inbox', 'review', 'approvals', 'unassigned', 'delegation'] as const) {
