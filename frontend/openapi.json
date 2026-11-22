@@ -1906,6 +1906,9 @@
             "type": "array"
           },
           "received_at": {
+            "examples": [
+              "2026-11-02T15:00:00Z"
+            ],
             "format": "date-time",
             "title": "Received At",
             "type": "string"
@@ -1949,6 +1952,9 @@
           "triaged_at": {
             "anyOf": [
               {
+                "examples": [
+                  "2026-11-02T15:00:00Z"
+                ],
                 "format": "date-time",
                 "type": "string"
               },
@@ -2023,6 +2029,13 @@
             "type": "integer"
           },
           "status": {
+            "enum": [
+              "ok",
+              "llm_skipped",
+              "failed",
+              "queued",
+              "processing"
+            ],
             "title": "Status",
             "type": "string"
           },
