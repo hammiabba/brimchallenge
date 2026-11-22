@@ -27,6 +27,7 @@ Reference data is read from the repo dataset (`get_settings().dataset_dir / "dat
 | `approvals.py` | `route(...) -> [ApprovalStep]`, `can_approve(...)` / `can_release(...) -> PermissionDecision` |
 | `incoming.py` | `run_batch(items)` / `render_report(...)`: controls on the extracted incoming batch as one batch, problem bills first (used by `scripts/run_incoming.py`) |
 | `history.py` | `replay(ref)`: point-in-time replay of the history, plus approvals/payments checks (used by `scripts/replay_history.py`) |
+| `early_pay.py` | Vendor payment terms (`parse_terms`), the best pay date and saving for approved and scheduled bills (`suggest_pay_dates`), and discounts taken and missed in the history (`discount_history`). Served by `GET /early-pay` (see docs/CONTROLS_HANDOFF.md, "Early-payment discounts"). |
 | `flag_help.py` | `help_for(code)` / `FLAG_HELP`: short title and one help sentence for every flag code, for the UI |
 | `permissions.py` | Re-exports `can_approve` / `can_release` from `approvals.py` (the API guide refers to `controls.permissions`) |
 

@@ -82,6 +82,7 @@ CASES: list[Case] = [
     # payments
     Case("GET", "/payments", "C F X Au", ok=200),
     Case("GET", "/payments/summary", "C F X Au", ok=200),
+    Case("GET", "/early-pay", "C F X Au", ok=200),
     Case("GET", "/payments/PAY-00001", "C F X Au", ok=200),
     Case("GET", "/payments/PAY-99999", "C F X Au", ok=404),
     Case("POST", f"/bills/{B}/payments", "C", ok=STATE, kwargs={"json": {"scheduled_date": "2026-11-10"}}),
