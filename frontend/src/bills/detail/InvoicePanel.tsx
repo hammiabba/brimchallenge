@@ -1,11 +1,13 @@
-import { Group, List, SimpleGrid, Stack, Table, Text, Title, Tooltip, VisuallyHidden } from '@mantine/core'
-import { Fragment, type ReactNode } from 'react'
+import { Button, Group, List, SimpleGrid, Stack, Table, Text, Title, Tooltip, VisuallyHidden } from '@mantine/core'
+import { notifications } from '@mantine/notifications'
+import { Fragment, useState, type ReactNode } from 'react'
 
 import { departmentLabel, glAccountName, personName, useDepartments, useGlAccounts, usePeople } from '../../api/reference'
 import type { BillDetail, BillLine } from '../../api/types'
 import { parseDateOnly } from '../../lib/dates'
 import { decimalToPercent } from '../../lib/decimal'
 import { isMoney, parseMoneyInput } from '../../lib/money'
+import { notifyError } from '../../api/notify'
 import { DateText, Id, MoneyText } from '../../ui/DataText'
 import {
   LOW_CONFIDENCE,
@@ -17,6 +19,8 @@ import {
   type Snapshot,
 } from '../extraction'
 import { vendorMatchLine } from '../labels'
+import { useCodeLine } from '../mutations'
+import { CodingModal } from './CodingModal'
 import { FieldRegion } from './FieldRegion'
 import type { InvoiceRegion } from './highlight'
 
@@ -177,8 +181,41 @@ function VendorBlock({ bill, snapshot }: { bill: BillDetail; snapshot: Snapshot 
   )
 }
 
-/** The lines table: quantities and unit prices as sent, amounts as money, and the coding. */
+/**
+ * AP's coding actions for one line, when allowed_actions.code_lines allows them: accept the suggestion as it is (one
+ * click) or change it. Both re-run the controls.
+ */
+function CodingActions({ bill, line }: { bill: BillDetail; line: BillLine }) {
+  const [open, setOpen] = useState(false)
+  const accept = useCodeLine(bill, line.line_no)
+  const canAccept = line.coding_status === 'suggested' && Boolean(line.suggested_gl_account && line.suggested_department_id)
+
+  function acceptSuggestion() {
+    accept.mutate({ gl_account: line.suggested_gl_account!, department_id: line.suggested_department_id! }, {
+      onSuccess: () => notifications.show({ title: 'Suggestion accepted', message: `Line ${line.line_no} of ${bill.bill_id}` }),
+      onError: (error) => notifyError(error),
+    })
+  }
+
+  return (
+    <Group gap="xs" wrap="nowrap" mt={4}>
+      {canAccept && (
+        <Button size="xs" onClick={acceptSuggestion} loading={accept.isPending}
+          aria-label={`Accept suggestion for line ${line.line_no}`}>
+          Accept
+        </Button>
+      )}
+      <Button size="xs" variant="default" onClick={() => setOpen(true)} aria-label={`Change coding of line ${line.line_no}`}>
+        Change
+      </Button>
+      <CodingModal bill={bill} line={line} opened={open} onClose={() => setOpen(false)} />
+    </Group>
+  )
+}
+
+/** The lines table: quantities and unit prices as sent, amounts as money, and the coding (with AP's actions). */
 function LinesTable({ bill }: { bill: BillDetail }) {
+  const canCode = bill.allowed_actions?.code_lines?.allowed ?? false
   return (
     <FieldRegion name="lines">
       <Table.ScrollContainer minWidth={640}>
@@ -201,7 +238,10 @@ function LinesTable({ bill }: { bill: BillDetail }) {
                 <Table.Td data-numeric>{line.quantity}</Table.Td>
                 <Table.Td data-numeric>{line.unit_price}</Table.Td>
                 <Table.Td data-numeric><MoneyText value={line.amount} currency={bill.currency} /></Table.Td>
-                <Table.Td><CodingCell line={line} /></Table.Td>
+                <Table.Td>
+                  <CodingCell line={line} />
+                  {canCode && <CodingActions bill={bill} line={line} />}
+                </Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
