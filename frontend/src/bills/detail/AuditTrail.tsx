@@ -11,9 +11,12 @@ import { auditActionLabel, auditDetails } from '../labels'
 /**
  * The bill's own audit history (BillDetail.audit, returned for every role that can see the bill), collapsed by
  * default; the button shows or hides it at once (no animation). Events are shown as plain text: who, when, what and
- * what changed.
+ * what changed. The payment screen reuses it for PaymentDetail.audit (the payment's events and its bill's).
  */
-export function AuditTrail({ bill }: { bill: BillDetail }) {
+export function AuditTrail({ bill, emptyMessage = 'No audit events for this bill yet.' }: {
+  bill: Pick<BillDetail, 'audit'>
+  emptyMessage?: string
+}) {
   const [open, { toggle }] = useDisclosure(false)
   const people = usePeople()
   const events = bill.audit
@@ -36,7 +39,7 @@ export function AuditTrail({ bill }: { bill: BillDetail }) {
           </Button>
         )}
       </Group>
-      {events.length === 0 && <Text size="sm">No audit events for this bill yet.</Text>}
+      {events.length === 0 && <Text size="sm">{emptyMessage}</Text>}
       {events.length > 0 && (
       <Box id="bill-audit-trail" hidden={!open}>
         <Table.ScrollContainer minWidth={720}>
