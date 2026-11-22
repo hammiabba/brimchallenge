@@ -357,3 +357,97 @@ describe('cancel a payment', () => {
     await waitFor(() => expect(within(list).queryByRole('button', { name: 'Cancel payment' })).not.toBeInTheDocument())
   })
 })
+
+/** PAY-00416 as the server returns it after U003 approved its bill as U012's delegate, scheduled by AP. */
+const DETAIL = paymentDetail({
+  bill: billSummary({ bill_id: 'AP-00436', status: 'scheduled', vendor_id: 'V040', vendor_name: 'Lakeshore Hydro Services',
+    vendor_invoice_number: 'DM-1010', total: '1604.60', total_cad: '1604.60', current_step: null }),
+  lines: [{
+    line_no: 1, description: 'Lighting retrofit, loading bays 3-4', quantity: '1', unit_price: '1420.00', amount: '1420.00',
+    line_type: 'services', gst_hst_code: 'HST13', pst_qst_code: null, gl_account: '5030', department_id: 'D01',
+    suggested_gl_account: null, suggested_department_id: null, suggestion_confidence: null, suggestion_reason: null,
+    coding_status: 'accepted', coded_by: null, coded_at: null,
+  }],
+  decisions: [{
+    decision_id: 'AP-A-00478', step_no: 1, actor_user_id: 'U003', actor_role: 'finance_manager', step_role: 'dept_manager',
+    on_behalf_of: 'U012', decision: 'approved', comment: 'Approved for the demo.', acted_at: '2026-11-02T15:00:00Z', origin: 'app',
+  }],
+  audit: [{
+    seq: 70, event_id: 'ev-70', at: '2026-11-02T16:00:00Z', actor_user_id: 'U005', actor_role: 'ap_clerk', on_behalf_of: null,
+    action: 'payment.scheduled', entity_type: 'payment', entity_id: 'PAY-00416', before: null,
+    after: { bill_id: 'AP-00436', method: 'EFT' }, comment: null, request_id: 'r70',
+  }],
+  allowed_actions: { release: { allowed: false, reason: P11 }, cancel: { allowed: true, reason: null } },
+})
+
+describe('payment detail', () => {
+  it('opens from the list and links back to the bill, the vendor and the audit log', async () => {
+    installFakeApi(paymentsRoutes(FINANCE, { 'GET /payments/PAY-00416': { body: DETAIL } }))
+    const user = userEvent.setup()
+    renderApp('/payments')
+
+    const list = await screen.findByRole('table', { name: 'Payments' })
+    await user.click(await within(list).findByRole('link', { name: 'PAY-00416' }))
+    await waitFor(() => expect(currentLocation()).toBe('/payments/PAY-00416'))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Payment PAY-00416' })).toBeInTheDocument()
+    const summary = screen.getByRole('region', { name: 'Payment summary' })
+    expect(within(summary).getByRole('link', { name: 'AP-00436' })).toHaveAttribute('href', '/bills/AP-00436')
+    expect(within(summary).getByRole('link', { name: 'V040' })).toHaveAttribute('href', '/vendors/V040')
+    expect(within(summary).getByText('$1,604.60')).toBeInTheDocument()
+    expect(within(summary).getByText('0094410')).toBeInTheDocument()
+    expect(within(summary).getByText('Institution 004, transit 55123')).toBeInTheDocument()
+    expect(await within(summary).findByText('Jordan Okafor')).toBeInTheDocument() // prepared by
+    // Finance sees why they can't release (P11) and may still cancel.
+    expect(await within(summary).findByText(P11)).toBeInTheDocument()
+    expect(within(summary).getByRole('button', { name: 'Cancel payment' })).toBeInTheDocument()
+
+    const chain = screen.getByRole('table', { name: 'Approval chain' })
+    expect(within(chain).getByText('Step 1, Department manager')).toBeInTheDocument()
+    expect(await within(chain).findByText('on behalf of Sam Rivera')).toBeInTheDocument()
+    expect(within(chain).getByText('Approved for the demo.')).toBeInTheDocument()
+
+    const codes = screen.getByRole('table', { name: 'Accounting codes' })
+    expect(await within(codes).findByText(/Warehouse supplies/)).toBeInTheDocument()
+    expect(await within(codes).findByText('Operations (D01)')).toBeInTheDocument()
+
+    expect(screen.getByRole('button', { name: 'Show 1 event' })).toBeInTheDocument()
+    // Finance doesn't have the audit log in its sidebar, so no link to it.
+    expect(screen.queryByRole('link', { name: 'Open this payment in the audit log' })).not.toBeInTheDocument()
+  })
+
+  it('links to the audit log for the controller, and releases from the detail view', async () => {
+    let released = false
+    installFakeApi(paymentsRoutes(CONTROLLER, {
+      'GET /payments/PAY-00416': () => ({ body: released
+        ? { ...DETAIL, status: 'released', released_by: 'U002', allowed_actions: {} }
+        : { ...DETAIL, allowed_actions: { release: { allowed: true, reason: 'The controller may release any payment.' } } } }),
+      'POST /payments/PAY-00416/release': () => {
+        released = true
+        return { body: { ...DETAIL, status: 'released', released_by: 'U002', allowed_actions: {} } }
+      },
+    }))
+    const user = userEvent.setup()
+    renderApp('/payments/PAY-00416')
+
+    expect(await screen.findByRole('link', { name: 'Open this payment in the audit log' }))
+      .toHaveAttribute('href', '/audit?entity_type=payment&entity_id=PAY-00416')
+    await user.click(await screen.findByRole('button', { name: 'Release' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Release payment' })
+    await user.click(within(dialog).getByRole('button', { name: 'Release payment' }))
+    // Notifications live in one store for the whole file, so an earlier test's may still be on screen.
+    expect((await screen.findAllByText('Payment released')).length).toBeGreaterThan(0)
+    const summary = screen.getByRole('region', { name: 'Payment summary' })
+    expect(await within(summary).findByText('Released')).toBeInTheDocument()
+    expect(within(summary).queryByRole('button', { name: 'Release' })).not.toBeInTheDocument()
+  })
+
+  it('says when the payment can\'t be found', async () => {
+    installFakeApi(paymentsRoutes(FINANCE, {
+      'GET /payments/PAY-99999': { status: 404, body: envelope('payment.not_found', 'Payment PAY-99999 not found.') },
+    }))
+    renderApp('/payments/PAY-99999')
+    expect(await screen.findByRole('heading', { level: 1, name: 'Payment not found' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back to payments' })).toHaveAttribute('href', '/payments')
+  })
+})
