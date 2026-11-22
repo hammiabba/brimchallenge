@@ -78,4 +78,4 @@ export const STATUS_STYLES = {
 export type StatusKind = keyof typeof STATUS_STYLES
 
 /** Severity labels for flags. */
-export const SEVERITY_LABELS = { block: 'Block', warn: 'Warn', info: 'Info' } as const
+export const SEVERITY_LABELS = { block: 'Blocking', warn: 'Warning', info: 'Info' } as const

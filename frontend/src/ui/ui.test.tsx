@@ -84,7 +84,7 @@ describe('badges', () => {
     expect(badge.style.backgroundColor).toBe(rgb(STATUS_TONES.neutral.background))
   })
 
-  it('renders block and warn severities solid, info as a tint', () => {
+  it('renders blocking and warning severities solid, info as a tint, in full words', () => {
     renderUi(
       <>
         <SeverityBadge severity="block" />
@@ -92,7 +92,7 @@ describe('badges', () => {
         <SeverityBadge severity="info" />
       </>,
     )
-    for (const [label, severity] of [['Block', 'block'], ['Warn', 'warn'], ['Info', 'info']] as const) {
+    for (const [label, severity] of [['Blocking', 'block'], ['Warning', 'warn'], ['Info', 'info']] as const) {
       const badge = screen.getByText(label).closest('.mantine-Badge-root') as HTMLElement
       expect(badge.style.backgroundColor).toBe(rgb(SEVERITY_STYLES[severity].background))
     }
@@ -112,18 +112,24 @@ describe('badges', () => {
     expect(label.style.overflow).toBe('visible')
   })
 
-  it('counts open flags as "2 block", "1 warning", "2 warnings", and shows nothing for zero', () => {
+  it('counts open flags in full words ("1 blocking", "2 warnings", "2 info"), and shows nothing for zero', () => {
     renderUi(
       <>
+        <SeverityCountBadge severity="block" count={1} />
         <SeverityCountBadge severity="block" count={2} />
         <SeverityCountBadge severity="warn" count={1} />
         <SeverityCountBadge severity="warn" count={2} />
-        <SeverityCountBadge severity="info" count={0} />
+        <SeverityCountBadge severity="info" count={1} />
+        <SeverityCountBadge severity="info" count={2} />
       </>,
     )
-    expect(screen.getByText('2 block')).toBeInTheDocument()
-    expect(screen.getByText('1 warning')).toBeInTheDocument()
-    expect(screen.getByText('2 warnings')).toBeInTheDocument()
+    for (const label of ['1 blocking', '2 blocking', '1 warning', '2 warnings', '1 info', '2 info']) {
+      expect(screen.getByText(label)).toBeInTheDocument()
+    }
+  })
+
+  it('shows no count badge for zero open flags', () => {
+    renderUi(<SeverityCountBadge severity="info" count={0} />)
     expect(screen.queryByText(/info/)).not.toBeInTheDocument()
   })
 
@@ -167,5 +173,9 @@ describe('theme', () => {
   it('keeps badge text in sentence case', () => {
     renderUi(<StatusBadge kind="payment" status="settled" />)
     expect(screen.getByText('Settled').style.textTransform).toBe('none')
+  })
+
+  it('makes every table scroll container native, so a scrollbar shows whenever there is more to see', () => {
+    expect(theme.components?.TableScrollContainer?.defaultProps).toEqual({ type: 'native' })
   })
 })

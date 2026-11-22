@@ -72,7 +72,7 @@ describe('bill detail', () => {
     expect(within(summary).getByText('000804')).toBeInTheDocument()
 
     const duplicate = await flagSection('Exact duplicate')
-    expect(within(duplicate).getByText('Block')).toBeInTheDocument()
+    expect(within(duplicate).getByText('Blocking')).toBeInTheDocument()
     expect(within(duplicate).getByText(/Possible duplicate of AP-00394/)).toBeInTheDocument()
     expect(within(duplicate).getByText(/check whether it was paid before approving/)).toBeInTheDocument()
     expect(within(duplicate).getByRole('link', { name: 'AP-00394' })).toHaveAttribute('href', '/bills/AP-00394')

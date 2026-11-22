@@ -37,7 +37,7 @@ describe('bills list', () => {
     expect(within(row).getByText('Oct 3, 2026')).toBeInTheDocument()
     expect(within(row).getByText('$2,457.19')).toBeInTheDocument()
     expect(within(row).getByText('Scheduled')).toBeInTheDocument()
-    expect(within(row).getByText('2 block')).toBeInTheDocument()
+    expect(within(row).getByText('2 blocking')).toBeInTheDocument()
     expect(await within(row).findByText('PO closed or wrong vendor')).toBeInTheDocument()
 
     const usd = within(table).getByRole('link', { name: 'AP-00004' }).closest('tr')!

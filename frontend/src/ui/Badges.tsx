@@ -57,13 +57,17 @@ export function SeverityBadge({ severity }: { severity: Severity }) {
   return <ToneBadge tone={SEVERITY_STYLES[severity]}>{SEVERITY_LABELS[severity]}</ToneBadge>
 }
 
-/** The noun after the count: "warn" reads as a verb, so it says "1 warning" / "2 warnings"; block and info stay. */
+/**
+ * The count in full words: "1 blocking" / "2 blocking", "1 warning" / "2 warnings", "1 info" / "2 info" (only
+ * "warning" takes a plural; "blocking" and "info" read the same for any count).
+ */
 function severityCountLabel(severity: Severity, count: number): string {
+  if (severity === 'block') return `${count} blocking`
   if (severity === 'warn') return `${count} warning${count === 1 ? '' : 's'}`
-  return `${count} ${severity}`
+  return `${count} info`
 }
 
-/** A count of open flags of one severity ("2 block", "1 warning"), in that severity's colours; nothing for zero. */
+/** A count of open flags of one severity ("2 blocking", "1 warning"), in that severity's colours; nothing for zero. */
 export function SeverityCountBadge({ severity, count }: { severity: Severity; count: number }) {
   if (count <= 0) return null
   return <ToneBadge tone={SEVERITY_STYLES[severity]}>{severityCountLabel(severity, count)}</ToneBadge>
