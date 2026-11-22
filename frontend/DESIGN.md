@@ -86,7 +86,8 @@ colour, and the contrast test checks it.
 - 4px corners everywhere. Every radius size in the theme is 4px, so nothing is pill-shaped.
 - The shell: a white header with the 3px Robin's Egg bar on top, a white sidebar, the page on the page background.
 - Tables are the core component. The theme sets the defaults, so later chunks get them for free: compact rows,
-  sticky header on the page neutral, no zebra stripes, row hover in the primary tint, 1px row rules. Mark numeric
+  header row on the page neutral (not sticky: tables scroll sideways in their own container, which a sticky header
+  would stick to instead of the page), no zebra stripes, row hover in the primary tint, 1px row rules. Mark numeric
   cells (and their header) with `data-numeric` to right-align them in tabular figures; mark the selected row with
   `data-selected` for the Sand highlight. An edited field gets `className="app-changed"` (Sand, ink text).
 - Links inside a table (a bill id in the bills list) are underlined on hover; links in running text are always

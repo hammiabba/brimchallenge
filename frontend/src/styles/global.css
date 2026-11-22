@@ -45,7 +45,7 @@
 
 /* ---------------------------------------------------------------- tables */
 
-/* Header cells on the page neutral (also behind the sticky header while scrolling), in ink, never uppercase. */
+/* Header cells on the page neutral, in ink, never uppercase. */
 .mantine-Table-th {
   background-color: var(--app-page);
   color: var(--app-ink);
@@ -62,7 +62,9 @@
   white-space: nowrap;
 }
 
-/* Footer rows (subtotal, total): the row-header label shares the white of its row, with no page-grey band behind it. */
+/* Row headers inside the body or the footer (the subtotal and total rows): the label shares the white of its row,
+   with no page-grey band behind it. Column headers keep the page neutral. */
+.mantine-Table-tbody .mantine-Table-th[scope='row'],
 .mantine-Table-tfoot .mantine-Table-th {
   background-color: transparent;
 }

@@ -229,8 +229,9 @@ export const theme = createTheme({
       styles: { label: { textTransform: 'none', letterSpacing: 0, fontWeight: 600 } },
     },
     Table: {
+      // No sticky header: every table sits in a sideways-scrolling container, which a sticky header sticks to
+      // instead of the page, so it scrolled away anyway. Making it stick to the page would cost the sideways scroll.
       defaultProps: {
-        stickyHeader: true,
         striped: false,
         highlightOnHover: true,
         withRowBorders: true,
