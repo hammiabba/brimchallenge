@@ -36,6 +36,25 @@ function vendorRoutes(detail = fullVendor(), role: Parameters<typeof billScreenR
   }
 }
 
+describe('unverified account on file', () => {
+  it('warns when the account on file is the new account of a change nobody has verified yet', async () => {
+    installFakeApi(vendorRoutes(fullVendor({
+      bank_account: { id: 2, institution: '003', transit: '92968', account: '953389679', account_last4: '4821', masked: false,
+        valid_from: '2026-10-27', valid_to: null },
+    })))
+    renderApp('/vendors/V011')
+    const warning = await screen.findByRole('status')
+    expect(warning).toHaveTextContent('Not verified: this account came in through BCR-0007, which nobody has confirmed by phone yet.')
+  })
+
+  it('says nothing when the account on file is the old, settled one', async () => {
+    installFakeApi(vendorRoutes())
+    renderApp('/vendors/V011')
+    await screen.findByRole('table', { name: 'Bank change requests' })
+    expect(screen.queryByText(/Not verified/)).not.toBeInTheDocument()
+  })
+})
+
 describe('vendor list', () => {
   it('lists vendors and sends the URL filters to the API', async () => {
     const fake = installFakeApi(vendorRoutes())

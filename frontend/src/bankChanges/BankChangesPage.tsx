@@ -34,7 +34,7 @@ function DecisionButtons({ change }: { change: BankChange }) {
   if (change.status !== 'pending_verification') return null
 
   function done(title: string) {
-    notifications.show({ title, message: `${change.change_id} for vendor ${change.vendor_id}` })
+    notifications.show({ title, message: `${change.change_id} for ${change.vendor_name ?? change.vendor_id}` })
     setOpen(null)
   }
 
@@ -47,9 +47,11 @@ function DecisionButtons({ change }: { change: BankChange }) {
         opened={open === 'verify'}
         onClose={() => setOpen(null)}
         title="Verify bank change"
-        description={`Confirm you called the vendor on a number already on file and they confirmed the account ending ${change.new_account_last4}. Payments then go to the new account.`}
+        description={`Confirm you called ${change.vendor_name ?? change.vendor_id} on a number already on file and they confirmed the account ending ${change.new_account_last4}. Say whom you spoke to and on which number. Payments then go to the new account.`}
         mutation={verify}
         onDone={() => done('Bank change verified')}
+        // The callback is the control itself, so its record (who was called, on which number) is required.
+        commentRequired
       />
       <CommentActionModal
         opened={open === 'reject'}

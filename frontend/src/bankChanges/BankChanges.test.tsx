@@ -80,11 +80,28 @@ describe('bank changes', () => {
 
     await user.click(screen.getByRole('button', { name: 'Verify' }))
     dialog = await screen.findByRole('dialog', { name: 'Verify bank change' })
+    // The callback record is required: nothing is sent without it.
+    expect(within(dialog).getByRole('button', { name: 'Verify bank change' })).toBeDisabled()
     await user.type(within(dialog).getByRole('textbox', { name: 'Comment' }), 'Called 905-555-0100')
     await user.click(within(dialog).getByRole('button', { name: 'Verify bank change' }))
     await waitFor(() => expect(sent).toEqual({ comment: 'Called 905-555-0100' }))
     // The list is fetched again after the decision.
     await waitFor(() => expect(fake.calls.filter((c) => c === 'GET /bank-changes').length).toBeGreaterThan(1))
+  })
+})
+
+describe('bank change rows', () => {
+  it('name the vendor, and show a history request\'s date alone', async () => {
+    const history: BankChange = { ...PENDING, change_id: 'BC-009', vendor_id: 'V004', vendor_name: 'Cascadia Cartage Ltd.',
+      requested_at: '2026-10-27T00:00:00Z', origin: 'history', new_account: null }
+    installFakeApi({ ...billScreenRoutes({ role: 'finance_manager', user_id: 'U003' }), 'GET /bank-changes': { body: [history] } })
+    renderApp('/bank-changes')
+    const table = await screen.findByRole('table', { name: 'Bank changes' })
+    const row = (await within(table).findByText('BC-009')).closest('tr')!
+    expect(within(row).getByText('Cascadia Cartage Ltd.')).toBeInTheDocument()
+    expect(within(row).getByRole('link', { name: 'V004' })).toHaveAttribute('href', '/vendors/V004')
+    // The dataset's date, not the evening before in local time.
+    expect(within(row).getByText('Oct 27, 2026')).toBeInTheDocument()
   })
 })
 

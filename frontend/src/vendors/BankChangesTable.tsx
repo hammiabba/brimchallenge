@@ -83,19 +83,29 @@ export function BankChangesTable({ changes, loading, emptyMessage, label, showVe
               <Table.Td>
                 <Stack gap={0}>
                   <Id>{change.change_id}</Id>
+                  {/* The vendor by name, with its id linked under it, on the queue (the vendor page is the vendor). */}
                   {showVendor && (
-                    <Text size="xs">
-                      <VisuallyHidden component="span">Vendor </VisuallyHidden>
-                      <Anchor component={Link} to={`/vendors/${change.vendor_id}`} underline="hover" inherit>
-                        <Id>{change.vendor_id}</Id>
-                      </Anchor>
-                    </Text>
+                    <>
+                      <Text size="sm">{change.vendor_name ?? change.vendor_id}</Text>
+                      <Text size="xs">
+                        <VisuallyHidden component="span">Vendor </VisuallyHidden>
+                        <Anchor component={Link} to={`/vendors/${change.vendor_id}`} underline="hover" inherit>
+                          <Id>{change.vendor_id}</Id>
+                        </Anchor>
+                      </Text>
+                    </>
                   )}
                 </Stack>
               </Table.Td>
               <Table.Td>
                 <Stack gap={0}>
-                  <Text size="sm"><DateText value={change.requested_at} kind="timestamp" /></Text>
+                  {/* A request from the dataset history has a date, not a time (stored as midnight UTC, which reads
+                      as the evening before in Toronto): it shows the date alone. App requests show their time. */}
+                  <Text size="sm">
+                    {change.origin === 'history'
+                      ? <DateText value={change.requested_at.slice(0, 10)} />
+                      : <DateText value={change.requested_at} kind="timestamp" />}
+                  </Text>
                   <Text size="xs" c="dimmed">
                     <span>{change.requested_by ? personName(change.requested_by, people.data) : 'Not recorded'}</span>
                     {' · '}

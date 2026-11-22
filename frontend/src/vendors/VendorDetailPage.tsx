@@ -1,5 +1,6 @@
-import { Anchor, Button, Divider, Group, SimpleGrid, Skeleton, Stack, Text, Title } from '@mantine/core'
+import { Anchor, Box, Button, Divider, Group, SimpleGrid, Skeleton, Stack, Text, Title } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
+import { IconAlertTriangle } from '@tabler/icons-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
@@ -8,8 +9,10 @@ import { ApiError } from '../api/errors'
 import { ErrorAlert } from '../api/ErrorAlert'
 import { glAccountName, useGlAccounts, useVendor } from '../api/reference'
 import type { VendorDetail } from '../api/types'
+import { STATUS_TONES } from '../theme'
 import { StatusBadge } from '../ui/Badges'
 import { DateText, Id } from '../ui/DataText'
+import { Icon } from '../ui/Icon'
 import { BankChangeModal } from './BankChangeModal'
 import { BankChangesTable } from './BankChangesTable'
 import { CommentActionModal } from './CommentActionModal'
@@ -77,6 +80,12 @@ function BankAccountSection({ vendor }: { vendor: VendorDetail }) {
   const [requesting, setRequesting] = useState(false)
   const mayRequest = useMayDo('requestBankChange')
   const account = vendor.bank_account
+  // The account on file can be one a change put there before anyone verified it (the dataset's BC-009 was applied
+  // straight from an email). Then it is the pending change's new account, and the page says so instead of showing it
+  // as a settled account.
+  const unverified = account
+    ? vendor.bank_changes.find((c) => c.status === 'pending_verification' && c.new_account_last4 === account.account_last4)
+    : undefined
   return (
     <Stack gap="sm">
       <Group justify="space-between">
@@ -92,6 +101,15 @@ function BankAccountSection({ vendor }: { vendor: VendorDetail }) {
         </SimpleGrid>
       ) : (
         <Text size="sm" c="dimmed">{mayRequest ? 'No bank account on file. Request a change to add one.' : 'No bank account on file.'}</Text>
+      )}
+      {unverified && (
+        <Group gap={6} wrap="nowrap" align="flex-start" role="status">
+          <Box pt={2} c={STATUS_TONES.attention.color}><Icon icon={IconAlertTriangle} size={16} /></Box>
+          <Text size="sm" fw={500}>
+            {'Not verified: this account came in through '}<Id>{unverified.change_id}</Id>
+            {', which nobody has confirmed by phone yet. New payments to this vendor are held until it is verified.'}
+          </Text>
+        </Group>
       )}
       <Title order={3} mt="xs">Change requests</Title>
       <BankChangesTable
