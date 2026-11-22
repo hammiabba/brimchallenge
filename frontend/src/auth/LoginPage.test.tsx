@@ -78,7 +78,7 @@ describe('sign-in page', () => {
     expect(within(rows[0]!).getByText('Avery Chen')).toBeInTheDocument()
     expect(within(rows[0]!).getByText('Submit an invoice and track it')).toBeInTheDocument()
     expect(within(rows[0]!).getByText('Dispatcher, Operations')).toBeInTheDocument()
-    expect(rows[0]).toHaveAccessibleName('Sign in as Avery Chen, Submit an invoice and track it, Dispatcher, Operations, Employee')
+    expect(rows[0]).toHaveAccessibleName('Avery Chen, Submit an invoice and track it, Dispatcher, Operations, Employee: sign in')
     expect(rows.map((row) => within(row).getAllByText(/./)[1]?.textContent)).toEqual(DEMO_PERSONAS.map((p) => p.hint))
     expect(within(rows[4]!).getByText('Chief Financial Officer, Executive')).toBeInTheDocument()
     // No department name: the id instead.
@@ -93,7 +93,7 @@ describe('sign-in page', () => {
     renderApp('/')
     const person = USERS.find((u) => u.user_id === userId)!
 
-    await user.click(await screen.findByRole('button', { name: new RegExp(`Sign in as ${person.full_name}`) }))
+    await user.click(await screen.findByRole('button', { name: new RegExp(`^${person.full_name}, `) }))
 
     await waitFor(() => expect(fake.loginIds).toEqual([userId]))
     expect(await screen.findByRole('heading', { level: 1, name: navItemsFor(person.role)[0]!.label })).toBeInTheDocument()
@@ -105,7 +105,7 @@ describe('sign-in page', () => {
     const user = userEvent.setup()
     renderApp('/bills')
 
-    await user.click(await screen.findByRole('button', { name: /Sign in as Nadia Haddad/ }))
+    await user.click(await screen.findByRole('button', { name: /^Nadia Haddad, / }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Bills' })).toBeInTheDocument()
   })
 
@@ -157,7 +157,7 @@ describe('sign-in page', () => {
     const user = userEvent.setup()
     renderApp('/')
 
-    await user.click(await screen.findByRole('button', { name: /Sign in as Avery Chen/ }))
+    await user.click(await screen.findByRole('button', { name: /^Avery Chen, / }))
     expect(await screen.findByText("This account can't sign in.")).toBeInTheDocument()
     expect(screen.getByText('Request id: rid-login-02')).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1, name: 'Sign in' })).toBeInTheDocument()

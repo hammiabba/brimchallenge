@@ -102,15 +102,18 @@ function PersonaRow({ person, hint, pending, disabled, onPick }: PersonaRowProps
       onClick={() => onPick(person.user_id)}
       disabled={disabled}
       aria-busy={pending || undefined}
-      // The visible text, in reading order, after "Sign in as" (so the accessible name contains the visible label).
-      aria-label={`Sign in as ${person.full_name}, ${hint}, ${titleAndDepartment(person)}, ${ROLE_LABELS[person.role]}`}
+      // The accessible name starts with the visible text, in reading order (WCAG 2.5.3, "label in name"), with commas
+      // so a screen reader pauses between the parts; "sign in" comes last.
+      aria-label={`${person.full_name}, ${hint}, ${titleAndDepartment(person)}, ${ROLE_LABELS[person.role]}: sign in`}
     >
-      {/* Spans only: a button may hold phrasing content. */}
+      {/* Spans only: a button may hold phrasing content. The spaces between the lines are real text: block-styled
+          spans are still inline content, so without them the text runs together ("Aiden GrantSubmit…") for tools
+          that read the button's visible text, like axe's label-in-name check. */}
       <Stack component="span" gap={0} style={{ minWidth: 0 }}>
-        <Text component="span" display="block" size="sm" fw={600}>{person.full_name}</Text>
-        <Text component="span" display="block" size="sm" c="dimmed">{hint}</Text>
+        <Text component="span" display="block" size="sm" fw={600}>{person.full_name}</Text>{' '}
+        <Text component="span" display="block" size="sm" c="dimmed">{hint}</Text>{' '}
         <Text component="span" display="block" size="xs" c="dimmed">{titleAndDepartment(person)}</Text>
-      </Stack>
+      </Stack>{' '}
       <Group component="span" gap="xs" wrap="nowrap">
         {pending && <Loader size="xs" component="span" />}
         <RoleBadge role={person.role} />
