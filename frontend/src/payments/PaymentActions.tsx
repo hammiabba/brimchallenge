@@ -1,5 +1,4 @@
 import { Button, Group, Modal, Stack, Text } from '@mantine/core'
-import { notifications } from '@mantine/notifications'
 import { useState } from 'react'
 
 import { ErrorAlert } from '../api/ErrorAlert'
@@ -29,16 +28,9 @@ function ReleaseModal({ payment, opened, onClose }: { payment: PaymentDetail; op
     onClose()
   }
 
+  // The "Payment released" confirmation comes from useReleasePayment, so it shows even when this row has gone.
   function confirm() {
-    release.mutate(key, {
-      onSuccess: (released) => {
-        notifications.show({
-          title: 'Payment released',
-          message: `${released.payment_id} to ${released.vendor_name ?? released.vendor_id}`,
-        })
-        close()
-      },
-    })
+    release.mutate(key, { onSuccess: () => close() })
   }
 
   return (
@@ -111,10 +103,8 @@ export function PaymentActions({ paymentId, stacked = false }: { paymentId: stri
           title="Cancel payment"
           description={`${data.payment_id} won't be sent. ${data.bill_id} goes back to approved, so AP can schedule it again.`}
           mutation={cancel}
-          onDone={() => {
-            notifications.show({ title: 'Payment cancelled', message: `${data.payment_id} for ${data.bill_id}` })
-            setOpen(null)
-          }}
+          // useCancelPayment shows the "Payment cancelled" confirmation.
+          onDone={() => setOpen(null)}
           danger
         />
       )}

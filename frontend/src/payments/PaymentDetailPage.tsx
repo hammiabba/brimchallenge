@@ -9,6 +9,7 @@ import type { PaymentDetail } from '../api/types'
 import { useCurrentUser } from '../auth/context'
 import { AuditTrail } from '../bills/detail/AuditTrail'
 import { PAYMENT_METHOD_LABELS, stepRoleLabel } from '../bills/labels'
+import { asMoney, fromCents, sumMoney, toCents } from '../lib/money'
 import { isInNavigation } from '../shell/navigation'
 import { StatusBadge } from '../ui/Badges'
 import { DateText, Id, MoneyText } from '../ui/DataText'
@@ -123,10 +124,17 @@ function ApprovalChain({ payment }: { payment: PaymentDetail }) {
   )
 }
 
-/** The bill's lines with their accounting codes (GL account and department). */
+/**
+ * The bill's lines with their accounting codes (GL account and department), then how they add up to the bill: the
+ * lines, the taxes (the bill total less the lines; exact, in cents) and the total. A missing code reads "Not coded"
+ * in either column.
+ */
 function Coding({ payment }: { payment: PaymentDetail }) {
   const accounts = useGlAccounts()
   const departments = useDepartments()
+  const currency = payment.bill.currency
+  const linesTotal = sumMoney(payment.lines.map((line) => asMoney(line.amount)))
+  const taxes = fromCents(toCents(asMoney(payment.bill.total)) - toCents(linesTotal))
   return (
     <Stack gap="sm">
       <Title order={2}>Accounting codes</Title>
@@ -156,12 +164,22 @@ function Coding({ payment }: { payment: PaymentDetail }) {
                       {gl ? <><Id>{gl}</Id>{glAccountName(gl, accounts.data) ? ` ${glAccountName(gl, accounts.data)}` : ''}</> : 'Not coded'}
                       {!line.gl_account && line.suggested_gl_account && <Text size="xs" c="dimmed">Suggested, not confirmed</Text>}
                     </Table.Td>
-                    <Table.Td>{department ? departmentLabel(department, departments.data) : 'None'}</Table.Td>
-                    <Table.Td data-numeric><MoneyText value={line.amount} currency={payment.bill.currency} align="right" /></Table.Td>
+                    <Table.Td>{department ? departmentLabel(department, departments.data) : 'Not coded'}</Table.Td>
+                    <Table.Td data-numeric><MoneyText value={line.amount} currency={currency} align="right" /></Table.Td>
                   </Table.Tr>
                 )
               })}
             </Table.Tbody>
+            <Table.Tfoot>
+              {([['Lines', linesTotal], ['Taxes', taxes], ['Bill total', payment.bill.total]] as const).map(([label, amount]) => (
+                <Table.Tr key={label}>
+                  <Table.Th scope="row" colSpan={4}>{label}</Table.Th>
+                  <Table.Td data-numeric>
+                    <MoneyText value={amount} currency={currency} align="right" fw={label === 'Bill total' ? 600 : undefined} />
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tfoot>
           </Table>
         </Table.ScrollContainer>
       )}
@@ -174,7 +192,9 @@ function PaymentAudit({ payment }: { payment: PaymentDetail }) {
   const user = useCurrentUser()
   return (
     <Stack gap="xs">
-      <AuditTrail bill={payment} emptyMessage="No audit events for this payment or its bill yet." />
+      <AuditTrail bill={payment} emptyMessage={payment.bill.origin === 'history'
+        ? "Imported from the dataset history: what happened before the import isn't in the audit log."
+        : 'No audit events for this payment or its bill yet.'} />
       {isInNavigation(user.role, 'audit') && (
         <Anchor component={Link} to={`/audit?entity_type=payment&entity_id=${payment.payment_id}`} size="sm" w="fit-content">
           Open this payment in the audit log

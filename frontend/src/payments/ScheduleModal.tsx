@@ -1,5 +1,4 @@
 import { Button, Group, Modal, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core'
-import { notifications } from '@mantine/notifications'
 import { useState } from 'react'
 
 import { ErrorAlert } from '../api/ErrorAlert'
@@ -41,12 +40,8 @@ export function ScheduleModal({ bill, asOf, opened, onClose }: ScheduleModalProp
   }
 
   function confirm() {
-    schedule.mutate({ scheduled_date: date, method: chosen }, {
-      onSuccess: (payment) => {
-        notifications.show({ title: 'Payment scheduled', message: `${payment.payment_id} for ${bill.bill_id}, ${date}` })
-        close()
-      },
-    })
+    // useSchedulePayment shows the "Payment scheduled" confirmation, even once this bill has left the list.
+    schedule.mutate({ scheduled_date: date, method: chosen }, { onSuccess: () => close() })
   }
 
   return (

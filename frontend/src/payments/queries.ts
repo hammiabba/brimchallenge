@@ -6,11 +6,13 @@
  * Every write answers with the payment's new detail, which goes straight into its detail key; then payments and bills
  * are refreshed, since scheduling, releasing or cancelling also changes the bill's status.
  */
+import { notifications } from '@mantine/notifications'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, unwrap } from '../api/client'
 import type { operations } from '../api/schema'
 import type { PaymentDetail, PaymentStatus, PaymentsPage, ScheduleInput } from '../api/types'
+import { formatDate } from '../lib/dates'
 
 /** The orders GET /payments offers: newest scheduled date first (its default) or oldest first. */
 export type PaymentSort = NonNullable<NonNullable<operations['list_payments_payments_get']['parameters']['query']>['sort']>
@@ -74,13 +76,26 @@ function useApplyPayment() {
   }
 }
 
+/*
+ * The confirmations for schedule, release and cancel are shown here, in the mutation's own onSuccess, not in the
+ * screen that started it: once the write lands, the row (and the dialog in it) can leave the screen (a released
+ * payment leaves the Scheduled tab, a scheduled bill leaves "Approved, not scheduled"), and TanStack Query skips the
+ * per-call callbacks of a component that is gone. These run whatever the screen does next.
+ */
+
 /** POST /bills/{id}/payments: AP prepares the payment of an approved bill (method and date). */
 export function useSchedulePayment(billId: string) {
   const apply = useApplyPayment()
   return useMutation({
     mutationFn: (body: ScheduleInput) =>
       unwrap(api.POST('/bills/{bill_id}/payments', { params: { path: { bill_id: billId } }, body })),
-    onSuccess: apply,
+    onSuccess: (payment) => {
+      notifications.show({
+        title: 'Payment scheduled',
+        message: `${payment.payment_id} for ${payment.bill_id}, on ${formatDate(payment.scheduled_date)}. It's on the Scheduled tab.`,
+      })
+      return apply(payment)
+    },
   })
 }
 
@@ -94,7 +109,13 @@ export function useReleasePayment(paymentId: string) {
     mutationFn: (idempotencyKey: string) => unwrap(api.POST('/payments/{payment_id}/release', {
       params: { path: { payment_id: paymentId }, header: { 'Idempotency-Key': idempotencyKey } },
     })),
-    onSuccess: apply,
+    onSuccess: (payment) => {
+      notifications.show({
+        title: 'Payment released',
+        message: `${payment.payment_id} to ${payment.vendor_name ?? payment.vendor_id}. It's now on the Released tab.`,
+      })
+      return apply(payment)
+    },
   })
 }
 
@@ -105,7 +126,13 @@ export function useCancelPayment(paymentId: string) {
     mutationFn: (comment: string | null) => unwrap(api.POST('/payments/{payment_id}/cancel', {
       params: { path: { payment_id: paymentId } }, body: { comment },
     })),
-    onSuccess: apply,
+    onSuccess: (payment) => {
+      notifications.show({
+        title: 'Payment cancelled',
+        message: `${payment.payment_id} for ${payment.bill_id}. The bill is back under "Approved, not scheduled".`,
+      })
+      return apply(payment)
+    },
   })
 }
 

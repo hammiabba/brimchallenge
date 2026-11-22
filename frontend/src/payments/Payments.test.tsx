@@ -340,6 +340,31 @@ describe('release a payment', () => {
     await waitFor(() => expect(fake.calls.filter((c) => c === 'GET /payments/summary').length).toBeGreaterThan(1))
   })
 
+  it('confirms a release even though the payment leaves the Scheduled tab, and says where it went', async () => {
+    let released = false
+    installFakeApi(releaseRoutes({
+      // Once released, the payment is no longer scheduled: the list comes back without it, as the server's does.
+      'GET /payments': () => ({
+        body: { items: released ? SCHEDULED.filter((p) => p.payment_id !== 'PAY-00417') : SCHEDULED,
+          total: released ? 1 : 2, limit: 50, offset: 0 },
+      }),
+      'POST /payments/PAY-00417/release': () => {
+        released = true
+        return { body: paymentDetail({ payment_id: 'PAY-00417', vendor_name: 'Brightmore Consulting Group', status: 'released' }) }
+      },
+    }))
+    const user = userEvent.setup()
+    renderApp('/payments')
+
+    await user.click(await screen.findByRole('button', { name: 'Release' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Release payment' })
+    await user.click(within(dialog).getByRole('button', { name: 'Release payment' }))
+    expect(await screen.findByText('Payment released')).toBeInTheDocument()
+    expect(screen.getByText("PAY-00417 to Brightmore Consulting Group. It's now on the Released tab.")).toBeInTheDocument()
+    const list = screen.getByRole('table', { name: 'Payments' })
+    await waitFor(() => expect(within(list).queryByRole('link', { name: 'PAY-00417' })).not.toBeInTheDocument())
+  })
+
   it('uses a new key for a new attempt after the dialog was closed', async () => {
     const keys: (string | null)[] = []
     installFakeApi(releaseRoutes({
@@ -484,6 +509,9 @@ describe('payment detail', () => {
     const codes = screen.getByRole('table', { name: 'Accounting codes' })
     expect(await within(codes).findByText(/Warehouse supplies/)).toBeInTheDocument()
     expect(await within(codes).findByText('Operations (D01)')).toBeInTheDocument()
+    // The lines add up to the bill: lines, taxes (the difference) and the bill total.
+    const footer = within(codes).getAllByRole('row').slice(-3).map((row) => row.textContent)
+    expect(footer).toEqual(['Lines$1,420.00', 'Taxes$184.60', 'Bill total$1,604.60'])
 
     expect(screen.getByRole('button', { name: 'Show 1 event' })).toBeInTheDocument()
     // Finance doesn't have the audit log in its sidebar, so no link to it.
