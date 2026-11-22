@@ -49,7 +49,7 @@ every bill, payment, vendor, bank-change and user status to a tone and a label i
 | neutral | `#3D4F5B` on `#EEF2F5` | 7.56:1 | void, credit open, cancelled, on leave |
 | progress | `#1E5572` on `#E8F1F6` | 7.06:1 | pending approval, scheduled, released |
 | success | `#0E5C36` on `#E6F4EC` | 7.11:1 | approved, paid, settled, verified, active |
-| attention | `#7A3E00` on `#FDF0E2` | 7.45:1 | needs review, on hold, outstanding, pending review, pending verification |
+| attention | `#7A3E00` on `#FDF0E2` | 7.45:1 | needs review, on hold, outstanding, pending review, pending verification, overdue (a scheduled payment dated before the as-of date) |
 | danger | `#912018` on `#FDECEA` | 7.58:1 | rejected, failed |
 
 Other pairs: the role badge (Blumine on primary tint) is 7.13:1; the inline error box has a red title `#B42318` on
@@ -145,7 +145,8 @@ colour, and the contrast test checks it.
 |---|---|---|
 | `StatusBadge kind status` | `src/ui/Badges.tsx` | Bill, payment, vendor, bank-change and user statuses, and flag resolutions |
 | `SeverityBadge severity` | `src/ui/Badges.tsx` | Flag severity |
-| `SeverityCountBadge severity count` | `src/ui/Badges.tsx` | Open-flag counts in a list ("2 block"); nothing for zero |
+| `SeverityCountBadge severity count` | `src/ui/Badges.tsx` | Open-flag counts in a list ("2 blocking"); nothing for zero |
+| `OverdueBadge` | `src/ui/Badges.tsx` | A scheduled payment dated before the as-of date |
 | `RoleBadge role` | `src/ui/Badges.tsx` | The signed-in user's role |
 | `Id`, `MoneyText`, `DateText` | `src/ui/DataText.tsx` | IDs, amounts, dates and timestamps |
 | `Icon` | `src/ui/Icon.tsx` | Every icon |

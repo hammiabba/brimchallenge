@@ -247,8 +247,9 @@ function CodingActions({ bill, line }: { bill: BillDetail; line: BillLine }) {
 
 /**
  * The lines table: quantities as sent, unit prices and amounts as money (unit prices keep any decimals beyond two),
- * and the coding (with AP's actions). Long words wrap anywhere (app-wrap-cells), so no text runs out of a cell; the
- * minimum width leaves room for the numbers and the coding buttons before the table scrolls sideways.
+ * and the coding (with AP's actions). Cell text wraps between words (app-wrap-cells), so a column grows to fit its
+ * longest word ("Telecommunications") instead of splitting it; the minimum width leaves room for the numbers and the
+ * coding buttons before the table scrolls sideways.
  */
 function LinesTable({ bill }: { bill: BillDetail }) {
   const canCode = bill.allowed_actions?.code_lines?.allowed ?? false
