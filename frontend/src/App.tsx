@@ -14,6 +14,15 @@ import { PlaceholderPage } from './shell/PlaceholderPage'
 const BillsPage = lazy(() => import('./bills/BillsPage'))
 const ReviewQueuePage = lazy(() => import('./bills/ReviewQueuePage'))
 const BillDetailPage = lazy(() => import('./bills/BillDetailPage'))
+const VendorsPage = lazy(() => import('./vendors/VendorsPage'))
+const VendorDetailPage = lazy(() => import('./vendors/VendorDetailPage'))
+const BankChangesPage = lazy(() => import('./bankChanges/BankChangesPage'))
+const AuditPage = lazy(() => import('./audit/AuditPage'))
+const UsersPage = lazy(() => import('./admin/UsersPage'))
+const PoliciesPage = lazy(() => import('./admin/PoliciesPage'))
+const AbsencesPage = lazy(() => import('./admin/AbsencesPage'))
+const DelegationPage = lazy(() => import('./delegation/DelegationPage'))
+const SpendPage = lazy(() => import('./spend/SpendPage'))
 const SubmitPage = lazy(() => import('./intake/submit/SubmitPage'))
 const SubmissionsPage = lazy(() => import('./intake/submissions/SubmissionsPage'))
 const InboxPage = lazy(() => import('./intake/inbox/InboxPage'))
@@ -21,11 +30,19 @@ const EmailDetailPage = lazy(() => import('./intake/inbox/EmailDetailPage'))
 
 /** The screens built so far, by navigation item. Every other item still shows its placeholder. */
 const SCREENS: Partial<Record<NavKey, LazyExoticComponent<ComponentType>>> = {
-  bills: BillsPage,
-  review: ReviewQueuePage,
   submit: SubmitPage,
   submissions: SubmissionsPage,
   inbox: InboxPage,
+  bills: BillsPage,
+  review: ReviewQueuePage,
+  vendors: VendorsPage,
+  bankChanges: BankChangesPage,
+  audit: AuditPage,
+  users: UsersPage,
+  policies: PoliciesPage,
+  absences: AbsencesPage,
+  delegation: DelegationPage,
+  spend: SpendPage,
 }
 
 /** Shown while a screen's code loads. */
@@ -62,6 +79,10 @@ export function App() {
           <Route
             path="/bills/:billId"
             element={<Suspense fallback={<ScreenLoading />}><BillDetailPage /></Suspense>}
+          />
+          <Route
+            path="/vendors/:vendorId"
+            element={<Suspense fallback={<ScreenLoading />}><VendorDetailPage /></Suspense>}
           />
           <Route path="/inbox/:emailId" element={<Suspense fallback={<ScreenLoading />}><EmailDetailPage /></Suspense>} />
           <Route path="*" element={<NotFoundPage />} />

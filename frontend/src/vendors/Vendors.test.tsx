@@ -1,0 +1,157 @@
+import { screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it } from 'vitest'
+
+import type { BankChange, VendorDetail } from '../api/types'
+import { envelope, installFakeApi } from '../test/fakeApi'
+import { VENDOR_SUMMARIES, billScreenRoutes, vendorDetail } from '../test/fixtures'
+import { currentLocation, renderApp } from '../test/renderApp'
+
+const CHANGE: BankChange = {
+  change_id: 'BCR-0007', vendor_id: 'V011', status: 'pending_verification', request_channel: 'email_request',
+  requested_at: '2026-10-30T14:00:00Z', requested_by: 'U005', old_account_last4: '1111', new_account_last4: '4821',
+  new_account: null, new_institution: null, new_transit: null, verified_at: null, verified_by: null,
+  verified_by_callback: false, origin: 'app',
+}
+
+function fullVendor(overrides: Partial<VendorDetail> = {}): VendorDetail {
+  return vendorDetail({
+    address: '12 Dock Rd, Hamilton ON', ap_contact_email: 'ap@summit.example', gst_hst_number: '123456789RT0001',
+    qst_number: null, default_gl_account: '5040', early_pay_discount: null, accepts_card_payment: false,
+    onboarded_at: '2024-01-15', origin: 'history',
+    bank_account: {
+      id: 1, institution: '004', transit: '12345', account: '****1111', account_last4: '1111', masked: true,
+      valid_from: '2024-01-15', valid_to: null,
+    },
+    bank_changes: [CHANGE],
+    ...overrides,
+  })
+}
+
+/** Routes for the vendor screens: the shared ones plus the page and detail endpoints. */
+function vendorRoutes(detail = fullVendor()) {
+  return {
+    ...billScreenRoutes(),
+    'GET /vendors/V011': { body: detail },
+  }
+}
+
+describe('vendor list', () => {
+  it('lists vendors and sends the URL filters to the API', async () => {
+    const fake = installFakeApi(vendorRoutes())
+    renderApp('/vendors?status=active&q=summit')
+
+    const table = await screen.findByRole('table', { name: 'Vendors' })
+    const link = await within(table).findByRole('link', { name: 'V011' })
+    expect(link).toHaveAttribute('href', '/vendors/V011')
+    const row = link.closest('tr')!
+    expect(within(row).getByText('Summit Packaging Supply')).toBeInTheDocument()
+    expect(within(row).getByText('Net 30')).toBeInTheDocument()
+    expect(within(row).getByText('Active')).toBeInTheDocument()
+
+    const request = fake.urls.find((url) => url.pathname === '/api/vendors' && url.searchParams.get('limit') === '50')!
+    expect(request.searchParams.getAll('status')).toEqual(['active'])
+    expect(request.searchParams.get('q')).toBe('summit')
+    expect(screen.getByText(`Showing 1 to 2 of ${VENDOR_SUMMARIES.length} vendors`)).toBeInTheDocument()
+  })
+
+  it('onboards a vendor and opens its page', async () => {
+    let sent: unknown = null
+    installFakeApi({
+      ...vendorRoutes(),
+      'POST /vendors': async (request) => {
+        sent = await request.json()
+        return { status: 201, body: fullVendor({ vendor_id: 'V099', legal_name: 'Northwind Pallets', status: 'pending_review' }) }
+      },
+      'GET /vendors/V099': { body: fullVendor({ vendor_id: 'V099', legal_name: 'Northwind Pallets', status: 'pending_review' }) },
+    })
+    const user = userEvent.setup()
+    renderApp('/vendors')
+
+    await user.click(await screen.findByRole('button', { name: 'Onboard vendor' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Onboard vendor' })
+    await user.type(within(dialog).getByRole('textbox', { name: 'Legal name' }), 'Northwind Pallets')
+    await user.type(within(dialog).getByRole('textbox', { name: 'Category' }), 'Packaging')
+    await user.type(within(dialog).getByRole('textbox', { name: 'AP contact email' }), 'ap@northwind.example')
+    await user.type(within(dialog).getByRole('textbox', { name: 'Address' }), '5 Mill St, Guelph')
+    await user.type(within(dialog).getByRole('textbox', { name: 'Province or state' }), 'on')
+    await user.click(within(dialog).getByRole('button', { name: 'Onboard vendor' }))
+
+    await waitFor(() => expect(currentLocation()).toBe('/vendors/V099'))
+    expect(sent).toMatchObject({
+      legal_name: 'Northwind Pallets', province_or_state: 'ON', country: 'CA', payment_terms_days: 30,
+      preferred_payment_method: 'EFT', gst_hst_number: null,
+    })
+    expect(await screen.findByRole('heading', { name: 'Northwind Pallets' })).toBeInTheDocument()
+  })
+})
+
+describe('vendor page', () => {
+  it('shows details, the masked account and the bank change history', async () => {
+    installFakeApi(vendorRoutes())
+    renderApp('/vendors/V011')
+
+    expect(await screen.findByRole('heading', { name: 'Summit Packaging Supply' })).toBeInTheDocument()
+    expect(screen.getByText('ap@summit.example')).toBeInTheDocument()
+    // On file, and as the old account of the pending change.
+    expect(screen.getAllByText('Ending 1111')).toHaveLength(2)
+    const history = screen.getByRole('table', { name: 'Bank change requests' })
+    expect(within(history).getByText('BCR-0007')).toBeInTheDocument()
+    expect(within(history).getByText('Ending 4821')).toBeInTheDocument()
+    expect(within(history).getByText('Email request')).toBeInTheDocument()
+    expect(within(history).getByText('Pending verification')).toBeInTheDocument()
+    // Active: hold is offered, approve isn't.
+    expect(screen.getByRole('button', { name: 'Put on hold' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Approve vendor' })).not.toBeInTheDocument()
+  })
+
+  it('shows the server refusal inside the dialog', async () => {
+    installFakeApi({
+      ...vendorRoutes(fullVendor({ status: 'pending_review' })),
+      'POST /vendors/V011/approve': {
+        status: 403, body: envelope('auth.forbidden_role', "Your role (ap_clerk) can't do this.", 'rid-v-01'),
+      },
+    })
+    const user = userEvent.setup()
+    renderApp('/vendors/V011')
+
+    await user.click(await screen.findByRole('button', { name: 'Approve vendor' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Approve vendor' })
+    await user.click(within(dialog).getByRole('button', { name: 'Approve vendor' }))
+    expect(await within(dialog).findByText("Your role (ap_clerk) can't do this.")).toBeInTheDocument()
+    expect(within(dialog).getByText('Request id: rid-v-01')).toBeInTheDocument()
+  })
+
+  it('requests a bank change with digits only', async () => {
+    let sent: unknown = null
+    installFakeApi({
+      ...vendorRoutes(),
+      'POST /vendors/V011/bank-changes': async (request) => {
+        sent = await request.json()
+        return { status: 201, body: { ...CHANGE, change_id: 'BCR-0008' } }
+      },
+    })
+    const user = userEvent.setup()
+    renderApp('/vendors/V011')
+
+    await user.click(await screen.findByRole('button', { name: 'Request bank change' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Request bank change' })
+    await user.type(within(dialog).getByRole('textbox', { name: 'Institution' }), '010')
+    await user.type(within(dialog).getByRole('textbox', { name: 'Transit' }), '54-321')
+    await user.type(within(dialog).getByRole('textbox', { name: 'Account number' }), '9876 5432')
+    await user.click(within(dialog).getByRole('combobox', { name: 'How the request came in' }))
+    await user.click(await screen.findByRole('option', { name: 'Vendor portal' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Request change' }))
+
+    await waitFor(() => expect(sent).toEqual({
+      institution: '010', transit: '54321', account: '98765432', request_channel: 'vendor_portal',
+    }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Request bank change' })).not.toBeInTheDocument())
+  })
+
+  it('says so when the vendor does not exist', async () => {
+    installFakeApi(billScreenRoutes())
+    renderApp('/vendors/V404')
+    expect(await screen.findByRole('heading', { name: 'Vendor not found' })).toBeInTheDocument()
+  })
+})

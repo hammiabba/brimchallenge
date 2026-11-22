@@ -41,3 +41,37 @@ export type FlagHelp = Schemas['FlagHelpOut']
 export type GlAccount = Schemas['GlAccountOut']
 export type VendorSummary = Schemas['VendorSummary']
 export type VendorDetail = Schemas['VendorDetail']
+
+// Vendors and bank changes
+export type VendorsPage = Schemas['Page_VendorSummary_']
+export type VendorInput = Schemas['VendorIn']
+export type PaymentMethod = VendorSummary['preferred_payment_method']
+export type BankAccount = Schemas['BankAccountOut']
+export type BankChange = Schemas['BankChangeOut']
+export type BankChangeInput = Schemas['BankChangeIn']
+export type BankChangeChannel = BankChange['request_channel']
+
+// Audit log
+export type AuditPage = Schemas['AuditPage']
+
+// Admin
+export type AdminUser = Schemas['UserOut']
+export type UserPatch = Schemas['UserPatch']
+export type Policy = Schemas['PolicyOut']
+export type PolicyPatch = Schemas['PolicyPatch']
+export type Absence = Schemas['AbsenceOut']
+export type AbsenceInput = Schemas['AbsenceIn']
+export type DelegationInput = Schemas['DelegationIn']
+
+// Spend
+export type SpendReport = Schemas['SpendReport']
+export type SpendRow = Schemas['SpendRow']
+export type SpendGroupBy = SpendReport['group_by']
+
+// Intake
+export type IntakeItem = Schemas['IntakeItemOut']
+export type IntakeItemStatus = IntakeItem['status']
+export type IntakeItemsPage = Schemas['Page_IntakeItemOut_']
+export type InboxJob = Schemas['JobOut']
+export type InboxEmail = Schemas['EmailOut']
+export type EmailsPage = Schemas['Page_EmailOut_']
