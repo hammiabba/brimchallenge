@@ -64,8 +64,12 @@ function ReleaseModal({ payment, opened, onClose }: { payment: PaymentDetail; op
  * The actions on one payment, from its allowed_actions (GET /payments/{id}): only what the server says the signed-in
  * user may do now (release; cancel a scheduled payment). A releaser who can't release it sees why (for example P11:
  * they approved the bill).
+ *
+ * `stacked` (the payments list) puts the buttons one above the other and the reason under them, so a narrow Actions
+ * cell never clips "Cancel payment" and a long reason wraps below instead of pushing the buttons aside. Without it (the
+ * payment page) they sit in one row.
  */
-export function PaymentActions({ paymentId }: { paymentId: string }) {
+export function PaymentActions({ paymentId, stacked = false }: { paymentId: string; stacked?: boolean }) {
   const user = useCurrentUser()
   const payment = usePayment(paymentId)
   const [open, setOpen] = useState<'release' | 'cancel' | null>(null)
@@ -76,13 +80,29 @@ export function PaymentActions({ paymentId }: { paymentId: string }) {
   const canCancel = data.allowed_actions?.cancel?.allowed ?? false
   const releaser = RELEASER_ROLES.includes(user.role)
 
+  const releaseButton = release?.allowed && <Button size="xs" onClick={() => setOpen('release')}>Release</Button>
+  const reason = release && !release.allowed && releaser && data.status === 'scheduled' && release.reason && (
+    <Text size="sm" c="dimmed">{release.reason}</Text>
+  )
+  const cancelButton = canCancel && (
+    <Button size="xs" variant="default" onClick={() => setOpen('cancel')}>Cancel payment</Button>
+  )
+
   return (
     <Group gap="xs" wrap="nowrap">
-      {release?.allowed && <Button size="xs" onClick={() => setOpen('release')}>Release</Button>}
-      {release && !release.allowed && releaser && data.status === 'scheduled' && release.reason && (
-        <Text size="sm" c="dimmed">{release.reason}</Text>
+      {stacked ? (
+        <Stack gap={6} align="flex-start">
+          {releaseButton}
+          {cancelButton}
+          {reason}
+        </Stack>
+      ) : (
+        <>
+          {releaseButton}
+          {reason}
+          {cancelButton}
+        </>
       )}
-      {canCancel && <Button size="xs" variant="default" onClick={() => setOpen('cancel')}>Cancel payment</Button>}
       {release?.allowed && <ReleaseModal payment={data} opened={open === 'release'} onClose={() => setOpen(null)} />}
       {canCancel && (
         <CommentActionModal
