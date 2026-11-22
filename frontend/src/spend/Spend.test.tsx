@@ -41,6 +41,9 @@ describe('spend', () => {
     expect(within(row).getByText('$20,000.00')).toBeInTheDocument()
     expect(within(row).getByText('66.7%')).toBeInTheDocument()
     expect(within(table).getByText('$30,000.00')).toBeInTheDocument()
+    // One column for the name and its code; the total row adds up the bills and the share.
+    expect(within(table).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['Department', 'Bills', 'Total (CAD)', 'Share'])
+    expect(within(table).getByText('100.0%')).toBeInTheDocument()
     expect(Object.fromEntries(spendRequests(fake.urls)[0]!.searchParams)).toEqual({
       group_by: 'department', from_date: '2026-01-01', to_date: '2026-10-31', department_id: 'D01',
     })
@@ -69,7 +72,11 @@ describe('spend', () => {
       'GET /spend': { body: report({ department_id: 'D01', rows: [], total_cad: '0.00' }) },
     })
     renderApp('/spend')
-    expect(await screen.findByText('Showing Operations (D01) only.')).toBeInTheDocument()
+    // The select shows the approver's own department, locked, not "All departments".
+    const select = await screen.findByRole('combobox', { name: 'Department' })
+    await waitFor(() => expect(select).toHaveValue('Operations (D01)'))
+    expect(select).toBeDisabled()
+    expect(screen.getByText('Approvers see their own department.')).toBeInTheDocument()
     expect(screen.getByText('No committed spend in this range.')).toBeInTheDocument()
   })
 })

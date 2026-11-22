@@ -6,7 +6,8 @@ import { Link, useSearchParams } from 'react-router'
 import { api, unwrap } from '../api/client'
 import { ErrorAlert } from '../api/ErrorAlert'
 import { departmentLabel, useDepartments } from '../api/reference'
-import type { SpendGroupBy, SpendReport, SpendRow } from '../api/types'
+import type { Role, SpendGroupBy, SpendReport, SpendRow } from '../api/types'
+import { useCurrentUser } from '../auth/context'
 import { DateText, Id, MoneyText } from '../ui/DataText'
 import { shareOf } from './share'
 
@@ -16,6 +17,8 @@ const GROUPS: Array<{ value: SpendGroupBy; label: string; column: string }> = [
   { value: 'gl_account', label: 'GL account', column: 'GL account' },
 ]
 const DATE = /^\d{4}-\d{2}-\d{2}$/
+/** Roles the server limits to their own department, whatever they ask for (backend services/spend.py). */
+const SCOPED_ROLES: readonly Role[] = ['approver']
 
 interface SpendFilters {
   groupBy: SpendGroupBy
@@ -40,19 +43,27 @@ function searchFromFilters(filters: SpendFilters): URLSearchParams {
   return search
 }
 
-/** The row's key: a link for vendors, a code otherwise. */
+/** The row: its name, with its code under it (a link to the vendor's page for vendors). One column, not two. */
 function KeyCell({ row, groupBy }: { row: SpendRow; groupBy: SpendGroupBy }) {
-  if (groupBy === 'vendor' && row.key !== 'unknown') {
-    return <Anchor component={Link} to={`/vendors/${row.key}`} underline="hover"><Id>{row.key}</Id></Anchor>
-  }
-  return <Id>{row.key}</Id>
+  const code = groupBy === 'vendor' && row.key !== 'unknown'
+    ? <Anchor component={Link} to={`/vendors/${row.key}`} underline="hover"><Id>{row.key}</Id></Anchor>
+    : <Id>{row.key}</Id>
+  return (
+    <Stack gap={0}>
+      <Text size="sm">{row.label}</Text>
+      <Text size="xs" c="dimmed">{code}</Text>
+    </Stack>
+  )
 }
 
+/** The report table, with a total row that adds up the bills and the whole share. */
 function SpendTable({ report, loading, column }: { report: SpendReport | undefined; loading: boolean; column: string }) {
-  const columns = [column, 'Name', 'Bills', 'Total (CAD)', 'Share']
+  const columns = [column, 'Bills', 'Total (CAD)', 'Share']
+  // Bill counts are whole numbers, so a plain sum is exact.
+  const bills = report?.rows.reduce((sum, row) => sum + row.bill_count, 0) ?? 0
   const numeric = new Set(['Bills', 'Total (CAD)', 'Share'])
   return (
-    <Table.ScrollContainer minWidth={700}>
+    <Table.ScrollContainer minWidth={560}>
       <Table aria-label="Spend" bg="white" withTableBorder>
         <Table.Thead>
           <Table.Tr>{columns.map((c) => <Table.Th key={c} data-numeric={numeric.has(c) || undefined}>{c}</Table.Th>)}</Table.Tr>
@@ -71,7 +82,6 @@ function SpendTable({ report, loading, column }: { report: SpendReport | undefin
           {!loading && report?.rows.map((row) => (
             <Table.Tr key={row.key}>
               <Table.Td><KeyCell row={row} groupBy={report.group_by} /></Table.Td>
-              <Table.Td>{row.label}</Table.Td>
               <Table.Td data-numeric>{row.bill_count}</Table.Td>
               <Table.Td data-numeric><MoneyText value={row.total_cad} align="right" /></Table.Td>
               <Table.Td data-numeric>{shareOf(row.total_cad, report.total_cad)}</Table.Td>
@@ -81,9 +91,10 @@ function SpendTable({ report, loading, column }: { report: SpendReport | undefin
         {!loading && report && report.rows.length > 0 && (
           <Table.Tfoot>
             <Table.Tr>
-              <Table.Th colSpan={3}>Total</Table.Th>
-              <Table.Th data-numeric><MoneyText value={report.total_cad} align="right" fw={600} /></Table.Th>
-              <Table.Th />
+              <Table.Th scope="row">Total</Table.Th>
+              <Table.Td data-numeric>{bills}</Table.Td>
+              <Table.Td data-numeric><MoneyText value={report.total_cad} align="right" fw={600} /></Table.Td>
+              <Table.Td data-numeric>100.0%</Table.Td>
             </Table.Tr>
           </Table.Tfoot>
         )}
@@ -113,7 +124,9 @@ export default function SpendPage() {
   })
   const set = (next: Partial<SpendFilters>) => setSearchParams(searchFromFilters({ ...filters, ...next }), { replace: true })
   const group = GROUPS.find((g) => g.value === filters.groupBy) ?? GROUPS[0]!
-  const scoped = report.data?.department_id
+  const user = useCurrentUser()
+  // An approver's report is always their own department: the select shows it, locked, instead of "All departments".
+  const scoped = SCOPED_ROLES.includes(user.role) ? user.department_id : null
 
   return (
     <Stack gap="md">
@@ -129,26 +142,28 @@ export default function SpendPage() {
         <Select
           label="Department"
           placeholder="All departments"
-          data={(departments.data ?? []).map((d) => ({ value: d.department_id, label: `${d.name} (${d.department_id})` }))}
-          value={filters.departmentId}
+          description={scoped ? 'Approvers see their own department.' : undefined}
+          data={(departments.data ?? []).map((d) => ({ value: d.department_id, label: departmentLabel(d.department_id, departments.data) }))}
+          value={scoped ?? filters.departmentId}
           onChange={(value) => set({ departmentId: value })}
-          clearable
+          clearable={!scoped}
+          disabled={Boolean(scoped)}
           w={220}
         />
       </Group>
-      {scoped && scoped !== filters.departmentId && (
-        <Text size="sm">{`Showing ${departmentLabel(scoped, departments.data)} only.`}</Text>
-      )}
       {report.isError && !report.data ? (
         <ErrorAlert error={report.error} title="Can't load spend" onRetry={() => void report.refetch()} />
       ) : (
         <SpendTable report={report.data} loading={report.isPending} column={group.column} />
       )}
-      {report.data && (report.data.from_date || report.data.to_date) && (
+      {/* The period the report covers, also when no dates are set. */}
+      {report.data && (
         <Text size="sm" c="dimmed">
-          {'Invoices dated '}
-          {report.data.from_date ? <>from <DateText value={report.data.from_date} /> </> : ''}
-          {report.data.to_date ? <>to <DateText value={report.data.to_date} /></> : 'onwards'}
+          {!report.data.from_date && !report.data.to_date ? 'All invoice dates' : <>
+            {'Invoices dated '}
+            {report.data.from_date ? <>from <DateText value={report.data.from_date} /> </> : ''}
+            {report.data.to_date ? <>to <DateText value={report.data.to_date} /></> : 'onwards'}
+          </>}
         </Text>
       )}
     </Stack>
