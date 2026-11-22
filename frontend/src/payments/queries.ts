@@ -9,7 +9,11 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, unwrap } from '../api/client'
+import type { operations } from '../api/schema'
 import type { PaymentDetail, PaymentStatus, PaymentsPage, ScheduleInput } from '../api/types'
+
+/** The orders GET /payments offers: newest scheduled date first (its default) or oldest first. */
+export type PaymentSort = NonNullable<NonNullable<operations['list_payments_payments_get']['parameters']['query']>['sort']>
 
 /** Rows per page on the payments list (GET /payments serves up to 200). */
 export const PAYMENTS_PAGE_SIZE = 50
@@ -22,10 +26,15 @@ export function usePaymentsSummary() {
   })
 }
 
-/** GET /payments for some statuses (all when empty), one page at a time, newest scheduled date first. */
-export function usePaymentsPage(statuses: readonly PaymentStatus[], page: number) {
+/**
+ * GET /payments for some statuses (all when empty), one page at a time: newest scheduled date first, or in the given
+ * order. `sort` goes into the request (and the cache key) only when set, so callers that don't ask for an order send
+ * exactly what they did before.
+ */
+export function usePaymentsPage(statuses: readonly PaymentStatus[], page: number, sort?: PaymentSort) {
   const query = {
     ...(statuses.length > 0 ? { status: [...statuses] } : {}),
+    ...(sort ? { sort } : {}),
     limit: PAYMENTS_PAGE_SIZE,
     offset: (page - 1) * PAYMENTS_PAGE_SIZE,
   }

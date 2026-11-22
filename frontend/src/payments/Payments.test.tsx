@@ -90,7 +90,8 @@ describe('payments dashboard', () => {
     expect(within(row).getByText('Lakeshore Hydro Services')).toBeInTheDocument()
     expect(within(row).getByText('$1,604.60')).toBeInTheDocument()
     expect(await within(row).findByText('Prepared by Jordan Okafor')).toBeInTheDocument() // under the payment id
-    expect(fake.urls.find((u) => u.pathname === '/api/payments')!.searchParams.get('status')).toBe('scheduled')
+    const firstList = fake.urls.find((u) => u.pathname === '/api/payments')!.searchParams
+    expect([firstList.get('status'), firstList.get('sort')]).toEqual(['scheduled', 'scheduled_asc'])
     // Scheduled payments have no paid date, releaser or other status yet: those columns are left out.
     expect(within(list).getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
       'Payment', 'Bill', 'Vendor', 'Method', 'Scheduled', 'Amount (CAD)', 'Actions',
@@ -120,34 +121,45 @@ describe('payments dashboard', () => {
     expect(screen.getByText('Nov 2, 2026, 10:00 AM EST')).toBeInTheDocument()
   })
 
-  it('lists scheduled payments oldest first, across pages, and marks the overdue ones', async () => {
-    // The server sends newest first. 60 scheduled payments: PAY-00060 (newest) down to PAY-00001 (oldest).
-    const all = Array.from({ length: 60 }, (_, i) => payment({
-      payment_id: `PAY-${String(60 - i).padStart(5, '0')}`,
-      scheduled_date: `2026-${i < 30 ? '12' : '10'}-${String((i % 28) + 1).padStart(2, '0')}`,
+  it('asks the server for scheduled payments oldest first, one request per page, and marks the overdue ones', async () => {
+    // 60 scheduled payments, PAY-00001 (oldest, in October) to PAY-00060 (newest, in December). The fake server sorts
+    // them as GET /payments does: newest first by default, oldest first for sort=scheduled_asc.
+    const oldestFirst = Array.from({ length: 60 }, (_, i) => payment({
+      payment_id: `PAY-${String(i + 1).padStart(5, '0')}`,
+      scheduled_date: `2026-${i < 30 ? '10' : '12'}-${String((i % 28) + 1).padStart(2, '0')}`,
     }))
     const fake = installFakeApi(paymentsRoutes(FINANCE, {
       'GET /payments': (request) => {
         const query = new URL(request.url).searchParams
         const offset = Number(query.get('offset'))
         const limit = Number(query.get('limit'))
-        return { body: { items: all.slice(offset, offset + limit), total: all.length, limit, offset } }
+        const sorted = query.get('sort') === 'scheduled_asc' ? oldestFirst : [...oldestFirst].reverse()
+        return { body: { items: sorted.slice(offset, offset + limit), total: sorted.length, limit, offset } }
       },
     }))
+    const user = userEvent.setup()
     renderApp('/payments')
+    const listRequests = () => fake.urls.filter((u) => u.pathname === '/api/payments')
 
     const list = await screen.findByRole('table', { name: 'Payments' })
-    // Page 1 is the oldest 50: the last 50 of the server's order (offset 10), reversed.
     const ids = async () => (await within(list).findAllByRole('link', { name: /^PAY-/ })).map((a) => a.textContent)
     await waitFor(async () => expect((await ids())[0]).toBe('PAY-00001'))
     expect((await ids()).at(-1)).toBe('PAY-00050')
-    expect(fake.urls.some((u) => u.pathname === '/api/payments' && u.searchParams.get('offset') === '10')).toBe(true)
     expect(screen.getByText('60 payments, oldest first')).toBeInTheDocument()
+    // Page 1: exactly one request, sorted by the server.
+    expect(listRequests().map((u) => [u.searchParams.get('sort'), u.searchParams.get('offset')])).toEqual([['scheduled_asc', '0']])
     // Dated before the as-of date (Nov 2, 2026): overdue. Those in December aren't.
     const oldest = within(list).getByRole('link', { name: 'PAY-00001' }).closest('tr')!
     expect(within(oldest).getByText('Overdue')).toBeInTheDocument()
     const later = within(list).getByRole('link', { name: 'PAY-00050' }).closest('tr')!
     expect(within(later).queryByText('Overdue')).not.toBeInTheDocument()
+
+    // Page 2: one more request, still sorted by the server, and the rest in order.
+    await user.click(screen.getByRole('button', { name: '2' }))
+    await waitFor(async () => expect((await ids())[0]).toBe('PAY-00051'))
+    expect((await ids()).at(-1)).toBe('PAY-00060')
+    expect(listRequests().map((u) => [u.searchParams.get('sort'), u.searchParams.get('offset')]))
+      .toEqual([['scheduled_asc', '0'], ['scheduled_asc', '50']])
   })
 
   it('switches status through the URL and pages through the list', async () => {
@@ -171,9 +183,15 @@ describe('payments dashboard', () => {
     expect(await screen.findByText('120 payments')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '2' }))
     await waitFor(() => expect(currentLocation()).toBe('/payments?status=all&page=2'))
-    const last = fake.urls.filter((u) => u.pathname === '/api/payments').at(-1)!
+    const requests = fake.urls.filter((u) => u.pathname === '/api/payments')
+    const last = requests.at(-1)!
     expect(last.searchParams.has('status')).toBe(false)
     expect(last.searchParams.get('offset')).toBe('50')
+    // Only the Scheduled tab asks for an order; Released and All use the server's default.
+    expect(requests.filter((u) => u.searchParams.get('status') !== 'scheduled').every((u) => !u.searchParams.has('sort')))
+      .toBe(true)
+    expect(requests.filter((u) => u.searchParams.get('status') === 'scheduled').every((u) => u.searchParams.get('sort') === 'scheduled_asc'))
+      .toBe(true)
   })
 
   it('says when nothing is approved or scheduled, and shows load errors with the request id', async () => {

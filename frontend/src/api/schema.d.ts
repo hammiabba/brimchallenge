@@ -5037,6 +5037,7 @@ export interface operations {
             query?: {
                 status?: ("scheduled" | "released" | "settled" | "outstanding" | "failed" | "cancelled")[] | null;
                 vendor_id?: string | null;
+                sort?: "scheduled_desc" | "scheduled_asc";
                 limit?: number;
                 offset?: number;
             };

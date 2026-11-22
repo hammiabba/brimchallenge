@@ -1,13 +1,11 @@
 import { Anchor, Button, Group, Pagination, SegmentedControl, SimpleGrid, Skeleton, Stack, Table, Text, Title } from '@mantine/core'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 
-import { api, unwrap } from '../api/client'
 import { ErrorAlert } from '../api/ErrorAlert'
 import { personName, usePeople } from '../api/reference'
-import type { BillSummary, Payment, PaymentsPage as PaymentsPageData, PaymentStatus, Role } from '../api/types'
+import type { BillSummary, Payment, PaymentStatus, Role } from '../api/types'
 import { useCurrentUser } from '../auth/context'
 import { PAYMENT_METHOD_LABELS } from '../bills/labels'
 import { useBill } from '../bills/queries'
@@ -299,59 +297,10 @@ function PaymentRow({ payment, columns, asOf }: { payment: Payment; columns: rea
   )
 }
 
-/** The list's rows, total and loading state, whichever way they were fetched. */
-interface PaymentsListData {
-  items: readonly Payment[] | undefined
-  total: number
-  isPending: boolean
-  isError: boolean
-  error: Error | null
-  refetch: () => void
-}
-
 /**
- * One page of the list for a tab. GET /payments sorts newest scheduled date first; the Scheduled tab shows the oldest
- * (the most urgent) first instead, by reading the server's order from the other end: page N of oldest-first is the
- * slice of newest-first that ends N pages from the bottom, reversed. The newest-first first page gives the total this
- * needs; when everything fits on one page it is simply that page reversed. Ties keep their order reversed too (the
- * server breaks them by payment id), so paging stays stable.
- */
-function usePaymentsList(tab: Tab, page: number): PaymentsListData {
-  const statuses: PaymentStatus[] = tab === 'all' ? [] : [tab as PaymentStatus]
-  const oldestFirst = tab === 'scheduled'
-  const head = usePaymentsPage(statuses, oldestFirst ? 1 : page)
-  const total = head.data?.total
-  const size = PAYMENTS_PAGE_SIZE
-  const fromEnd = oldestFirst && total !== undefined && total > size
-  const offset = Math.max(0, (total ?? 0) - page * size)
-  const limit = Math.max(1, Math.min(size, (total ?? 0) - (page - 1) * size))
-  // Same key shape as usePaymentsPage, so releasing or cancelling (which refreshes ['payments']) refreshes this too.
-  const query = { status: statuses, limit, offset }
-  const tail = useQuery<PaymentsPageData>({
-    queryKey: ['payments', 'page', query],
-    queryFn: () => unwrap(api.GET('/payments', { params: { query } })),
-    placeholderData: keepPreviousData,
-    enabled: fromEnd,
-  })
-
-  if (!oldestFirst) {
-    return { items: head.data?.items, total: total ?? 0, isPending: head.isPending, isError: head.isError, error: head.error,
-      refetch: () => void head.refetch() }
-  }
-  const source = fromEnd ? tail : head
-  return {
-    items: source.data ? [...source.data.items].reverse() : undefined,
-    total: total ?? 0,
-    isPending: head.isPending || (fromEnd && tail.isPending),
-    isError: head.isError || tail.isError,
-    error: head.error ?? tail.error,
-    refetch: () => { void head.refetch(); if (fromEnd) void tail.refetch() },
-  }
-}
-
-/**
- * The payments list by status, paged (GET /payments): Scheduled oldest first, the other tabs newest first. Tab and
- * page are in the URL. Each tab shows only the columns that differ from row to row.
+ * The payments list by status, paged (GET /payments): Scheduled oldest first (the most urgent on top, sorted by the
+ * server, sort=scheduled_asc), the other tabs in the server's default order, newest first. Tab and page are in the
+ * URL. Each tab shows only the columns that differ from row to row.
  */
 function PaymentsList() {
   const user = useCurrentUser()
@@ -359,11 +308,12 @@ function PaymentsList() {
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = tabFromSearch(searchParams)
   const page = pageFromSearch(searchParams)
-  const payments = usePaymentsList(tab, page)
+  const payments = usePaymentsPage(tab === 'all' ? [] : [tab as PaymentStatus], page,
+    tab === 'scheduled' ? 'scheduled_asc' : undefined)
   // Auditors only read: no Actions column for them. The buttons themselves still need the server's yes.
   const actions = ACTION_ROLES.includes(user.role)
   const columns = columnsFor(tab, actions)
-  const total = payments.total
+  const total = payments.data?.total ?? 0
   const pages = Math.max(1, Math.ceil(total / PAYMENTS_PAGE_SIZE))
   const empty = tab === 'all' ? 'No payments yet.' : `No ${PAYMENT_STATUS[tab].label.toLowerCase()} payments.`
 
@@ -378,8 +328,8 @@ function PaymentsList() {
         <SegmentedControl aria-label="Status" data={TABS.map((t) => ({ value: t.value, label: t.label }))} value={tab}
           onChange={setTab} />
       </Group>
-      {payments.isError && !payments.items ? (
-        <ErrorAlert error={payments.error} title="Can't load payments" onRetry={payments.refetch} />
+      {payments.isError && !payments.data ? (
+        <ErrorAlert error={payments.error} title="Can't load payments" onRetry={() => void payments.refetch()} />
       ) : (
         <>
           <Table.ScrollContainer minWidth={760}>
@@ -392,9 +342,9 @@ function PaymentsList() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                <TableState loading={payments.isPending} empty={payments.items?.length === 0} columns={columns.length}
+                <TableState loading={payments.isPending} empty={payments.data?.items.length === 0} columns={columns.length}
                   message={empty} />
-                {payments.items?.map((p) => (
+                {payments.data?.items.map((p) => (
                   <PaymentRow key={p.payment_id} payment={p} columns={columns} asOf={summary.data?.as_of} />
                 ))}
               </Table.Tbody>
