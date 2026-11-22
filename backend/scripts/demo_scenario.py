@@ -247,7 +247,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python scripts/demo_scenario.py", description=__doc__.split("\n")[0])
     ap.add_argument("--database-url", default=None, help="database to set up (default: DATABASE_URL / settings)")
     args = ap.parse_args(argv)
-    engine = make_engine(args.database_url or resolve_database_url())
+    # Same resolution as seed.py and backfill.py: the --database-url flag, else the configured DATABASE_URL,
+    # with a relative SQLite path made absolute under the repo root.
+    engine = make_engine(resolve_database_url(args.database_url or get_settings().database_url))
     try:
         report = run(engine)
         hold = check_cascadia_hold(engine)
