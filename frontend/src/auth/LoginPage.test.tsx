@@ -9,7 +9,8 @@ import { DEPARTMENTS, envelope, installFakeApi, makeMe } from '../test/fakeApi'
 import { renderApp } from '../test/renderApp'
 import { ROLE_LABELS } from './roles'
 
-const SIGNED_OUT = { status: 401, body: envelope('auth.required', 'Sign in to continue.') }
+/** What GET /auth/me?optional=true answers when nobody is signed in: 204, no body (not a 401). */
+const SIGNED_OUT = { status: 204 }
 
 /** The persona user ids, in DEMO_PERSONAS order. */
 const PERSONA_IDS = DEMO_PERSONAS.map((persona) => persona.userId)

@@ -6,10 +6,15 @@ import { ApiError } from '../api/errors'
 import type { Me } from '../api/types'
 import { AuthContext, ME_QUERY_KEY, type AuthState } from './context'
 
-/** GET /auth/me: the user, or null when there is no valid session (401). Other errors are thrown. */
+/**
+ * GET /auth/me?optional=true: the user, or null when there is no valid session. With `optional` the server answers a
+ * signed-out visit with 204 (no body) instead of 401, so the browser doesn't log it as a failed request. A 401 is
+ * still read as signed out, in case it comes anyway. Other errors are thrown.
+ */
 async function fetchMe(): Promise<Me | null> {
   try {
-    return await unwrap(api.GET('/auth/me'))
+    const user = await unwrap(api.GET('/auth/me', { params: { query: { optional: true } } }))
+    return user ?? null
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) return null
     throw error
