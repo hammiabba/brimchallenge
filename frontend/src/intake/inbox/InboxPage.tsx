@@ -13,6 +13,16 @@ import { useEmails } from './queries'
 import { RunPanel } from './RunPanel'
 
 const COLUMNS = ['Email', 'From', 'Subject', 'Received', 'Class', 'Reason', 'Suggested action', 'Bills'] as const
+type Column = (typeof COLUMNS)[number]
+/** The columns an inbox run fills in; empty for every email that hasn't been triaged yet. */
+const TRIAGE_COLUMNS: ReadonlySet<Column> = new Set(['Class', 'Reason', 'Suggested action', 'Bills'])
+/**
+ * Below these widths the table scrolls sideways (with a visible scrollbar). Without the triage columns the four left
+ * fit the 1008 px content column at 1280 px; with them, eight columns of free text need more.
+ */
+const MIN_WIDTH = { withTriage: 1100, withoutTriage: 700 } as const
+/** GET /intake/emails for the untriaged count only: one row is enough, the total is what counts. */
+const UNTRIAGED_COUNT_QUERY = { triaged: false, limit: 1, offset: 0 }
 const SKELETON_ROWS = 8
 const CLASS_OPTIONS = [
   ...Object.entries(EMAIL_CLASS).map(([value, style]) => ({ value, label: style.label })),
@@ -32,8 +42,8 @@ function OneLine({ children }: { children: string | null | undefined }) {
   return <Text size="sm" lineClamp={1} title={children}>{children}</Text>
 }
 
-/** One email row. */
-function EmailRow({ email }: { email: EmailSummary }) {
+/** One email row, with the triage cells only when the table shows those columns. */
+function EmailRow({ email, showTriage }: { email: EmailSummary; showTriage: boolean }) {
   const billIds = [...new Set(email.items.flatMap((item) => (item.bill_id ? [item.bill_id] : [])))]
   return (
     <Table.Tr>
@@ -48,18 +58,27 @@ function EmailRow({ email }: { email: EmailSummary }) {
       </Table.Td>
       <Table.Td maw={280}><OneLine>{email.subject}</OneLine></Table.Td>
       <Table.Td><DateText value={email.received_at} kind="timestamp" /></Table.Td>
-      <Table.Td><EmailClassBadge emailClass={email.email_class} /></Table.Td>
-      <Table.Td maw={260}><OneLine>{email.triage_reason}</OneLine></Table.Td>
-      <Table.Td maw={260}><OneLine>{email.suggested_action?.message}</OneLine></Table.Td>
-      <Table.Td>
-        <Stack gap={2}>
-          {billIds.map((billId) => (
-            <Anchor key={billId} component={Link} to={`/bills/${billId}`} underline="hover"><Id>{billId}</Id></Anchor>
-          ))}
-        </Stack>
-      </Table.Td>
+      {showTriage && (
+        <>
+          <Table.Td><EmailClassBadge emailClass={email.email_class} /></Table.Td>
+          <Table.Td maw={260}><OneLine>{email.triage_reason}</OneLine></Table.Td>
+          <Table.Td maw={260}><OneLine>{email.suggested_action?.message}</OneLine></Table.Td>
+          <Table.Td>
+            <Stack gap={2}>
+              {billIds.map((billId) => (
+                <Anchor key={billId} component={Link} to={`/bills/${billId}`} underline="hover"><Id>{billId}</Id></Anchor>
+              ))}
+            </Stack>
+          </Table.Td>
+        </>
+      )}
     </Table.Tr>
   )
+}
+
+/** "59 emails not triaged yet. Run the inbox to sort them." */
+function untriagedLine(count: number): string {
+  return `${count} email${count === 1 ? '' : 's'} not triaged yet. Run the inbox to sort them.`
 }
 
 /**
@@ -71,6 +90,7 @@ export default function InboxPage() {
   const filters = useMemo(() => filtersFromSearch(searchParams), [searchParams])
   const query = useMemo(() => apiQuery(filters), [filters])
   const emails = useEmails(query)
+  const untriaged = useEmails(UNTRIAGED_COUNT_QUERY)
 
   const setFilters = useCallback(
     (next: InboxFilters) => setSearchParams(searchFromFilters(next), { replace: true }),
@@ -83,6 +103,12 @@ export default function InboxPage() {
   const total = emails.data?.total ?? 0
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const loading = emails.isPending
+  const untriagedCount = untriaged.data?.total ?? 0
+  // Until an inbox run sorts them, the class, reason, suggested action and bills are empty for every email: while no
+  // email on this page has been triaged, those columns are left out (and the line above the table says why).
+  const items = emails.data?.items
+  const showTriage = !items || items.length === 0 || items.some((email) => email.email_class != null)
+  const columns = COLUMNS.filter((column) => showTriage || !TRIAGE_COLUMNS.has(column))
 
   return (
     <Stack gap="md">
@@ -101,31 +127,34 @@ export default function InboxPage() {
           />
         </Group>
       )}
+      {!forbidden && untriagedCount > 0 && <Text size="sm">{untriagedLine(untriagedCount)}</Text>}
       {emails.isError && !emails.data ? (
         <ErrorAlert error={emails.error} title="Can't load the inbox" onRetry={forbidden ? undefined : () => void emails.refetch()} />
       ) : (
         <>
-          <Table.ScrollContainer minWidth={1200}>
+          <Table.ScrollContainer minWidth={showTriage ? MIN_WIDTH.withTriage : MIN_WIDTH.withoutTriage} type="native">
             <Table aria-label="Inbox emails" bg="white" withTableBorder>
               <Table.Thead>
-                <Table.Tr>{COLUMNS.map((column) => <Table.Th key={column}>{column}</Table.Th>)}</Table.Tr>
+                <Table.Tr>{columns.map((column) => <Table.Th key={column}>{column}</Table.Th>)}</Table.Tr>
               </Table.Thead>
               <Table.Tbody>
                 {loading && Array.from({ length: SKELETON_ROWS }, (_, row) => (
                   <Table.Tr key={`skeleton-${row}`} aria-hidden>
-                    {COLUMNS.map((column) => <Table.Td key={column}><Skeleton animate={false} height={12} /></Table.Td>)}
+                    {columns.map((column) => <Table.Td key={column}><Skeleton animate={false} height={12} /></Table.Td>)}
                   </Table.Tr>
                 ))}
                 {!loading && emails.data?.items.length === 0 && (
                   <Table.Tr>
-                    <Table.Td colSpan={COLUMNS.length}>
+                    <Table.Td colSpan={columns.length}>
                       <Text size="sm" c="dimmed" py="xs">
                         {filters.emailClass ? 'No emails match this filter.' : 'The inbox is empty.'}
                       </Text>
                     </Table.Td>
                   </Table.Tr>
                 )}
-                {!loading && emails.data?.items.map((email) => <EmailRow key={email.email_id} email={email} />)}
+                {!loading && emails.data?.items.map((email) => (
+                  <EmailRow key={email.email_id} email={email} showTriage={showTriage} />
+                ))}
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>

@@ -17,8 +17,22 @@ function page(items: ReturnType<typeof emailSummary>[], total = items.length) {
   return { items, total, limit: 50, offset: 0 }
 }
 
+/**
+ * Serves GET /intake/emails from one fixed reply, the way the server filters it for the untriaged count the page asks
+ * for (triaged=false): only the emails with no class yet. Other queries get the reply as it is.
+ */
+function emailsRoute(route: FakeRoute): FakeRoute {
+  if (typeof route === 'function') return route
+  return (request) => {
+    const body = route.body as ReturnType<typeof page> | undefined
+    if (new URL(request.url).searchParams.get('triaged') !== 'false' || !body?.items) return route
+    return { body: page(body.items.filter((email) => !email.email_class)) }
+  }
+}
+
 function routes(extra: Record<string, FakeRoute> = {}, me: Parameters<typeof billScreenRoutes>[0] = CLERK) {
-  return { ...billScreenRoutes(me), 'GET /intake/emails': { body: page([emailSummary()]) }, ...extra }
+  const all: Record<string, FakeRoute> = { ...billScreenRoutes(me), 'GET /intake/emails': { body: page([emailSummary()]) }, ...extra }
+  return { ...all, 'GET /intake/emails': emailsRoute(all['GET /intake/emails']!) }
 }
 
 afterEach(() => vi.useRealTimers())
@@ -60,6 +74,29 @@ describe('inbox', () => {
       const row = (await within(table).findByRole('link', { name: `EM-10${i}` })).closest('tr')!
       expect(within(row).getByText(label)).toBeInTheDocument()
     }
+  })
+
+  it('leaves out the triage columns until a run sorts the emails, and says how many wait', async () => {
+    const untriaged = { email_class: null, triage_reason: null, triaged_at: null, suggested_action: null }
+    installFakeApi(routes({
+      'GET /intake/emails': {
+        body: page([emailSummary({ email_id: 'EM-051', ...untriaged }), emailSummary({ email_id: 'EM-052', ...untriaged })]),
+      },
+    }))
+    renderApp('/inbox')
+
+    const table = await screen.findByRole('table', { name: 'Inbox emails' })
+    await within(table).findByRole('link', { name: 'EM-051' })
+    expect(within(table).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['Email', 'From', 'Subject', 'Received'])
+    expect(await screen.findByText('2 emails not triaged yet. Run the inbox to sort them.')).toBeInTheDocument()
+  })
+
+  it('shows no "not triaged" line when every email is sorted', async () => {
+    installFakeApi(routes())
+    renderApp('/inbox')
+    const table = await screen.findByRole('table', { name: 'Inbox emails' })
+    await within(table).findByRole('link', { name: 'EM-001' })
+    expect(screen.queryByText(/not triaged yet/)).not.toBeInTheDocument()
   })
 
   it('reads the class filter from the URL and writes changes back', async () => {
