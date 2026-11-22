@@ -1,8 +1,8 @@
 """
 Learn from the clerk: an accepted or overridden line coding on an app bill feeds the next suggestion.
 
-Owner: Person A. Called from app/services/bills.code_line, and replayed from the database at start-up
-(app/main.py), so a restart keeps what clerks taught (see docs/ISSUES_FOR_DB.md).
+Called from app/services/bills.code_line, where a clerk's coding is saved, and replayed from the database at
+start-up (app/main.py), so a restart keeps what clerks taught.
 Input: the bill and the line just coded (database rows). Effect: one Correction in the in-memory store
 (coding/history_index.py), so the next bill from that vendor with a similar line gets this coding,
 and its reason names the bill the clerk corrected.

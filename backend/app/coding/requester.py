@@ -1,7 +1,7 @@
 """
 The requester's side of coding: who may be a requester, and the department their lines default to.
 
-Owner: Person A. Called from app/services/bills.update_header (see docs/ISSUES_FOR_DB.md).
+Called from app/services/bills.update_header, because that is where a clerk sets or changes a bill's requester.
 - requester_problem(db, user_id): a clerk can't make a terminated user (U015) the requester of a bill;
   history already has bills of theirs that need a new owner, so we don't add more.
 - recode_for_requester(db, bill, changes): when the requester changes, each line still on our suggestion

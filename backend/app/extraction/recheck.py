@@ -1,7 +1,7 @@
 """
 Re-run the self-check after a clerk edits a bill, so confidence and warnings describe the bill as it now stands.
 
-Owner: Person A. Called once from app/services/bills.update_header (see docs/ISSUES_FOR_DB.md).
+Called once from app/services/bills.update_header, after the edit is saved and before controls re-run, so they see it.
 
 - A field the clerk set is human-confirmed: its confidence becomes 1.0 and the extraction warnings about
   it (an ambiguous date, a blank PO field, ...) are dropped.

@@ -1,7 +1,8 @@
 """
 Idempotent intake: the same file (same sha256) received twice is linked to the bill it already made.
 
-Owner: Person A. Called once from app/services/intake.store_outcome (see docs/ISSUES_FOR_DB.md).
+Called once from app/services/intake.store_outcome, before a new bill is stored, so a repeated file never makes
+a second bill.
 This is not duplicate detection: a vendor re-sending the *same PDF* is a transport repeat, so we
 point at the existing bill instead of creating a second one. A *different* file for the same
 invoice (rescanned, re-exported, renumbered) is still a new bill, and controls' DUPLICATE_* flags

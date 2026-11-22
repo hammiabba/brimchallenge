@@ -53,7 +53,7 @@ def codes(flags_for_file: list[dict]) -> set[str]:
     return {f["code"] for f in flags_for_file}
 
 
-# HACKATHON_PLAN §4: the trap each file carries and the flag controls must raise for it.
+# The known dataset traps (docs/DETECTION_COVERAGE.md): each file's trap and the flag controls must raise for it.
 EXPECTED = [
     ("Invoice HA26-2766.pdf", "VENDOR_LOOKALIKE"),
     ("Invoice 4443.pdf", "VENDOR_NOT_FOUND"),                 # Blue Heron

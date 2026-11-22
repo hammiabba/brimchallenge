@@ -1,8 +1,9 @@
 """
 What a clerk sees for one inbox email: its triage, the suggested next step and the bills it produced.
 
-Owner: Person A. Used by GET /intake/emails/{email_id} (api/routes_intake.py) and, for the suggested action only,
-by the API lane's GET /intake/emails list (one call per email, see docs/ISSUES_FOR_DB.md).
+Used by GET /intake/emails/{email_id} (api/routes_intake.py) and, for the suggested action only, by the
+GET /intake/emails list (app/services/intake.py, one call per email), so the list and the email page suggest the
+same next step.
 Input: the stored Email row (and its intake items). Output: SuggestedAction / EmailDetail. Reads only.
 """
 from __future__ import annotations
