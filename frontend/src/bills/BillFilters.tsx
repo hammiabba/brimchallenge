@@ -23,7 +23,8 @@ interface BillFiltersProps {
 
 /**
  * The filter bar: search (bill id, invoice number or vendor name), status, vendor and department. These are exactly
- * the filters GET /bills applies server-side. Any change goes back to page 1.
+ * the filters GET /bills applies server-side. Any change goes back to page 1. The four widths add up (with the gaps)
+ * to 976 px, so the bar stays on one row in the 1008 px content column at 1280 px; narrower screens wrap it.
  */
 export function BillFilters({ filters, onChange, showStatus = true }: BillFiltersProps) {
   const vendors = useVendorList()
@@ -54,7 +55,7 @@ export function BillFilters({ filters, onChange, showStatus = true }: BillFilter
         leftSection={<Icon icon={IconSearch} />}
         value={search}
         onChange={(event) => setSearch(event.currentTarget.value)}
-        w={280}
+        w={240}
       />
       {showStatus && (
         <MultiSelect
@@ -64,7 +65,7 @@ export function BillFilters({ filters, onChange, showStatus = true }: BillFilter
           value={filters.status}
           onChange={(value) => onChange({ ...filters, status: value as BillStatus[], page: 1 })}
           clearable
-          w={300}
+          w={260}
         />
       )}
       <Select
@@ -76,7 +77,7 @@ export function BillFilters({ filters, onChange, showStatus = true }: BillFilter
         searchable
         clearable
         nothingFoundMessage="No vendor matches"
-        w={260}
+        w={240}
       />
       <Select
         label="Department"
@@ -85,7 +86,7 @@ export function BillFilters({ filters, onChange, showStatus = true }: BillFilter
         value={filters.departmentId}
         onChange={(value) => onChange({ ...filters, departmentId: value, page: 1 })}
         clearable
-        w={220}
+        w={200}
       />
     </Group>
   )

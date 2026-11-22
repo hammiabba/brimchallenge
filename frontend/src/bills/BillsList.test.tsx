@@ -24,13 +24,16 @@ describe('bills list', () => {
     renderApp('/bills')
 
     const table = await screen.findByRole('table', { name: 'Bills' })
+    // Seven columns: the invoice number sits under the vendor, the flag counts and the top flag share "Flags".
     expect(within(table).getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
-      'Bill', 'Vendor', 'Invoice no.', 'Invoice date', 'Total (CAD)', 'Status', 'Open flags', 'Top flag', 'Current step',
+      'Bill', 'Vendor', 'Invoice date', 'Total (CAD)', 'Status', 'Flags', 'Current step',
     ])
     const link = await within(table).findByRole('link', { name: 'AP-00407' })
     expect(link).toHaveAttribute('href', '/bills/AP-00407')
     const row = link.closest('tr')!
     expect(within(row).getByText('Summit Packaging Supply')).toBeInTheDocument()
+    // The invoice number, under the vendor, read out as "Invoice number 000804".
+    expect(within(row).getByText('Invoice number', { exact: false }).parentElement).toHaveTextContent('Invoice number 000804')
     expect(within(row).getByText('Oct 3, 2026')).toBeInTheDocument()
     expect(within(row).getByText('$2,457.19')).toBeInTheDocument()
     expect(within(row).getByText('Scheduled')).toBeInTheDocument()
@@ -40,7 +43,7 @@ describe('bills list', () => {
     const usd = within(table).getByRole('link', { name: 'AP-00004' }).closest('tr')!
     expect(within(usd).getByText('$7,024.81')).toBeInTheDocument()
     expect(within(usd).getByText('US$5,124.23')).toBeInTheDocument()
-    expect(within(usd).getByText('1 warn')).toBeInTheDocument()
+    expect(within(usd).getByText('1 warning')).toBeInTheDocument()
     expect(within(usd).getByText('1 info')).toBeInTheDocument()
     expect(await within(usd).findByText('Step 1, Department manager: Priya Natarajan')).toBeInTheDocument()
     expect(within(usd).getByText('delegate for Sam Rivera')).toBeInTheDocument()
