@@ -60,16 +60,24 @@ The script prints both checks at the end.
 
 ## A walk-through
 
-1. **U004 (AP clerk).** Open AP-00435 and show the Cascadia flag: the account changed by email, with no callback.
-   Submit is refused. Then try to schedule AP-00426: it's refused too.
+1. **U004 (AP clerk).** Open AP-00435 from the review queue and show the Cascadia flag: the account changed by email,
+   with no callback. **Submit for approval** is disabled and lists the blocking flag. The flag has **Resolve**, and
+   instead of Override a note says only a finance manager or the controller can override a blocking flag. Then open
+   **Payments**: under "Approved, not scheduled", AP-00426 has no Schedule button and shows the reason instead,
+   "Bank change BC-009 for this vendor isn't verified yet." (The API refuses both too: `bill.blocked`,
+   `payment.bank_change_pending`.)
 2. **U007, U008, U009, U010, U011, U002.** Each one's approval queue has one bill.
 3. **U003 (finance manager).** The banner shows U003 acting for U012. The queue has AP-00433 (as U012's delegate) and
    AP-00434 (step 2). The audit trail of AP-00436 shows U003's approval recorded on behalf of U012.
-4. **U003 releasing PAY-00416.** Refused: U003 approved that bill, and an approver can't release its payment (P11).
-   U003 can release PAY-00417 and PAY-00418.
+4. **U003 on Payments.** PAY-00416 has no Release button: it shows "U003 approved this bill, so they can't release
+   its payment (P11)." PAY-00417 and PAY-00418 have **Release**. (A release sent through the API anyway is refused
+   with the same message.)
 5. **U002 (controller).** Releases PAY-00416.
-6. **U006 (auditor).** The audit log shows every step above, with the actor, the role and `on_behalf_of`. The
-   chain verifies.
+6. **U006 (auditor).** The audit log shows every step above, with the actor, the role and `on_behalf_of`, and
+   **Export CSV** downloads it. The log is a hash chain (each event signs the one before it with `AUDIT_HMAC_KEY`).
+   The UI doesn't show the check; run it from `backend/`:
+   `python -c "from sqlalchemy.orm import Session; from app.db.database import make_engine; from app.db.audit import verify_chain; print(verify_chain(Session(make_engine())))"`
+   prints `ChainReport(ok=True, ...)` with the number of events checked.
 
 ## Notes
 
