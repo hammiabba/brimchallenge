@@ -5,13 +5,14 @@ import { Link, useSearchParams } from 'react-router'
 
 import { ErrorAlert } from '../api/ErrorAlert'
 import { personName, usePeople } from '../api/reference'
-import type { BillSummary, Payment, PaymentStatus } from '../api/types'
+import type { BillSummary, Payment, PaymentStatus, Role } from '../api/types'
 import { useCurrentUser } from '../auth/context'
 import { PAYMENT_METHOD_LABELS } from '../bills/labels'
 import { useBill } from '../bills/queries'
 import { StatusBadge } from '../ui/Badges'
 import { DateText, Id, MoneyText } from '../ui/DataText'
 import { PAYMENT_STATUS } from '../ui/statusStyles'
+import { PaymentActions } from './PaymentActions'
 import { PAYMENTS_PAGE_SIZE, useApprovedBills, usePaymentsPage, usePaymentsSummary } from './queries'
 import { ScheduleModal } from './ScheduleModal'
 
@@ -27,6 +28,9 @@ const TABS = [
 type Tab = (typeof TABS)[number]['value']
 
 const SKELETON_ROWS = 5
+
+/** Roles that act on payments (release; cancel). The server decides each action per payment. */
+const ACTION_ROLES: readonly Role[] = ['finance_manager', 'controller_admin']
 
 /** The tab in the URL (?status=released); anything unknown falls back to scheduled. */
 function tabFromSearch(search: URLSearchParams): Tab {
@@ -195,8 +199,8 @@ function ApprovedBills() {
   )
 }
 
-/** One payment in the list. */
-function PaymentRow({ payment }: { payment: Payment }) {
+/** One payment in the list; a scheduled one gets the actions the server allows (fetched per row). */
+function PaymentRow({ payment, actions }: { payment: Payment; actions: boolean }) {
   const people = usePeople()
   return (
     <Table.Tr>
@@ -217,18 +221,22 @@ function PaymentRow({ payment }: { payment: Payment }) {
       <Table.Td><StatusBadge kind="payment" status={payment.status} /></Table.Td>
       <Table.Td>{payment.prepared_by ? personName(payment.prepared_by, people.data) : <Text span c="dimmed" size="sm">None</Text>}</Table.Td>
       <Table.Td>{payment.released_by ? personName(payment.released_by, people.data) : <Text span c="dimmed" size="sm">Not released</Text>}</Table.Td>
+      {actions && <Table.Td>{payment.status === 'scheduled' && <PaymentActions paymentId={payment.payment_id} />}</Table.Td>}
     </Table.Tr>
   )
 }
 
 /** The payments list by status, newest scheduled date first, paged (GET /payments). Tab and page are in the URL. */
 function PaymentsList() {
+  const user = useCurrentUser()
   const [searchParams, setSearchParams] = useSearchParams()
   const tab = tabFromSearch(searchParams)
   const page = pageFromSearch(searchParams)
   const payments = usePaymentsPage(tab === 'all' ? [] : [tab as PaymentStatus], page)
+  // Auditors only read: no Actions column for them. The buttons themselves still need the server's yes.
+  const actions = ACTION_ROLES.includes(user.role)
   const columns = ['Payment', 'Bill', 'Vendor', 'Method', 'Scheduled', 'Paid', 'Amount (CAD)', 'Status', 'Prepared by',
-    'Released by']
+    'Released by', ...(actions ? ['Actions'] : [])]
   const total = payments.data?.total ?? 0
   const pages = Math.max(1, Math.ceil(total / PAYMENTS_PAGE_SIZE))
   const empty = tab === 'all' ? 'No payments yet.' : `No ${PAYMENT_STATUS[tab].label.toLowerCase()} payments.`
@@ -258,7 +266,7 @@ function PaymentsList() {
               <Table.Tbody>
                 <TableState loading={payments.isPending} empty={payments.data?.items.length === 0} columns={columns.length}
                   message={empty} />
-                {payments.data?.items.map((p) => <PaymentRow key={p.payment_id} payment={p} />)}
+                {payments.data?.items.map((p) => <PaymentRow key={p.payment_id} payment={p} actions={actions} />)}
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
