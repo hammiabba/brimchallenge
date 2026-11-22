@@ -3,13 +3,14 @@ import { IconChevronDown, IconChevronRight } from '@tabler/icons-react'
 import { Fragment, useState } from 'react'
 import { Link } from 'react-router'
 
-import { codeAsWords, personName, usePeople } from '../api/reference'
+import { codeAsWords, personName, useFlagHelp, usePeople } from '../api/reference'
 import type { AuditEvent, Role } from '../api/types'
 import { ROLE_LABELS } from '../auth/roles'
 import { auditFieldLabel } from '../bills/auditText'
 import { DateText, Id } from '../ui/DataText'
 import { Icon } from '../ui/Icon'
 import { auditLogActionLabel } from './filters'
+import { eventCurrency, formatAuditValue, type AuditValueContext, type AuditValueView } from './values'
 
 /**
  * Six columns that fit the 752 px content column at 1024 px: the event's number sits under its time. Times are in
@@ -46,18 +47,45 @@ function EntityCell({ event }: { event: AuditEvent }) {
   )
 }
 
-/** A recorded value as text: strings as they are, everything else as compact JSON. */
-function show(value: unknown): string {
-  if (value === undefined) return ''
-  if (typeof value === 'string') return value
-  return JSON.stringify(value)
+/** One formatted value: lines of words, or pretty-printed JSON in the monospace style of the event line below. */
+function ValueCell({ view }: { view: AuditValueView }) {
+  if (view.kind === 'json') {
+    return (
+      <Text component="pre" size="xs" ff="monospace" m={0} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+        {view.text}
+      </Text>
+    )
+  }
+  return (
+    <Stack gap={2}>
+      {view.lines.map((line, index) => (
+        <Text key={index} size="sm" style={{ wordBreak: 'break-word' }}>{line}</Text>
+      ))}
+    </Stack>
+  )
 }
 
-/** What changed: every field in before or after, with both values. Plain text only. */
+/**
+ * What changed: every field in before or after, with both values in the app's words (src/audit/values.ts): statuses,
+ * roles, routes, people, money and dates as elsewhere; unknown objects as pretty-printed JSON; empty as an em dash.
+ * Display only: the stored event and the CSV export keep the raw values.
+ */
 function ChangeTable({ event }: { event: AuditEvent }) {
-  const before = event.before ?? {}
-  const after = event.after ?? {}
+  const people = usePeople()
+  const flagHelp = useFlagHelp()
+  const before = (event.before ?? {}) as Record<string, unknown>
+  const after = (event.after ?? {}) as Record<string, unknown>
   const fields = [...new Set([...Object.keys(before), ...Object.keys(after)])]
+  const context: AuditValueContext = {
+    entityType: event.entity_type,
+    currency: eventCurrency(before, after),
+    // Names as the table's Who column finds them (personName); the id alone when the directory doesn't have it.
+    personLabel: (userId) => {
+      const name = personName(userId, people.data)
+      return name === userId ? userId : `${name} (${userId})`
+    },
+    flagTitle: (code) => flagHelp.data?.[code]?.title ?? codeAsWords(code),
+  }
   return (
     <Stack gap="xs" py="xs">
       {fields.length === 0 ? (
@@ -71,8 +99,8 @@ function ChangeTable({ event }: { event: AuditEvent }) {
             {fields.map((field) => (
               <Table.Tr key={field}>
                 <Table.Td>{auditFieldLabel(field)}</Table.Td>
-                <Table.Td><Text size="sm" style={{ wordBreak: 'break-word' }}>{show(before[field])}</Text></Table.Td>
-                <Table.Td><Text size="sm" style={{ wordBreak: 'break-word' }}>{show(after[field])}</Text></Table.Td>
+                <Table.Td><ValueCell view={formatAuditValue(field, before[field], context)} /></Table.Td>
+                <Table.Td><ValueCell view={formatAuditValue(field, after[field], context)} /></Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>

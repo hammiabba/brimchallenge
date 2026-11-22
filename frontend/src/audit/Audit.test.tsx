@@ -44,8 +44,75 @@ describe('audit log', () => {
 
     await user.click(within(table).getByRole('button', { name: 'Show changes in event 2' }))
     const changes = await screen.findByRole('table', { name: 'Changes in event 2' })
-    expect(within(changes).getByText('pending_approval')).toBeInTheDocument()
-    expect(within(changes).getByText('approved')).toBeInTheDocument()
+    // Status codes in the status badges' words; the event id line stays as it was.
+    expect(within(changes).getByText('Pending approval')).toBeInTheDocument()
+    expect(within(changes).getByText('Approved')).toBeInTheDocument()
+    expect(within(changes).queryByText('pending_approval')).not.toBeInTheDocument()
+    expect(screen.getByText('Event evt-2, request rid-a')).toBeInTheDocument()
+  })
+
+  it('shows a route one step per line, with the name and id, or the id alone when the name is unknown', async () => {
+    installFakeApi({
+      ...billScreenRoutes(AUDITOR),
+      'GET /audit': { body: { items: [event(3, {
+        action: 'bill.submitted', before: { status: 'needs_review' },
+        after: { status: 'pending_approval', route: [
+          { step_no: 1, role: 'dept_manager', user_id: 'U012' },
+          { step_no: 2, role: 'finance_manager', user_id: 'U099' },
+        ] },
+      })], next_after_seq: null } },
+    })
+    const user = userEvent.setup()
+    renderApp('/audit')
+    await user.click(await screen.findByRole('button', { name: 'Show changes in event 3' }))
+    const changes = await screen.findByRole('table', { name: 'Changes in event 3' })
+    const route = within(changes).getByText('Route').closest('tr')!
+    // U012 is Sam Rivera in the directory (GET /auth/users); U099 isn't, so the id stands alone.
+    expect(await within(route).findByText('Step 1: Department manager, Sam Rivera (U012)')).toBeInTheDocument()
+    expect(within(route).getByText('Step 2: Finance manager, U099')).toBeInTheDocument()
+    // No route before submitting: an em dash, never a blank cell.
+    expect(within(route).getAllByRole('cell')[1]).toHaveTextContent('—')
+    expect(within(changes).getByText('Needs review')).toBeInTheDocument()
+  })
+
+  it('pretty-prints an unknown object field and shows booleans as Yes and No, with no blank cells', async () => {
+    const counts = { block: 2, warn: 1, info: 3 }
+    installFakeApi({
+      ...billScreenRoutes(AUDITOR),
+      'GET /audit': { body: { items: [event(4, {
+        action: 'controls.backfilled', entity_type: 'system', entity_id: 'backfill',
+        before: { only_missing: false }, after: { only_missing: true, flags_by_severity: counts },
+      })], next_after_seq: null } },
+    })
+    const user = userEvent.setup()
+    renderApp('/audit')
+    await user.click(await screen.findByRole('button', { name: 'Show changes in event 4' }))
+    const changes = await screen.findByRole('table', { name: 'Changes in event 4' })
+
+    const flags = within(changes).getByText('Flags by severity').closest('tr')!
+    const json = within(flags).getAllByRole('cell')[2]!.querySelector('pre')!
+    expect(json.textContent).toBe(JSON.stringify(counts, null, 2))
+    expect(within(flags).getAllByRole('cell')[1]).toHaveTextContent('—')
+
+    const onlyMissing = within(changes).getByText('Only missing').closest('tr')!
+    expect(within(onlyMissing).getAllByRole('cell').map((cell) => cell.textContent)).toEqual(['Only missing', 'No', 'Yes'])
+
+    expect(changes).not.toHaveTextContent('[object Object]')
+    for (const cell of within(changes).getAllByRole('cell')) expect(cell.textContent?.trim()).not.toBe('')
+  })
+
+  it('leaves the CSV export as it was: the same link, before and after expanding an event', async () => {
+    installFakeApi({ ...billScreenRoutes(AUDITOR), 'GET /audit': { body: { items: [event(5)], next_after_seq: null } } })
+    const user = userEvent.setup()
+    renderApp('/audit?entity_type=bill&entity_id=AP-00407&actor=U002&from=2026-10-01&to=2026-10-31')
+    const link = await screen.findByRole('link', { name: 'Export CSV' })
+    const expected = '/api/audit/export?entity_type=bill&entity_id=AP-00407&actor=U002&since=2026-10-01T00%3A00%3A00Z'
+      + '&until=2026-10-31T23%3A59%3A59Z'
+    expect(link).toHaveAttribute('href', expected)
+    // The display formatting is page-only: the export is built by the server from the stored, raw values.
+    await user.click(await screen.findByRole('button', { name: 'Show changes in event 5' }))
+    await screen.findByRole('table', { name: 'Changes in event 5' })
+    expect(screen.getByRole('link', { name: 'Export CSV' })).toHaveAttribute('href', expected)
   })
 
   it('shows the system as one line, not "system / system"', async () => {
